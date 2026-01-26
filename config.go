@@ -1,4 +1,4 @@
-package ws
+package honeybee
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/errors"

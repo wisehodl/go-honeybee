@@ -1,4 +1,4 @@
-package ws
+package honeybee
 
 import (
 	"net/url"
