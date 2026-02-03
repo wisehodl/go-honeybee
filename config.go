@@ -35,7 +35,12 @@ func NewConfig(options ...ConfigOption) (*Config, error) {
 }
 
 func GetDefaultConfig() *Config {
-	return &Config{}
+	return &Config{
+		CloseHandler: nil,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		Retry:        GetDefaultRetryConfig(),
+	}
 }
 
 func GetDefaultRetryConfig() *RetryConfig {

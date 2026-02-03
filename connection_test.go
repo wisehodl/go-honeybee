@@ -213,7 +213,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 			assert.Equal(t, StateConnected, conn.state)
 			assert.False(t, conn.closed)
 
-			// Verify config defaulting
+			// Verify default config is used if nil is passed
 			if tc.config == nil {
 				assert.Equal(t, GetDefaultConfig(), conn.config)
 			} else {

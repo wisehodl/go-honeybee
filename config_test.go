@@ -10,11 +10,14 @@ import (
 // Config Tests
 
 func TestNewConfig(t *testing.T) {
-	conf, err := NewConfig(WithRetry())
+	conf, err := NewConfig()
 
 	assert.NoError(t, err)
 	assert.Equal(t, conf, &Config{
-		Retry: GetDefaultRetryConfig(),
+		CloseHandler: nil,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		Retry:        GetDefaultRetryConfig(),
 	})
 
 	// errors propagate
@@ -30,8 +33,12 @@ func TestNewConfig(t *testing.T) {
 func TestDefaultConfig(t *testing.T) {
 	conf := GetDefaultConfig()
 
-	assert.Nil(t, conf.CloseHandler)
-	assert.Nil(t, conf.Retry)
+	assert.Equal(t, conf, &Config{
+		CloseHandler: nil,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		Retry:        GetDefaultRetryConfig(),
+	})
 }
 
 func TestDefaultRetryConfig(t *testing.T) {
@@ -48,7 +55,7 @@ func TestDefaultRetryConfig(t *testing.T) {
 // Config Builder Tests
 
 func TestSetConfig(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	err := SetConfig(
 		conf,
 		WithRetryMaxRetries(0),
@@ -73,7 +80,7 @@ func TestSetConfig(t *testing.T) {
 // Config Option Tests
 
 func TestWithCloseHandler(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithCloseHandler(func(code int, text string) error { return nil })
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
@@ -81,21 +88,21 @@ func TestWithCloseHandler(t *testing.T) {
 }
 
 func TestWithReadTimeout(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithReadTimeout(30)
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
 	assert.Equal(t, conf.ReadTimeout, time.Duration(30))
 
 	// zero allowed
-	conf = GetDefaultConfig()
+	conf = &Config{}
 	opt = WithReadTimeout(0)
 	err = SetConfig(conf, opt)
 	assert.NoError(t, err)
 	assert.Equal(t, conf.ReadTimeout, time.Duration(0))
 
 	// negative disallowed
-	conf = GetDefaultConfig()
+	conf = &Config{}
 	opt = WithReadTimeout(-30)
 	err = SetConfig(conf, opt)
 	assert.ErrorIs(t, err, errors.InvalidReadTimeout)
@@ -103,21 +110,21 @@ func TestWithReadTimeout(t *testing.T) {
 }
 
 func TestWithWriteTimeout(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithWriteTimeout(30)
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
 	assert.Equal(t, conf.WriteTimeout, time.Duration(30))
 
 	// zero allowed
-	conf = GetDefaultConfig()
+	conf = &Config{}
 	opt = WithWriteTimeout(0)
 	err = SetConfig(conf, opt)
 	assert.NoError(t, err)
 	assert.Equal(t, conf.WriteTimeout, time.Duration(0))
 
 	// negative disallowed
-	conf = GetDefaultConfig()
+	conf = &Config{}
 	opt = WithWriteTimeout(-30)
 	err = SetConfig(conf, opt)
 	assert.ErrorIs(t, err, errors.InvalidWriteTimeout)
@@ -125,7 +132,7 @@ func TestWithWriteTimeout(t *testing.T) {
 }
 
 func TestWithRetry(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithRetry()
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
@@ -134,7 +141,7 @@ func TestWithRetry(t *testing.T) {
 }
 
 func TestWithRetryAttempts(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithRetryMaxRetries(3)
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
@@ -153,7 +160,7 @@ func TestWithRetryAttempts(t *testing.T) {
 }
 
 func TestWithRetryInitialDelay(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithRetryInitialDelay(10 * time.Second)
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
@@ -172,7 +179,7 @@ func TestWithRetryInitialDelay(t *testing.T) {
 }
 
 func TestWithRetryMaxDelay(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 	opt := WithRetryMaxDelay(10 * time.Second)
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
@@ -191,7 +198,7 @@ func TestWithRetryMaxDelay(t *testing.T) {
 }
 
 func TestWithRetryJitterFactor(t *testing.T) {
-	conf := GetDefaultConfig()
+	conf := &Config{}
 
 	opt := WithRetryJitterFactor(0.2)
 	err := SetConfig(conf, opt)
@@ -221,7 +228,7 @@ func TestValidateConfig(t *testing.T) {
 	}{
 		{
 			name: "valid empty",
-			conf: *GetDefaultConfig(),
+			conf: *&Config{},
 		},
 		{
 			name: "valid defaults",
