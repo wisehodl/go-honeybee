@@ -74,19 +74,12 @@ func NewConnection(urlStr string, config *Config, logger *slog.Logger) (*Connect
 		dialer:   NewDialer(),
 		socket:   nil,
 		config:   config,
+		logger:   logger,
 		incoming: make(chan []byte, 100),
 		outgoing: make(chan []byte, 100),
 		errors:   make(chan error, 10),
 		state:    StateDisconnected,
 		done:     make(chan struct{}),
-	}
-
-	if logger != nil {
-		conn.logger = logger.With(
-			"library", "honeybee",
-			"component", "Connection",
-			"url", parsedURL.String(),
-		)
 	}
 
 	return conn, nil
@@ -110,18 +103,12 @@ func NewConnectionFromSocket(socket Socket, config *Config, logger *slog.Logger)
 		dialer:   nil,
 		socket:   socket,
 		config:   config,
+		logger:   logger,
 		incoming: make(chan []byte, 100),
 		outgoing: make(chan []byte, 100),
 		errors:   make(chan error, 10),
 		state:    StateConnected,
 		done:     make(chan struct{}),
-	}
-
-	if logger != nil {
-		conn.logger = logger.With(
-			"library", "honeybee",
-			"component", "Connection",
-		)
 	}
 
 	if config.CloseHandler != nil {
