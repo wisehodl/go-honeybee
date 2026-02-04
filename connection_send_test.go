@@ -46,7 +46,7 @@ func TestConnectionSend(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			conn, err := NewConnection("ws://test", nil)
+			conn, err := NewConnection("ws://test", nil, nil)
 			assert.NoError(t, err)
 
 			tc.setup(conn)
@@ -76,7 +76,7 @@ func TestConnectionSend(t *testing.T) {
 
 // Run with `go test -race` to ensure no race conditions occur
 func TestConnectionSendConcurrent(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil)
+	conn, err := NewConnection("ws://test", nil, nil)
 	assert.NoError(t, err)
 
 	// continuously consume outgoing channel in background

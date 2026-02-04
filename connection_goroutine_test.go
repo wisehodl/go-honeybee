@@ -74,7 +74,7 @@ func TestStartReader(t *testing.T) {
 			return nil
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -114,7 +114,7 @@ func TestStartReader(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -149,7 +149,7 @@ func TestStartReader(t *testing.T) {
 			return fmt.Errorf("test error")
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -180,7 +180,7 @@ func TestStartReader(t *testing.T) {
 			return 0, nil, readErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil)
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -256,7 +256,7 @@ func TestStartWriter(t *testing.T) {
 			return nil
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -300,7 +300,7 @@ func TestStartWriter(t *testing.T) {
 			return nil
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -333,7 +333,7 @@ func TestStartWriter(t *testing.T) {
 			return fmt.Errorf("test error")
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config)
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
 		assert.NoError(t, err)
 
 		err = conn.Send([]byte("test"))
@@ -359,7 +359,7 @@ func TestStartWriter(t *testing.T) {
 			return writeErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil)
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 

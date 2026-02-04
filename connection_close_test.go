@@ -11,7 +11,7 @@ import (
 
 func TestDisconnectedConnectionClose(t *testing.T) {
 	t.Run("close succeeds on disconnected connection", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, StateDisconnected, conn.State())
 
@@ -21,7 +21,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 	})
 
 	t.Run("close is idempotent", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		err = conn.Close()
@@ -34,7 +34,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 	})
 
 	t.Run("close with nil socket", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 		assert.Nil(t, conn.socket)
 
@@ -50,7 +50,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 			return expectedErr
 		}
 
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 		conn.socket = mockSocket
 
@@ -60,7 +60,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 	})
 
 	t.Run("channels close after close", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		err = conn.Close()
@@ -92,7 +92,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 	})
 
 	t.Run("send fails after close", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		err = conn.Close()

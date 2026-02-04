@@ -2,6 +2,7 @@ package honeybee
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type Connection struct {
 	dialer Dialer
 	socket Socket
 	config *Config
+	logger *slog.Logger
 
 	incoming chan []byte
 	outgoing chan []byte
@@ -53,7 +55,7 @@ type Connection struct {
 	mu     sync.RWMutex
 }
 
-func NewConnection(urlStr string, config *Config) (*Connection, error) {
+func NewConnection(urlStr string, config *Config, logger *slog.Logger) (*Connection, error) {
 	if config == nil {
 		config = GetDefaultConfig()
 	}
@@ -67,7 +69,7 @@ func NewConnection(urlStr string, config *Config) (*Connection, error) {
 		return nil, err
 	}
 
-	return &Connection{
+	conn := &Connection{
 		url:      parsedURL,
 		dialer:   NewDialer(),
 		socket:   nil,
@@ -77,10 +79,20 @@ func NewConnection(urlStr string, config *Config) (*Connection, error) {
 		errors:   make(chan error, 10),
 		state:    StateDisconnected,
 		done:     make(chan struct{}),
-	}, nil
+	}
+
+	if logger != nil {
+		conn.logger = logger.With(
+			"library", "honeybee",
+			"component", "Connection",
+			"url", parsedURL.String(),
+		)
+	}
+
+	return conn, nil
 }
 
-func NewConnectionFromSocket(socket Socket, config *Config) (*Connection, error) {
+func NewConnectionFromSocket(socket Socket, config *Config, logger *slog.Logger) (*Connection, error) {
 	if socket == nil {
 		return nil, errors.NewConnectionError("socket cannot be nil")
 	}
@@ -105,6 +117,13 @@ func NewConnectionFromSocket(socket Socket, config *Config) (*Connection, error)
 		done:     make(chan struct{}),
 	}
 
+	if logger != nil {
+		conn.logger = logger.With(
+			"library", "honeybee",
+			"component", "Connection",
+		)
+	}
+
 	if config.CloseHandler != nil {
 		socket.SetCloseHandler(config.CloseHandler)
 	}
@@ -127,13 +146,20 @@ func (c *Connection) Connect() error {
 		return errors.NewConnectionError("connection is closed")
 	}
 
+	if c.logger != nil {
+		c.logger.Info("connecting")
+	}
+
 	c.state = StateConnecting
 
 	retryMgr := NewRetryManager(c.config.Retry)
-	socket, _, err := AcquireSocket(retryMgr, c.dialer, c.url.String())
+	socket, _, err := AcquireSocket(retryMgr, c.dialer, c.url.String(), c.logger)
 
 	if err != nil {
 		c.state = StateDisconnected
+		if c.logger != nil {
+			c.logger.Error("connection failed", "error", err)
+		}
 		return err
 	}
 
@@ -142,6 +168,10 @@ func (c *Connection) Connect() error {
 
 	if c.config.CloseHandler != nil {
 		c.socket.SetCloseHandler(c.config.CloseHandler)
+	}
+
+	if c.logger != nil {
+		c.logger.Info("connected")
 	}
 
 	c.startReader()
@@ -162,6 +192,9 @@ func (c *Connection) startReader() {
 			default:
 				if c.config.ReadTimeout > 0 {
 					if err := c.socket.SetReadDeadline(time.Now().Add(c.config.ReadTimeout)); err != nil {
+						if c.logger != nil {
+							c.logger.Error("read deadline error", "error", err)
+						}
 						select {
 						case c.errors <- fmt.Errorf("failed to set read deadline: %w", err):
 						case <-c.done:
@@ -172,6 +205,9 @@ func (c *Connection) startReader() {
 				}
 				messageType, data, err := c.socket.ReadMessage()
 				if err != nil {
+					if c.logger != nil {
+						c.logger.Error("read error", "error", err)
+					}
 					select {
 					case c.errors <- err:
 					case <-c.done:
@@ -208,6 +244,9 @@ func (c *Connection) startWriter() {
 			case data := <-c.outgoing:
 				if c.config.WriteTimeout > 0 {
 					if err := c.socket.SetWriteDeadline(time.Now().Add(c.config.WriteTimeout)); err != nil {
+						if c.logger != nil {
+							c.logger.Error("write deadline error", "error", err)
+						}
 						select {
 						case c.errors <- fmt.Errorf("failed to set write deadline: %w", err):
 						case <-c.done:
@@ -218,6 +257,9 @@ func (c *Connection) startWriter() {
 				}
 
 				if err := c.socket.WriteMessage(websocket.TextMessage, data); err != nil {
+					if c.logger != nil {
+						c.logger.Error("write error", "error", err)
+					}
 					select {
 					case c.errors <- err:
 					case <-c.done:
@@ -263,7 +305,11 @@ func (c *Connection) Close() error {
 	c.mu.Lock()
 
 	alreadyClosed := c.closed
+	currentState := c.state
 	if !alreadyClosed {
+		if c.logger != nil {
+			c.logger.Info("closing", "state", currentState.String())
+		}
 		c.closed = true
 		c.state = StateClosed
 		close(c.done)
@@ -279,6 +325,15 @@ func (c *Connection) Close() error {
 	var err error
 	if socket != nil {
 		err = socket.Close()
+		if err != nil {
+			if c.logger != nil {
+				c.logger.Error("socket close failed", "error", err)
+			}
+		} else {
+			if c.logger != nil {
+				c.logger.Info("closed")
+			}
+		}
 	}
 
 	c.wg.Wait()

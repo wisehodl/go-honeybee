@@ -1,8 +1,10 @@
 package honeybee
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"testing"
@@ -125,8 +127,54 @@ func setupTestConnection(t *testing.T, config *Config) (
 	}
 
 	var err error
-	conn, err = NewConnectionFromSocket(mockSocket, config)
+	conn, err = NewConnectionFromSocket(mockSocket, config, nil)
 	assert.NoError(t, err)
 
 	return conn, mockSocket, incomingData, outgoingData
+}
+
+// Logging mocks
+
+type mockSlogHandler struct {
+	records []slog.Record
+	mu      sync.RWMutex
+}
+
+func newMockSlogHandler() *mockSlogHandler {
+	return &mockSlogHandler{
+		records: make([]slog.Record, 0),
+	}
+}
+
+func (m *mockSlogHandler) Handle(ctx context.Context, record slog.Record) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.records = append(m.records, record)
+	return nil
+}
+
+func (m *mockSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (m *mockSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return m
+}
+
+func (m *mockSlogHandler) WithGroup(name string) slog.Handler {
+	return m
+}
+
+func (m *mockSlogHandler) GetRecords() []slog.Record {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]slog.Record, len(m.records))
+	copy(result, m.records)
+	return result
+}
+
+func (m *mockSlogHandler) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.records = make([]slog.Record, 0)
 }

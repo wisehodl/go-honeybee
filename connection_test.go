@@ -31,11 +31,11 @@ func TestConnectionStateString(t *testing.T) {
 
 func TestConnectionState(t *testing.T) {
 	// Test initial state
-	conn, _ := NewConnection("ws://test", nil)
+	conn, _ := NewConnection("ws://test", nil, nil)
 	assert.Equal(t, StateDisconnected, conn.State())
 
 	// Test state after FromSocket (should be Connected)
-	conn2, _ := NewConnectionFromSocket(NewMockSocket(), nil)
+	conn2, _ := NewConnectionFromSocket(NewMockSocket(), nil, nil)
 	assert.Equal(t, StateConnected, conn2.State())
 
 	// Test state after close
@@ -86,7 +86,7 @@ func TestNewConnection(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			conn, err := NewConnection(tc.url, tc.config)
+			conn, err := NewConnection(tc.url, tc.config, nil)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -187,7 +187,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 				}
 			}
 
-			conn, err := NewConnectionFromSocket(tc.socket, tc.config)
+			conn, err := NewConnectionFromSocket(tc.socket, tc.config, nil)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -234,7 +234,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	t.Run("connect fails when socket already present", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		conn.socket = NewMockSocket()
@@ -246,7 +246,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect fails when connection closed", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		conn.Close()
@@ -258,7 +258,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect succeeds and starts goroutines", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		outgoingData := make(chan mockOutgoingData, 10)
@@ -305,7 +305,7 @@ func TestConnect(t *testing.T) {
 				JitterFactor: 0.0,
 			},
 		}
-		conn, err := NewConnection("ws://test", config)
+		conn, err := NewConnection("ws://test", config, nil)
 		assert.NoError(t, err)
 
 		attemptCount := 0
@@ -337,7 +337,7 @@ func TestConnect(t *testing.T) {
 				JitterFactor: 0.0,
 			},
 		}
-		conn, err := NewConnection("ws://test", config)
+		conn, err := NewConnection("ws://test", config, nil)
 		assert.NoError(t, err)
 
 		mockDialer := &MockDialer{
@@ -354,7 +354,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("state transitions during connect", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil)
+		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, StateDisconnected, conn.State())
 
@@ -382,7 +382,7 @@ func TestConnect(t *testing.T) {
 				return nil
 			},
 		}
-		conn, err := NewConnection("ws://test", config)
+		conn, err := NewConnection("ws://test", config, nil)
 		assert.NoError(t, err)
 
 		mockSocket := NewMockSocket()
@@ -408,7 +408,7 @@ func TestConnect(t *testing.T) {
 // Connection method tests
 
 func TestConnectionIncoming(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil)
+	conn, err := NewConnection("ws://test", nil, nil)
 	assert.NoError(t, err)
 
 	incoming := conn.Incoming()
@@ -422,7 +422,7 @@ func TestConnectionIncoming(t *testing.T) {
 }
 
 func TestConnectionErrors(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil)
+	conn, err := NewConnection("ws://test", nil, nil)
 	assert.NoError(t, err)
 
 	errors := conn.Errors()

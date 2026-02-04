@@ -1,6 +1,7 @@
 package honeybee
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -54,6 +55,7 @@ func AcquireSocket(
 	retryMgr *RetryManager,
 	dialer Dialer,
 	urlStr string,
+	logger *slog.Logger,
 ) (Socket, *http.Response, error) {
 	if retryMgr == nil {
 		return nil, nil, errors.NewConnectionError("retry manager cannot be nil")
@@ -66,16 +68,36 @@ func AcquireSocket(
 	}
 
 	for {
+		if logger != nil {
+			logger.Info("dialing", "attempt", retryMgr.RetryCount()+1)
+		}
+
 		socket, resp, err := dialer.Dial(urlStr, nil)
 		if err == nil {
+			if logger != nil {
+				logger.Info("dial successful", "attempt", retryMgr.RetryCount()+1)
+			}
 			return socket, resp, nil
 		}
 
 		if !retryMgr.ShouldRetry() {
+			if logger != nil {
+				logger.Error("dial failed, max retries reached",
+					"error", err,
+					"attempt", retryMgr.RetryCount()+1)
+			}
 			return nil, nil, err
 		}
 
 		delay := retryMgr.CalculateDelay()
+
+		if logger != nil {
+			logger.Warn("dial failed, retrying",
+				"error", err,
+				"attempt", retryMgr.RetryCount()+1,
+				"next_delay", delay)
+		}
+
 		time.Sleep(delay)
 		retryMgr.RecordRetry()
 	}

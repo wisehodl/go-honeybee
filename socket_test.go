@@ -78,7 +78,7 @@ func TestAcquireSocket(t *testing.T) {
 				JitterFactor: 0.0,
 			})
 
-			socket, _, err := AcquireSocket(retryMgr, mockDialer, "ws://test")
+			socket, _, err := AcquireSocket(retryMgr, mockDialer, "ws://test", nil)
 
 			assert.Equal(t, tc.wantRetryCount, retryMgr.RetryCount())
 			if tc.wantErr {
@@ -132,7 +132,7 @@ func TestAcquireSocketGuards(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			socket, resp, err := AcquireSocket(tc.retryMgr, tc.dialer, tc.url)
+			socket, resp, err := AcquireSocket(tc.retryMgr, tc.dialer, tc.url, nil)
 
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, tc.wantErr)
