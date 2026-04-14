@@ -228,10 +228,6 @@ func TestNewConnectionFromSocket(t *testing.T) {
 	}
 }
 
-// ws/connection_test.go
-
-// Add to existing file after TestNewConnectionFromSocket
-
 func TestConnect(t *testing.T) {
 	t.Run("connect fails when socket already present", func(t *testing.T) {
 		conn, err := NewConnection("ws://test", nil, nil)
