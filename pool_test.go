@@ -168,7 +168,26 @@ func TestPoolRemove(t *testing.T) {
 	})
 
 	t.Run("closed pool returns error", func(t *testing.T) {
+		mockSocket := NewMockSocket()
+		mockDialer := &MockDialer{
+			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+				return mockSocket, nil, nil
+			},
+		}
 
+		pool, err := NewPool(nil, nil)
+		assert.NoError(t, err)
+		pool.dialer = mockDialer
+
+		pool.Add("wss://peer1")
+		pool.Add("wss://peer2")
+
+		// close pool
+		pool.Close()
+
+		// attempt to remove connection
+		err = pool.Remove("wss://peer1")
+		assert.ErrorContains(t, err, "pool is closed")
 	})
 
 }
