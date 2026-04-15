@@ -110,19 +110,13 @@ func TestPoolRemove(t *testing.T) {
 		pool.dialer = mockDialer
 
 		pool.Add("wss://test")
+		expectEvent(t, pool.events, "wss://test", EventConnected)
 
 		err = pool.Remove("wss://test/")
 		assert.NoError(t, err)
 
 		// expect a disconnected event
-		assert.Eventually(t, func() bool {
-			select {
-			case e := <-pool.events:
-				return e.URL == "wss://test" && e.Kind == EventDisconnected
-			default:
-				return false
-			}
-		}, testTimeout, testTick, "expected disconnected event")
+		expectEvent(t, pool.events, "wss://test", EventDisconnected)
 
 		// connection no longer in pool
 		pool.mu.Lock()
@@ -143,9 +137,6 @@ func TestPoolRemove(t *testing.T) {
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
-		pool.Add("wss://peer1")
-		pool.Add("wss://peer2")
-
 		// remove unknown connection
 		err = pool.Remove("wss://unknown")
 		assert.ErrorContains(t, err, "connection not found")
@@ -163,15 +154,31 @@ func TestPoolRemove(t *testing.T) {
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
-		pool.Add("wss://peer1")
-		pool.Add("wss://peer2")
-
 		// close pool
 		pool.Close()
 
 		// attempt to remove connection
-		err = pool.Remove("wss://peer1")
+		err = pool.Remove("wss://test")
 		assert.ErrorContains(t, err, "pool is closed")
 	})
 
+}
+
+func expectEvent(
+	t *testing.T,
+	events chan PoolEvent,
+	expectedURL string,
+	expectedKind PoolEventKind,
+) {
+	t.Helper()
+	assert.Eventually(t, func() bool {
+		select {
+		case e := <-events:
+			return e.URL == expectedURL && e.Kind == expectedKind
+		default:
+			return false
+		}
+	}, testTimeout, testTick,
+		fmt.Sprintf("expected event: URL=%q, Kind=%q",
+			expectedURL, expectedKind.String()))
 }
