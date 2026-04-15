@@ -168,7 +168,7 @@ func TestConnectLogging(t *testing.T) {
 		mockHandler := newMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		config := &Config{
+		config := &ConnectionConfig{
 			Retry: &RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
@@ -211,7 +211,7 @@ func TestConnectLogging(t *testing.T) {
 		mockHandler := newMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		config := &Config{
+		config := &ConnectionConfig{
 			Retry: &RetryConfig{
 				MaxRetries:   3,
 				InitialDelay: 1 * time.Millisecond,
@@ -348,7 +348,7 @@ func TestWriterLogging(t *testing.T) {
 		mockHandler := newMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		config := &Config{WriteTimeout: 1 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
 
 		deadlineErr := fmt.Errorf("deadline error")
 		mockSocket := NewMockSocket()

@@ -68,7 +68,7 @@ func TestPoolConnect(t *testing.T) {
 	})
 
 	t.Run("fails to add connection", func(t *testing.T) {
-		pool, err := NewOutboundPool(&Config{
+		pool, err := NewOutboundPool(&ConnectionConfig{
 			Retry: &RetryConfig{
 				MaxRetries:   1,
 				InitialDelay: 1 * time.Millisecond,
