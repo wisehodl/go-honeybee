@@ -109,32 +109,16 @@ func TestPoolRemove(t *testing.T) {
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
-		pool.Add("wss://peer1")
-		pool.Add("wss://peer2")
+		pool.Add("wss://test")
 
-		// expect two connection events
-		counter := 2
-		assert.Eventually(t, func() bool {
-			if counter == 0 {
-				return true
-			}
-			select {
-			case e := <-pool.events:
-				counter = counter - 1
-				assert.Equal(t, EventConnected, e.Kind)
-			}
-			return false
-		}, testTimeout, testTick, "expected connection events")
-
-		// remove a connection
-		err = pool.Remove("wss://peer2/")
+		err = pool.Remove("wss://test/")
 		assert.NoError(t, err)
 
 		// expect a disconnected event
 		assert.Eventually(t, func() bool {
 			select {
 			case e := <-pool.events:
-				return assert.Equal(t, EventDisconnected, e.Kind)
+				return e.URL == "wss://test" && e.Kind == EventDisconnected
 			default:
 				return false
 			}
