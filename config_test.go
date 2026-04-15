@@ -15,7 +15,6 @@ func TestNewConfig(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, conf, &Config{
 		CloseHandler: nil,
-		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		Retry:        GetDefaultRetryConfig(),
 	})
@@ -35,7 +34,6 @@ func TestDefaultConfig(t *testing.T) {
 
 	assert.Equal(t, conf, &Config{
 		CloseHandler: nil,
-		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		Retry:        GetDefaultRetryConfig(),
 	})
@@ -85,28 +83,6 @@ func TestWithCloseHandler(t *testing.T) {
 	err := SetConfig(conf, opt)
 	assert.NoError(t, err)
 	assert.Nil(t, conf.CloseHandler(0, ""))
-}
-
-func TestWithReadTimeout(t *testing.T) {
-	conf := &Config{}
-	opt := WithReadTimeout(30)
-	err := SetConfig(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, conf.ReadTimeout, time.Duration(30))
-
-	// zero allowed
-	conf = &Config{}
-	opt = WithReadTimeout(0)
-	err = SetConfig(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, conf.ReadTimeout, time.Duration(0))
-
-	// negative disallowed
-	conf = &Config{}
-	opt = WithReadTimeout(-30)
-	err = SetConfig(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidReadTimeout)
-	assert.ErrorContains(t, err, "read timeout must be positive")
 }
 
 func TestWithWriteTimeout(t *testing.T) {
@@ -238,7 +214,6 @@ func TestValidateConfig(t *testing.T) {
 			name: "valid complete",
 			conf: Config{
 				CloseHandler: (func(code int, text string) error { return nil }),
-				ReadTimeout:  time.Duration(30),
 				WriteTimeout: time.Duration(30),
 				Retry: &RetryConfig{
 					MaxRetries:   0,

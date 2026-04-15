@@ -172,47 +172,29 @@ func (c *Connection) startReader() {
 		defer c.wg.Done()
 
 		for {
-			select {
-			case <-c.done:
-				return
-			default:
-				if c.config.ReadTimeout > 0 {
-					if err := c.socket.SetReadDeadline(time.Now().Add(c.config.ReadTimeout)); err != nil {
-						if c.logger != nil {
-							c.logger.Error("read deadline error", "error", err)
-						}
-						select {
-						case c.errors <- fmt.Errorf("failed to set read deadline: %w", err):
-						case <-c.done:
-						}
-						c.shutdown()
-						return
-					}
+			messageType, data, err := c.socket.ReadMessage()
+			if err != nil {
+				if c.logger != nil {
+					c.logger.Error("read error", "error", err)
 				}
-				messageType, data, err := c.socket.ReadMessage()
-				if err != nil {
-					if c.logger != nil {
-						c.logger.Error("read error", "error", err)
-					}
-					select {
-					case c.errors <- err:
-					case <-c.done:
-					}
+				select {
+				case c.errors <- err:
+				case <-c.done:
+				}
+				c.shutdown()
+				return
+			}
+
+			if messageType == websocket.TextMessage ||
+				messageType == websocket.BinaryMessage {
+				select {
+				case c.incoming <- data:
+				case <-c.done:
 					c.shutdown()
 					return
 				}
-
-				if messageType == websocket.TextMessage ||
-					messageType == websocket.BinaryMessage {
-					select {
-					case c.incoming <- data:
-					case <-c.done:
-						c.shutdown()
-						return
-					}
-				}
-
 			}
+
 		}
 	}()
 

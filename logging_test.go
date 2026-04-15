@@ -315,35 +315,6 @@ func TestCloseLogging(t *testing.T) {
 }
 
 func TestReaderLogging(t *testing.T) {
-	t.Run("read deadline error", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
-		logger := slog.New(mockHandler)
-
-		config := &Config{ReadTimeout: 1 * time.Millisecond}
-
-		deadlineErr := fmt.Errorf("deadline error")
-		mockSocket := NewMockSocket()
-		mockSocket.SetReadDeadlineFunc = func(time.Time) error {
-			return deadlineErr
-		}
-
-		conn, err := NewConnectionFromSocket(mockSocket, config, logger)
-		assert.NoError(t, err)
-
-		assert.Eventually(t, func() bool {
-			return findLogRecord(
-				mockHandler.GetRecords(), slog.LevelError, "read deadline error") != nil
-		}, testTimeout, testTick)
-
-		records := mockHandler.GetRecords()
-
-		record := findLogRecord(records, slog.LevelError, "read deadline error")
-		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "error", deadlineErr)
-
-		conn.Close()
-	})
-
 	t.Run("read message error", func(t *testing.T) {
 		mockHandler := newMockSlogHandler()
 		logger := slog.New(mockHandler)
