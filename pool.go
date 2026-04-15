@@ -170,3 +170,35 @@ func (p *Pool) Add(rawURL string) error {
 
 	return nil
 }
+
+func (p *Pool) Remove(rawURL string) error {
+	url, err := NormalizeURL(rawURL)
+	if err != nil {
+		return err
+	}
+
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return errors.NewPoolError("pool is closed")
+	}
+
+	conn, exists := p.connections[url]
+	if !exists {
+		p.mu.Unlock()
+		return errors.NewPoolError("connection not found")
+	}
+	delete(p.connections, url)
+	p.mu.Unlock()
+
+	close(conn.stop)
+	conn.inner.Close()
+
+	select {
+	case p.events <- PoolEvent{URL: url, Kind: EventDisconnected}:
+	case <-p.done:
+		return nil
+	}
+
+	return nil
+}
