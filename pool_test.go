@@ -95,3 +95,68 @@ func TestPoolAdd(t *testing.T) {
 		pool.Close()
 	})
 }
+
+func TestPoolRemove(t *testing.T) {
+	t.Run("removes known url", func(t *testing.T) {
+		mockSocket := NewMockSocket()
+		mockDialer := &MockDialer{
+			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+				return mockSocket, nil, nil
+			},
+		}
+
+		pool, err := NewPool(nil, nil)
+		assert.NoError(t, err)
+		pool.dialer = mockDialer
+
+		pool.Add("wss://peer1")
+		pool.Add("wss://peer2")
+
+		// expect two connection events
+		counter := 2
+		assert.Eventually(t, func() bool {
+			if counter == 0 {
+				return true
+			}
+			select {
+			case e := <-pool.events:
+				counter = counter - 1
+				assert.Equal(t, EventConnected, e.Kind)
+			}
+			return false
+		}, testTimeout, testTick, "expected connection events")
+
+		// remove a connection
+		err = pool.Remove("wss://peer2/")
+		assert.NoError(t, err)
+
+		// expect a disconnected event
+		assert.Eventually(t, func() bool {
+			select {
+			case e := <-pool.events:
+				return assert.Equal(t, EventDisconnected, e.Kind)
+			default:
+				return false
+			}
+		}, testTimeout, testTick, "expected disconnected event")
+
+		// connection no longer in pool
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+		_, ok := pool.connections["wss://peer2"]
+		assert.False(t, ok, "connection is still in pool")
+	})
+
+	t.Run("normalizes url before lookup", func(t *testing.T) {
+
+	})
+
+	t.Run("unknown url returns error", func(t *testing.T) {
+
+	})
+
+	t.Run("closed pool returns error", func(t *testing.T) {
+
+	})
+
+}
