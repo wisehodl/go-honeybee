@@ -9,7 +9,6 @@ type CloseHandler func(code int, text string) error
 
 type Config struct {
 	CloseHandler CloseHandler
-	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	Retry        *RetryConfig
 }
@@ -37,7 +36,6 @@ func NewConfig(options ...ConfigOption) (*Config, error) {
 func GetDefaultConfig() *Config {
 	return &Config{
 		CloseHandler: nil,
-		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		Retry:        GetDefaultRetryConfig(),
 	}
@@ -76,17 +74,6 @@ func ValidateConfig(config *Config) error {
 func WithCloseHandler(handler CloseHandler) ConfigOption {
 	return func(c *Config) error {
 		c.CloseHandler = handler
-		return nil
-	}
-}
-
-// When ReadTimeout is set to zero, read timeouts are disabled.
-func WithReadTimeout(value time.Duration) ConfigOption {
-	return func(c *Config) error {
-		if value < 0 {
-			return errors.InvalidReadTimeout
-		}
-		c.ReadTimeout = value
 		return nil
 	}
 }

@@ -62,7 +62,7 @@ func TestNewConnection(t *testing.T) {
 		{
 			name:   "valid url, valid config",
 			url:    "wss://relay.example.com:8080/path",
-			config: &Config{ReadTimeout: 30 * time.Second},
+			config: &Config{WriteTimeout: 30 * time.Second},
 		},
 		{
 			name:        "invalid url",
@@ -146,7 +146,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "valid socket with valid config",
 			socket: NewMockSocket(),
-			config: &Config{ReadTimeout: 30 * time.Second},
+			config: &Config{WriteTimeout: 30 * time.Second},
 		},
 		{
 			name:   "invalid config",
