@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+// Test Constants
+
+const (
+	testTimeout         = 2 * time.Second
+	testTick            = 10 * time.Millisecond
+	negativeTestTimeout = 100 * time.Millisecond
+)
+
 // Dialer Mocks
 
 type MockDialer struct {
@@ -33,6 +41,7 @@ type MockSocket struct {
 	SetCloseHandlerFunc  func(func(int, string) error)
 	closed               chan struct{}
 	once                 sync.Once
+	mu                   sync.Mutex
 }
 
 func NewMockSocket() *MockSocket {
@@ -119,6 +128,9 @@ func setupTestConnection(t *testing.T, config *Config) (
 
 	// Wire WriteMessage to push to outgoingData channel
 	mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+		mockSocket.mu.Lock()
+		defer mockSocket.mu.Unlock()
+
 		select {
 		case <-mockSocket.closed:
 			return io.EOF

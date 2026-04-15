@@ -1,8 +1,8 @@
 package honeybee
 
 import (
+	"bytes"
 	"fmt"
-
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -100,8 +100,18 @@ func TestConnectedConnectionClose(t *testing.T) {
 	t.Run("blocked on ReadMessage, unblocks on closed", func(t *testing.T) {
 		conn, _, incomingData, _ := setupTestConnection(t, nil)
 
-		// Wait for reader to block
-		time.Sleep(10 * time.Millisecond)
+		// Send a message to ensure reader loop is blocking
+		canary := []byte("canary")
+		incomingData <- mockIncomingData{msgType: websocket.TextMessage, data: canary}
+
+		assert.Eventually(t, func() bool {
+			select {
+			case msg := <-conn.Incoming():
+				return bytes.Equal(msg, canary)
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
 		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
@@ -123,11 +133,14 @@ func TestConnectedConnectionClose(t *testing.T) {
 		assert.ErrorContains(t, err, "connection closed")
 
 		// wait for background closures
-		select {
-		case <-conn.Errors():
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("timed out waiting for cleanup")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case <-conn.Errors():
+				return true
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
 		close(outgoingData)
 	})
@@ -143,16 +156,17 @@ func TestConnectedConnectionClose(t *testing.T) {
 			conn.Send([]byte(fmt.Sprintf("out-%d", i)))
 		}
 
-		time.Sleep(10 * time.Millisecond)
-
 		conn.Close()
 
 		// wait for background closures
-		select {
-		case <-conn.Errors():
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("timed out waiting for cleanup")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case <-conn.Errors():
+				return true
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
 		close(incomingData)
 		close(outgoingData)

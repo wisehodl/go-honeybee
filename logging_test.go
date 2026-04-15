@@ -57,25 +57,6 @@ func assertLogSequence(t *testing.T, records []slog.Record, expected []expectedL
 	}
 }
 
-func assertLogRecord(
-	t *testing.T,
-	records []slog.Record,
-	level slog.Level,
-	msgSnippet string,
-	expectedAttrs ...slog.Attr,
-) {
-	t.Helper()
-
-	record := findLogRecord(records, level, msgSnippet)
-	if record == nil {
-		t.Fatalf("no log record found with level %v and message containing %q", level, msgSnippet)
-	}
-
-	for _, expectedAttr := range expectedAttrs {
-		assertAttributePresent(t, *record, expectedAttr.Key, expectedAttr.Value.Any())
-	}
-}
-
 func findLogRecord(
 	records []slog.Record, level slog.Level, msgSnippet string,
 ) *slog.Record {
@@ -287,7 +268,11 @@ func TestCloseLogging(t *testing.T) {
 
 		conn.Close()
 
-		time.Sleep(10 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
+		}, testTimeout, testTick)
+
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
@@ -313,7 +298,11 @@ func TestCloseLogging(t *testing.T) {
 
 		conn.Close()
 
-		time.Sleep(10 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "socket close failed") != nil
+		}, testTimeout, testTick)
+
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
@@ -341,11 +330,12 @@ func TestReaderLogging(t *testing.T) {
 		conn, err := NewConnectionFromSocket(mockSocket, config, logger)
 		assert.NoError(t, err)
 
-		time.Sleep(50 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "read deadline error") != nil
+		}, testTimeout, testTick)
 
 		records := mockHandler.GetRecords()
-
-		assertLogRecord(t, records, slog.LevelError, "read deadline error")
 
 		record := findLogRecord(records, slog.LevelError, "read deadline error")
 		assert.NotNil(t, record)
@@ -367,11 +357,12 @@ func TestReaderLogging(t *testing.T) {
 		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
 		assert.NoError(t, err)
 
-		time.Sleep(50 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "read error") != nil
+		}, testTimeout, testTick)
 
 		records := mockHandler.GetRecords()
-
-		assertLogRecord(t, records, slog.LevelError, "read error")
 
 		record := findLogRecord(records, slog.LevelError, "read error")
 		assert.NotNil(t, record)
@@ -400,11 +391,12 @@ func TestWriterLogging(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		time.Sleep(50 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "write deadline error") != nil
+		}, testTimeout, testTick)
 
 		records := mockHandler.GetRecords()
-
-		assertLogRecord(t, records, slog.LevelError, "write deadline error")
 
 		record := findLogRecord(records, slog.LevelError, "write deadline error")
 		assert.NotNil(t, record)
@@ -429,11 +421,12 @@ func TestWriterLogging(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		time.Sleep(50 * time.Millisecond)
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "write error") != nil
+		}, testTimeout, testTick)
 
 		records := mockHandler.GetRecords()
-
-		assertLogRecord(t, records, slog.LevelError, "write error")
 
 		record := findLogRecord(records, slog.LevelError, "write error")
 		assert.NotNil(t, record)

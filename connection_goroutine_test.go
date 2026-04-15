@@ -1,10 +1,12 @@
 package honeybee
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,12 +80,15 @@ func TestStartReader(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		select {
-		case <-deadlineCalled:
-			t.Fatal("SetReadDeadline should not be called when timeout is zero")
-		case <-time.After(100 * time.Millisecond):
-		}
-
+		assert.Never(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, negativeTestTimeout, testTick,
+			"SetReadDeadline should not be called when timeout is zero")
 	})
 
 	t.Run("read timeout sets deadline when positive", func(t *testing.T) {
@@ -120,17 +125,24 @@ func TestStartReader(t *testing.T) {
 
 		incomingData <- mockIncomingData{msgType: websocket.TextMessage, data: []byte("test"), err: nil}
 
-		select {
-		case <-conn.Incoming():
-		case <-time.After(100 * time.Millisecond):
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case <-conn.Incoming():
+				return true
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
-		select {
-		case _, ok := <-deadlineCalled:
-			assert.True(t, ok, "SetReadDeadline should be called when timeout is positive")
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("SetReadDeadline was never called")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, testTimeout, testTick,
+			"SetWriteDeadline should be called when timeout is positive")
 	})
 
 	t.Run("reader exits on deadline error", func(t *testing.T) {
@@ -153,16 +165,19 @@ func TestStartReader(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		select {
-		case err := <-conn.Errors():
-			assert.ErrorContains(t, err, "failed to set read deadline")
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for deadline error")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return err != nil &&
+					strings.Contains(err.Error(), "failed to set read deadline")
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
-		time.Sleep(10 * time.Millisecond)
-		assert.Equal(t, StateClosed, conn.State())
-
+		assert.Eventually(t, func() bool {
+			return conn.State() == StateClosed
+		}, testTimeout, testTick)
 	})
 
 	t.Run("reader exits on socket read error", func(t *testing.T) {
@@ -184,16 +199,18 @@ func TestStartReader(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		select {
-		case err := <-conn.Errors():
-			assert.Equal(t, readErr, err)
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for read error")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return err == readErr
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
-		time.Sleep(10 * time.Millisecond)
-		assert.Equal(t, StateClosed, conn.State())
-
+		assert.Eventually(t, func() bool {
+			return conn.State() == StateClosed
+		}, testTimeout, testTick)
 	})
 }
 
@@ -263,13 +280,15 @@ func TestStartWriter(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		time.Sleep(20 * time.Millisecond)
-
-		select {
-		case <-deadlineCalled:
-			t.Fatal("SetWriteDeadline should not be called when timeout is zero")
-		case <-time.After(100 * time.Millisecond):
-		}
+		assert.Never(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, negativeTestTimeout, testTick,
+			"SetWriteDeadline should not be called when timeout is zero")
 	})
 
 	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
@@ -307,14 +326,15 @@ func TestStartWriter(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		time.Sleep(20 * time.Millisecond)
-
-		select {
-		case _, ok := <-deadlineCalled:
-			assert.True(t, ok, "SetWriteDeadline should be called when timeout is positive")
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("SetWriteDeadline was never called")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, testTimeout, testTick,
+			"SetWriteDeadline should be called when timeout is positive")
 	})
 
 	t.Run("writer exits on deadline error", func(t *testing.T) {
@@ -340,15 +360,19 @@ func TestStartWriter(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		select {
-		case err := <-conn.Errors():
-			assert.ErrorContains(t, err, "failed to set write deadline")
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for deadline error")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return err != nil &&
+					strings.Contains(err.Error(), "failed to set write deadline")
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
-		time.Sleep(10 * time.Millisecond)
-		assert.Equal(t, StateClosed, conn.State())
+		assert.Eventually(t, func() bool {
+			return conn.State() == StateClosed
+		}, testTimeout, testTick)
 	})
 
 	t.Run("writer exits on socket write error", func(t *testing.T) {
@@ -366,15 +390,18 @@ func TestStartWriter(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		select {
-		case err := <-conn.Errors():
-			assert.Equal(t, writeErr, err)
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for write error")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return err == writeErr
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
-		time.Sleep(10 * time.Millisecond)
-		assert.Equal(t, StateClosed, conn.State())
+		assert.Eventually(t, func() bool {
+			return conn.State() == StateClosed
+		}, testTimeout, testTick)
 	})
 }
 
@@ -382,23 +409,33 @@ func TestStartWriter(t *testing.T) {
 
 func expectIncoming(t *testing.T, conn *Connection, expected []byte) {
 	t.Helper()
-
-	select {
-	case received := <-conn.Incoming():
-		assert.Equal(t, expected, received)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for message")
-	}
+	assert.Eventually(t, func() bool {
+		select {
+		case received := <-conn.Incoming():
+			return bytes.Equal(received, expected)
+		default:
+			return false
+		}
+	}, testTimeout, testTick)
 }
 
 func expectWrite(t *testing.T, outgoingData chan mockOutgoingData, msgType int, expected []byte) {
 	t.Helper()
 
-	select {
-	case call := <-outgoingData:
+	var call mockOutgoingData
+	found := assert.Eventually(t, func() bool {
+		select {
+		case received := <-outgoingData:
+			call = received
+			return true
+		default:
+			return false
+		}
+	}, testTimeout, testTick)
+
+	if found {
+
 		assert.Equal(t, msgType, call.msgType)
 		assert.Equal(t, expected, call.data)
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("timeout waiting for write")
 	}
 }

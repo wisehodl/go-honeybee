@@ -1,6 +1,7 @@
 package honeybee
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"net/http"
@@ -279,14 +280,14 @@ func TestConnect(t *testing.T) {
 		testData := []byte("test")
 		conn.Send(testData)
 
-		time.Sleep(10 * time.Millisecond)
-
-		select {
-		case msg := <-outgoingData:
-			assert.Equal(t, testData, msg.data)
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for message write")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case msg := <-outgoingData:
+				return bytes.Equal(msg.data, testData)
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
 		conn.Close()
 		close(outgoingData)
