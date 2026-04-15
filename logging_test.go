@@ -285,9 +285,9 @@ func TestCloseLogging(t *testing.T) {
 		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 
+		time.Sleep(10 * time.Millisecond)
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
@@ -311,9 +311,9 @@ func TestCloseLogging(t *testing.T) {
 		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.Error(t, err)
+		conn.Close()
 
+		time.Sleep(10 * time.Millisecond)
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
@@ -461,8 +461,7 @@ func TestLoggingDisabled(t *testing.T) {
 		err = conn.Connect()
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 
 		records := mockHandler.GetRecords()
 		assert.Empty(t, records)

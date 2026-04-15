@@ -2,6 +2,7 @@ package honeybee
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"log/slog"
@@ -119,11 +120,18 @@ func setupTestConnection(t *testing.T, config *Config) (
 	// Wire WriteMessage to push to outgoingData channel
 	mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
 		select {
-		case outgoingData <- mockOutgoingData{msgType: msgType, data: data}:
 		case <-mockSocket.closed:
 			return io.EOF
+		default:
+			select {
+			case outgoingData <- mockOutgoingData{msgType: msgType, data: data}:
+				return nil
+			case <-mockSocket.closed:
+				return io.EOF
+			default:
+				return fmt.Errorf("mock outgoing chanel unavailable")
+			}
 		}
-		return nil
 	}
 
 	var err error

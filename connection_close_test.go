@@ -15,8 +15,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, StateDisconnected, conn.State())
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
 	})
 
@@ -24,12 +23,8 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.NoError(t, err)
-
-		// Second close should succeed without error
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
+		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
 	})
 
@@ -38,12 +33,11 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Nil(t, conn.socket)
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
 	})
 
-	t.Run("socket close error propagates", func(t *testing.T) {
+	t.Run("socket close error does not propagate", func(t *testing.T) {
 		expectedErr := fmt.Errorf("socket close failed")
 		mockSocket := NewMockSocket()
 		mockSocket.CloseFunc = func() error {
@@ -54,8 +48,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		assert.NoError(t, err)
 		conn.socket = mockSocket
 
-		err = conn.Close()
-		assert.Equal(t, expectedErr, err)
+		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
 	})
 
@@ -63,8 +56,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 
 		// Verify incoming channel closed
 		select {
@@ -95,8 +87,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
-		err = conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 
 		err = conn.Send([]byte("test"))
 		assert.Error(t, err)
@@ -112,8 +103,7 @@ func TestConnectedConnectionClose(t *testing.T) {
 		// Wait for reader to block
 		time.Sleep(10 * time.Millisecond)
 
-		err := conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
 
 		close(incomingData)
@@ -126,12 +116,18 @@ func TestConnectedConnectionClose(t *testing.T) {
 			conn.Send([]byte("message"))
 		}
 
-		err := conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
 
-		err = conn.Send([]byte("late"))
+		err := conn.Send([]byte("late"))
 		assert.Error(t, err, "Send should fail after close")
 		assert.ErrorContains(t, err, "connection closed")
+
+		// wait for background closures
+		select {
+		case <-conn.Errors():
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timed out waiting for cleanup")
+		}
 
 		close(outgoingData)
 	})
@@ -149,8 +145,14 @@ func TestConnectedConnectionClose(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		err := conn.Close()
-		assert.NoError(t, err)
+		conn.Close()
+
+		// wait for background closures
+		select {
+		case <-conn.Errors():
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("timed out waiting for cleanup")
+		}
 
 		close(incomingData)
 		close(outgoingData)

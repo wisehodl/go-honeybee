@@ -50,7 +50,6 @@ type Connection struct {
 	state ConnectionState
 
 	wg     sync.WaitGroup
-	once   sync.Once
 	closed bool
 	mu     sync.RWMutex
 }
@@ -186,7 +185,7 @@ func (c *Connection) startReader() {
 						case c.errors <- fmt.Errorf("failed to set read deadline: %w", err):
 						case <-c.done:
 						}
-						c.Close()
+						c.shutdown()
 						return
 					}
 				}
@@ -199,7 +198,7 @@ func (c *Connection) startReader() {
 					case c.errors <- err:
 					case <-c.done:
 					}
-					c.Close()
+					c.shutdown()
 					return
 				}
 
@@ -208,7 +207,7 @@ func (c *Connection) startReader() {
 					select {
 					case c.incoming <- data:
 					case <-c.done:
-						c.Close()
+						c.shutdown()
 						return
 					}
 				}
@@ -238,7 +237,7 @@ func (c *Connection) startWriter() {
 						case c.errors <- fmt.Errorf("failed to set write deadline: %w", err):
 						case <-c.done:
 						}
-						c.Close()
+						c.shutdown()
 						return
 					}
 				}
@@ -251,7 +250,7 @@ func (c *Connection) startWriter() {
 					case c.errors <- err:
 					case <-c.done:
 					}
-					c.Close()
+					c.shutdown()
 					return
 				}
 			}
@@ -271,6 +270,8 @@ func (c *Connection) Send(data []byte) error {
 	select {
 	case c.outgoing <- data:
 		return nil
+	case <-c.done:
+		return errors.NewConnectionError("connection closing")
 	default:
 		return errors.NewConnectionError("outgoing queue full")
 	}
@@ -284,52 +285,52 @@ func (c *Connection) Errors() <-chan error {
 	return c.errors
 }
 
-// Close shuts down the connection and waits for goroutines to exit.
-// If the underlying socket blocks indefinitely on read or write operations,
-// Close will also block. This is expected behavior - hung sockets require
-// external intervention (timeouts, process termination, etc).
-func (c *Connection) Close() error {
+func (c *Connection) shutdown() {
 	c.mu.Lock()
 
-	alreadyClosed := c.closed
-	currentState := c.state
-	if !alreadyClosed {
-		if c.logger != nil {
-			c.logger.Info("closing", "state", currentState.String())
-		}
-		c.closed = true
-		c.state = StateClosed
-		close(c.done)
+	if c.closed {
+		c.mu.Unlock()
+		return
 	}
 
+	if c.logger != nil {
+		c.logger.Info("closing", "state", c.state.String())
+	}
+	c.closed = true
+	c.state = StateClosed
 	socket := c.socket
+	close(c.done)
 	c.mu.Unlock()
 
-	if alreadyClosed {
-		return nil
-	}
+	go func() {
+		if socket != nil {
+			// force immediate timeout of any blocked network I/O
+			expired := time.Now().Add(-1 * time.Minute)
+			socket.SetReadDeadline(expired)
+			socket.SetWriteDeadline(expired)
+			err := socket.Close()
 
-	var err error
-	if socket != nil {
-		err = socket.Close()
-		if err != nil {
-			if c.logger != nil {
-				c.logger.Error("socket close failed", "error", err)
-			}
-		} else {
-			if c.logger != nil {
-				c.logger.Info("closed")
+			if err != nil {
+				if c.logger != nil {
+					c.logger.Error("socket close failed", "error", err)
+				}
+			} else {
+				if c.logger != nil {
+					c.logger.Info("closed")
+				}
 			}
 		}
-	}
 
-	c.wg.Wait()
+		c.wg.Wait()
+		close(c.incoming)
+		close(c.outgoing)
+		close(c.errors)
+	}()
 
-	close(c.incoming)
-	close(c.outgoing)
-	close(c.errors)
+}
 
-	return err
+func (c *Connection) Close() {
+	c.shutdown()
 }
 
 func (c *Connection) State() ConnectionState {
