@@ -23,3 +23,7 @@ func NewConfigError(text string) error {
 func NewConnectionError(text string) error {
 	return fmt.Errorf("connection error: %s", text)
 }
+
+func NewPoolError(text string) error {
+	return fmt.Errorf("pool error: %s", text)
+}
