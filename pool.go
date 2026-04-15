@@ -113,6 +113,10 @@ func (p *Pool) Add(rawURL string) error {
 
 	// Check for existing connection in pool
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return errors.NewPoolError("pool is closed")
+	}
 	_, exists := p.connections[url]
 	p.mu.Unlock()
 

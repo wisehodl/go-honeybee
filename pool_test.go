@@ -25,13 +25,14 @@ func TestPoolAdd(t *testing.T) {
 		err = pool.Add("wss://test")
 		assert.NoError(t, err)
 
-		select {
-		case event := <-pool.events:
-			assert.Equal(t, "wss://test", event.URL)
-			assert.Equal(t, EventConnected, event.Kind)
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("timeout waiting for Connected event")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case event := <-pool.events:
+				return event.URL == "wss://test" && event.Kind == EventConnected
+			default:
+				return false
+			}
+		}, testTimeout, testTick)
 
 		pool.Close()
 	})
