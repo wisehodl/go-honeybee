@@ -147,12 +147,24 @@ func TestPoolRemove(t *testing.T) {
 		assert.False(t, ok, "connection is still in pool")
 	})
 
-	t.Run("normalizes url before lookup", func(t *testing.T) {
-
-	})
-
 	t.Run("unknown url returns error", func(t *testing.T) {
+		mockSocket := NewMockSocket()
+		mockDialer := &MockDialer{
+			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+				return mockSocket, nil, nil
+			},
+		}
 
+		pool, err := NewPool(nil, nil)
+		assert.NoError(t, err)
+		pool.dialer = mockDialer
+
+		pool.Add("wss://peer1")
+		pool.Add("wss://peer2")
+
+		// remove unknown connection
+		err = pool.Remove("wss://unknown")
+		assert.ErrorContains(t, err, "connection not found")
 	})
 
 	t.Run("closed pool returns error", func(t *testing.T) {
