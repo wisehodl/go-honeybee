@@ -39,7 +39,7 @@ type Connection struct {
 	url    *url.URL
 	dialer Dialer
 	socket Socket
-	config *Config
+	config *ConnectionConfig
 	logger *slog.Logger
 
 	incoming chan []byte
@@ -54,12 +54,12 @@ type Connection struct {
 	mu     sync.RWMutex
 }
 
-func NewConnection(urlStr string, config *Config, logger *slog.Logger) (*Connection, error) {
+func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
 	if config == nil {
-		config = GetDefaultConfig()
+		config = GetDefaultConnectionConfig()
 	}
 
-	if err := ValidateConfig(config); err != nil {
+	if err := validateConnectionConfig(config); err != nil {
 		return nil, err
 	}
 
@@ -84,16 +84,16 @@ func NewConnection(urlStr string, config *Config, logger *slog.Logger) (*Connect
 	return conn, nil
 }
 
-func NewConnectionFromSocket(socket Socket, config *Config, logger *slog.Logger) (*Connection, error) {
+func NewConnectionFromSocket(socket Socket, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
 	if socket == nil {
 		return nil, errors.NewConnectionError("socket cannot be nil")
 	}
 
 	if config == nil {
-		config = GetDefaultConfig()
+		config = GetDefaultConnectionConfig()
 	}
 
-	if err := ValidateConfig(config); err != nil {
+	if err := validateConnectionConfig(config); err != nil {
 		return nil, err
 	}
 

@@ -120,7 +120,7 @@ func TestStartWriter(t *testing.T) {
 			t.Skip("skipping test in short mode")
 		}
 
-		config := &Config{WriteTimeout: 0}
+		config := &ConnectionConfig{WriteTimeout: 0}
 
 		outgoingData := make(chan mockOutgoingData, 10)
 		mockSocket := NewMockSocket()
@@ -166,7 +166,7 @@ func TestStartWriter(t *testing.T) {
 	})
 
 	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
-		config := &Config{WriteTimeout: 30 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 30 * time.Millisecond}
 
 		outgoingData := make(chan mockOutgoingData, 10)
 		mockSocket := NewMockSocket()
@@ -212,7 +212,7 @@ func TestStartWriter(t *testing.T) {
 	})
 
 	t.Run("writer exits on deadline error", func(t *testing.T) {
-		config := &Config{WriteTimeout: 1 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
 
 		mockSocket := NewMockSocket()
 

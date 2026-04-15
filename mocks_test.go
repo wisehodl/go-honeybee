@@ -96,7 +96,7 @@ type mockOutgoingData struct {
 	data    []byte
 }
 
-func setupTestConnection(t *testing.T, config *Config) (
+func setupTestConnection(t *testing.T, config *ConnectionConfig) (
 	conn *Connection,
 	mockSocket *MockSocket,
 	incomingData chan mockIncomingData,

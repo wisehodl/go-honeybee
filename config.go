@@ -5,9 +5,19 @@ import (
 	"time"
 )
 
+// Types
+
 type CloseHandler func(code int, text string) error
 
-type Config struct {
+// Pool Config
+
+type PoolConfig struct {
+	ConnectionConfig *ConnectionConfig
+}
+
+// Connection Config
+
+type ConnectionConfig struct {
 	CloseHandler CloseHandler
 	WriteTimeout time.Duration
 	Retry        *RetryConfig
@@ -20,21 +30,21 @@ type RetryConfig struct {
 	JitterFactor float64
 }
 
-type ConfigOption func(*Config) error
+type ConnectionOption func(*ConnectionConfig) error
 
-func NewConfig(options ...ConfigOption) (*Config, error) {
-	conf := GetDefaultConfig()
-	if err := SetConfig(conf, options...); err != nil {
+func NewConnectionConfig(options ...ConnectionOption) (*ConnectionConfig, error) {
+	conf := GetDefaultConnectionConfig()
+	if err := applyConnectionOptions(conf, options...); err != nil {
 		return nil, err
 	}
-	if err := ValidateConfig(conf); err != nil {
+	if err := validateConnectionConfig(conf); err != nil {
 		return nil, err
 	}
 	return conf, nil
 }
 
-func GetDefaultConfig() *Config {
-	return &Config{
+func GetDefaultConnectionConfig() *ConnectionConfig {
+	return &ConnectionConfig{
 		CloseHandler: nil,
 		WriteTimeout: 30 * time.Second,
 		Retry:        GetDefaultRetryConfig(),
@@ -50,7 +60,7 @@ func GetDefaultRetryConfig() *RetryConfig {
 	}
 }
 
-func SetConfig(config *Config, options ...ConfigOption) error {
+func applyConnectionOptions(config *ConnectionConfig, options ...ConnectionOption) error {
 	for _, option := range options {
 		if err := option(config); err != nil {
 			return err
@@ -59,7 +69,7 @@ func SetConfig(config *Config, options ...ConfigOption) error {
 	return nil
 }
 
-func ValidateConfig(config *Config) error {
+func validateConnectionConfig(config *ConnectionConfig) error {
 	if config.Retry != nil {
 		if config.Retry.InitialDelay > config.Retry.MaxDelay {
 			return errors.NewConfigError("initial delay may not exceed maximum delay")
@@ -71,16 +81,16 @@ func ValidateConfig(config *Config) error {
 
 // Configuration Options
 
-func WithCloseHandler(handler CloseHandler) ConfigOption {
-	return func(c *Config) error {
+func WithCloseHandler(handler CloseHandler) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		c.CloseHandler = handler
 		return nil
 	}
 }
 
 // When WriteTimeout is set to zero, read timeouts are disabled.
-func WithWriteTimeout(value time.Duration) ConfigOption {
-	return func(c *Config) error {
+func WithWriteTimeout(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		if value < 0 {
 			return errors.InvalidWriteTimeout
 		}
@@ -95,15 +105,15 @@ func WithWriteTimeout(value time.Duration) ConfigOption {
 // If passed after granular retry options (WithRetryMaxRetries, etc.),
 // it will overwrite them. Use either WithRetry alone or the granular
 // options; not both.
-func WithRetry() ConfigOption {
-	return func(c *Config) error {
+func WithRetry() ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		c.Retry = GetDefaultRetryConfig()
 		return nil
 	}
 }
 
-func WithRetryMaxRetries(value int) ConfigOption {
-	return func(c *Config) error {
+func WithRetryMaxRetries(value int) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
@@ -115,8 +125,8 @@ func WithRetryMaxRetries(value int) ConfigOption {
 	}
 }
 
-func WithRetryInitialDelay(value time.Duration) ConfigOption {
-	return func(c *Config) error {
+func WithRetryInitialDelay(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
@@ -128,8 +138,8 @@ func WithRetryInitialDelay(value time.Duration) ConfigOption {
 	}
 }
 
-func WithRetryMaxDelay(value time.Duration) ConfigOption {
-	return func(c *Config) error {
+func WithRetryMaxDelay(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
@@ -141,8 +151,8 @@ func WithRetryMaxDelay(value time.Duration) ConfigOption {
 	}
 }
 
-func WithRetryJitterFactor(value float64) ConfigOption {
-	return func(c *Config) error {
+func WithRetryJitterFactor(value float64) ConnectionOption {
+	return func(c *ConnectionConfig) error {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}

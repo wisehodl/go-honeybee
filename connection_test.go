@@ -50,7 +50,7 @@ func TestNewConnection(t *testing.T) {
 	cases := []struct {
 		name        string
 		url         string
-		config      *Config
+		config      *ConnectionConfig
 		wantErr     bool
 		wantErrText string
 	}{
@@ -62,7 +62,7 @@ func TestNewConnection(t *testing.T) {
 		{
 			name:   "valid url, valid config",
 			url:    "wss://relay.example.com:8080/path",
-			config: &Config{WriteTimeout: 30 * time.Second},
+			config: &ConnectionConfig{WriteTimeout: 30 * time.Second},
 		},
 		{
 			name:        "invalid url",
@@ -74,7 +74,7 @@ func TestNewConnection(t *testing.T) {
 		{
 			name: "invalid config",
 			url:  "ws://example.com",
-			config: &Config{
+			config: &ConnectionConfig{
 				Retry: &RetryConfig{
 					InitialDelay: 10 * time.Second,
 					MaxDelay:     1 * time.Second,
@@ -115,7 +115,7 @@ func TestNewConnection(t *testing.T) {
 
 			// Verify default config is used if nil is passed
 			if tc.config == nil {
-				assert.Equal(t, GetDefaultConfig(), conn.config)
+				assert.Equal(t, GetDefaultConnectionConfig(), conn.config)
 			} else {
 				assert.Equal(t, tc.config, conn.config)
 			}
@@ -127,7 +127,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 	cases := []struct {
 		name        string
 		socket      Socket
-		config      *Config
+		config      *ConnectionConfig
 		wantErr     bool
 		wantErrText string
 	}{
@@ -146,12 +146,12 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "valid socket with valid config",
 			socket: NewMockSocket(),
-			config: &Config{WriteTimeout: 30 * time.Second},
+			config: &ConnectionConfig{WriteTimeout: 30 * time.Second},
 		},
 		{
 			name:   "invalid config",
 			socket: NewMockSocket(),
-			config: &Config{
+			config: &ConnectionConfig{
 				Retry: &RetryConfig{
 					InitialDelay: 10 * time.Second,
 					MaxDelay:     1 * time.Second,
@@ -163,7 +163,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "close handler set when provided",
 			socket: NewMockSocket(),
-			config: &Config{
+			config: &ConnectionConfig{
 				CloseHandler: func(code int, text string) error {
 					return nil
 				},
@@ -216,7 +216,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 
 			// Verify default config is used if nil is passed
 			if tc.config == nil {
-				assert.Equal(t, GetDefaultConfig(), conn.config)
+				assert.Equal(t, GetDefaultConnectionConfig(), conn.config)
 			} else {
 				assert.Equal(t, tc.config, conn.config)
 			}
@@ -293,7 +293,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect retries on dial failure", func(t *testing.T) {
-		config := &Config{
+		config := &ConnectionConfig{
 			Retry: &RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
@@ -325,7 +325,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect fails after max retries", func(t *testing.T) {
-		config := &Config{
+		config := &ConnectionConfig{
 			Retry: &RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
@@ -373,7 +373,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("close handler configured when provided", func(t *testing.T) {
 		handlerSet := false
-		config := &Config{
+		config := &ConnectionConfig{
 			CloseHandler: func(code int, text string) error {
 				return nil
 			},
