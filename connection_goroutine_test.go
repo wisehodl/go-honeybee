@@ -125,14 +125,9 @@ func TestStartReader(t *testing.T) {
 
 		incomingData <- mockIncomingData{msgType: websocket.TextMessage, data: []byte("test"), err: nil}
 
-		assert.Eventually(t, func() bool {
-			select {
-			case <-conn.Incoming():
-				return true
-			default:
-				return false
-			}
-		}, testTimeout, testTick)
+		select {
+		case <-conn.Incoming():
+		}
 
 		assert.Eventually(t, func() bool {
 			select {

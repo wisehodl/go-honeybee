@@ -5,7 +5,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestConnectionSend(t *testing.T) {
@@ -63,12 +62,11 @@ func TestConnectionSend(t *testing.T) {
 
 			assert.NoError(t, err)
 
-			// Verify data appeared on outgoing channel
 			select {
 			case sent := <-conn.outgoing:
 				assert.Equal(t, tc.data, sent)
-			case <-time.After(50 * time.Millisecond):
-				t.Fatal("timeout: data not sent to outgoing channel")
+			default:
+				t.Fatal("data not sent to outgoing channel")
 			}
 		})
 	}

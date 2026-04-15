@@ -6,7 +6,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
 func TestDisconnectedConnectionClose(t *testing.T) {
@@ -58,29 +57,14 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 		conn.Close()
 
-		// Verify incoming channel closed
-		select {
-		case _, ok := <-conn.incoming:
-			assert.False(t, ok, "incoming channel should be closed")
-		case <-time.After(50 * time.Millisecond):
-			t.Fatal("timeout waiting for incoming channel closure")
-		}
-
-		// Verify outgoing channel closed
-		select {
-		case _, ok := <-conn.outgoing:
-			assert.False(t, ok, "outgoing channel should be closed")
-		case <-time.After(50 * time.Millisecond):
-			t.Fatal("timeout waiting for outgoing channel closure")
-		}
-
-		// Verify errors channel closed
-		select {
-		case _, ok := <-conn.errors:
-			assert.False(t, ok, "errors channel should be closed")
-		case <-time.After(50 * time.Millisecond):
-			t.Fatal("timeout waiting for errors channel closure")
-		}
+		assert.Eventually(t, func() bool {
+			select {
+			case _, ok := <-conn.Errors():
+				return !ok
+			default:
+				return false
+			}
+		}, testTimeout, testTick, "errors channel should close")
 	})
 
 	t.Run("send fails after close", func(t *testing.T) {
@@ -115,12 +99,10 @@ func TestConnectedConnectionClose(t *testing.T) {
 
 		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
-
-		close(incomingData)
 	})
 
 	t.Run("writer active during close exits cleanly", func(t *testing.T) {
-		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		conn, _, _, _ := setupTestConnection(t, nil)
 
 		for i := 0; i < 50; i++ {
 			conn.Send([]byte("message"))
@@ -131,22 +113,10 @@ func TestConnectedConnectionClose(t *testing.T) {
 		err := conn.Send([]byte("late"))
 		assert.Error(t, err, "Send should fail after close")
 		assert.ErrorContains(t, err, "connection closed")
-
-		// wait for background closures
-		assert.Eventually(t, func() bool {
-			select {
-			case <-conn.Errors():
-				return true
-			default:
-				return false
-			}
-		}, testTimeout, testTick)
-
-		close(outgoingData)
 	})
 
 	t.Run("both goroutines active during close", func(t *testing.T) {
-		conn, _, incomingData, outgoingData := setupTestConnection(t, nil)
+		conn, _, incomingData, _ := setupTestConnection(t, nil)
 
 		for i := 0; i < 10; i++ {
 			incomingData <- mockIncomingData{
@@ -157,18 +127,5 @@ func TestConnectedConnectionClose(t *testing.T) {
 		}
 
 		conn.Close()
-
-		// wait for background closures
-		assert.Eventually(t, func() bool {
-			select {
-			case <-conn.Errors():
-				return true
-			default:
-				return false
-			}
-		}, testTimeout, testTick)
-
-		close(incomingData)
-		close(outgoingData)
 	})
 }

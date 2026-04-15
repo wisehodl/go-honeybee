@@ -290,7 +290,6 @@ func TestConnect(t *testing.T) {
 		}, testTimeout, testTick)
 
 		conn.Close()
-		close(outgoingData)
 	})
 
 	t.Run("connect retries on dial failure", func(t *testing.T) {
