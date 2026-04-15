@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestPoolAdd(t *testing.T) {
+func TestPoolConnect(t *testing.T) {
 	t.Run("successfully adds connection", func(t *testing.T) {
 		mockSocket := NewMockSocket()
 		mockDialer := &MockDialer{
@@ -17,22 +17,25 @@ func TestPoolAdd(t *testing.T) {
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewOutboundPool(nil, nil)
 		assert.NoError(t, err)
 
 		pool.dialer = mockDialer
 
-		err = pool.Add("wss://test")
+		err = pool.Connect("wss://test")
 		assert.NoError(t, err)
 
 		assert.Eventually(t, func() bool {
 			select {
 			case event := <-pool.events:
-				return event.URL == "wss://test" && event.Kind == EventConnected
+				return event.ID == "wss://test" && event.Kind == EventConnected
 			default:
 				return false
 			}
 		}, testTimeout, testTick)
+
+		_, exists := pool.peers["wss://test"]
+		assert.True(t, exists)
 
 		pool.Close()
 	})
@@ -45,27 +48,27 @@ func TestPoolAdd(t *testing.T) {
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewOutboundPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
-		err = pool.Add("wss://test")
+		err = pool.Connect("wss://test")
 		assert.NoError(t, err)
 
 		// trailing slash normalizes to same key
-		err = pool.Add("wss://test/")
+		err = pool.Connect("wss://test/")
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "already exists")
 
 		pool.mu.RLock()
-		assert.Len(t, pool.connections, 1)
+		assert.Len(t, pool.peers, 1)
 		pool.mu.RUnlock()
 
 		pool.Close()
 	})
 
 	t.Run("fails to add connection", func(t *testing.T) {
-		pool, err := NewPool(&Config{
+		pool, err := NewOutboundPool(&Config{
 			Retry: &RetryConfig{
 				MaxRetries:   1,
 				InitialDelay: 1 * time.Millisecond,
@@ -79,11 +82,11 @@ func TestPoolAdd(t *testing.T) {
 			},
 		}
 
-		err = pool.Add("wss://test")
+		err = pool.Connect("wss://test")
 		assert.Error(t, err)
 
 		pool.mu.RLock()
-		assert.Len(t, pool.connections, 0)
+		assert.Len(t, pool.peers, 0)
 		pool.mu.RUnlock()
 
 		select {
@@ -105,11 +108,11 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewOutboundPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
-		pool.Add("wss://test")
+		pool.Connect("wss://test")
 		expectEvent(t, pool.events, "wss://test", EventConnected)
 
 		err = pool.Remove("wss://test/")
@@ -121,7 +124,7 @@ func TestPoolRemove(t *testing.T) {
 		// connection no longer in pool
 		pool.mu.Lock()
 		defer pool.mu.Unlock()
-		_, ok := pool.connections["wss://peer2"]
+		_, ok := pool.peers["wss://peer2"]
 		assert.False(t, ok, "connection is still in pool")
 	})
 
@@ -133,7 +136,7 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewOutboundPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -150,7 +153,7 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewOutboundPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -174,7 +177,7 @@ func expectEvent(
 	assert.Eventually(t, func() bool {
 		select {
 		case e := <-events:
-			return e.URL == expectedURL && e.Kind == expectedKind
+			return e.ID == expectedURL && e.Kind == expectedKind
 		default:
 			return false
 		}
