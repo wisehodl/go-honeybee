@@ -27,7 +27,7 @@ MODEL="gemini-3-flash-preview"
 FALLBACK="claude-sonnet-4.6"
 
 context() {
-  code2prompt $(git diff --name-only --cached | sed 's/.*/-i "&"/') .
+  git diff --name-only --cached | xargs -I {} echo -i "{}" | xargs code2prompt .
 }
 
 diff() {
