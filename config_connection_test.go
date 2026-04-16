@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Config Tests
+// Connection Config Tests
 
-func TestNewConfig(t *testing.T) {
+func TestNewConnectionConfig(t *testing.T) {
 	conf, err := NewConnectionConfig()
 
 	assert.NoError(t, err)
@@ -27,9 +27,9 @@ func TestNewConfig(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// Default Config Tests
+// Default Tests
 
-func TestDefaultConfig(t *testing.T) {
+func TestDefaultConnectionConfig(t *testing.T) {
 	conf := GetDefaultConnectionConfig()
 
 	assert.Equal(t, conf, &ConnectionConfig{
@@ -39,7 +39,7 @@ func TestDefaultConfig(t *testing.T) {
 	})
 }
 
-func TestDefaultRetryConfig(t *testing.T) {
+func TestDefaultRetryConnectionConfig(t *testing.T) {
 	conf := GetDefaultRetryConfig()
 
 	assert.Equal(t, conf, &RetryConfig{
@@ -50,9 +50,9 @@ func TestDefaultRetryConfig(t *testing.T) {
 	})
 }
 
-// Config Builder Tests
+// Builder Tests
 
-func TestSetConfig(t *testing.T) {
+func TestApplyConnectionOptions(t *testing.T) {
 	conf := &ConnectionConfig{}
 	err := applyConnectionOptions(
 		conf,
@@ -75,7 +75,7 @@ func TestSetConfig(t *testing.T) {
 	assert.ErrorIs(t, err, errors.InvalidRetryMaxRetries)
 }
 
-// Config Option Tests
+// Option Tests
 
 func TestWithCloseHandler(t *testing.T) {
 	conf := &ConnectionConfig{}
@@ -104,98 +104,100 @@ func TestWithWriteTimeout(t *testing.T) {
 	opt = WithWriteTimeout(-30)
 	err = applyConnectionOptions(conf, opt)
 	assert.ErrorIs(t, err, errors.InvalidWriteTimeout)
-	assert.ErrorContains(t, err, "write timeout must be positive")
+	assert.ErrorContains(t, err, "write timeout cannot be negative")
 }
 
 func TestWithRetry(t *testing.T) {
-	conf := &ConnectionConfig{}
-	opt := WithRetry()
-	err := applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-	assert.NotNil(t, conf.Retry)
-	assert.Equal(t, conf.Retry, GetDefaultRetryConfig())
+	t.Run("default", func(t *testing.T) {
+		conf := &ConnectionConfig{}
+		opt := WithRetry()
+		err := applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+		assert.NotNil(t, conf.Retry)
+		assert.Equal(t, conf.Retry, GetDefaultRetryConfig())
+	})
+
+	t.Run("with attempts", func(t *testing.T) {
+		conf := &ConnectionConfig{}
+		opt := WithRetryMaxRetries(3)
+		err := applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, conf.Retry.MaxRetries)
+
+		// zero allowed
+		opt = WithRetryMaxRetries(0)
+		err = applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+
+		// negative disallowed
+		opt = WithRetryMaxRetries(-10)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryMaxRetries)
+		assert.ErrorContains(t, err, "max retry count cannot be negative")
+	})
+
+	t.Run("with initial delay", func(t *testing.T) {
+		conf := &ConnectionConfig{}
+		opt := WithRetryInitialDelay(10 * time.Second)
+		err := applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+		assert.Equal(t, 10*time.Second, conf.Retry.InitialDelay)
+
+		// zero disallowed
+		opt = WithRetryInitialDelay(0 * time.Second)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
+		assert.ErrorContains(t, err, "initial delay must be positive")
+
+		// negative disallowed
+		opt = WithRetryInitialDelay(-10 * time.Second)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
+	})
+
+	t.Run("with max delay", func(t *testing.T) {
+		conf := &ConnectionConfig{}
+		opt := WithRetryMaxDelay(10 * time.Second)
+		err := applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+		assert.Equal(t, 10*time.Second, conf.Retry.MaxDelay)
+
+		// zero disallowed
+		opt = WithRetryMaxDelay(0 * time.Second)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
+		assert.ErrorContains(t, err, "max delay must be positive")
+
+		// negative disallowed
+		opt = WithRetryMaxDelay(-10 * time.Second)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
+	})
+
+	t.Run("with jitter factor", func(t *testing.T) {
+		conf := &ConnectionConfig{}
+
+		opt := WithRetryJitterFactor(0.2)
+		err := applyConnectionOptions(conf, opt)
+		assert.NoError(t, err)
+		assert.Equal(t, 0.2, conf.Retry.JitterFactor)
+
+		// negative disallowed
+		opt = WithRetryJitterFactor(-1)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
+		assert.ErrorContains(t, err, "jitter factor must be between 0.0 and 1.0")
+
+		// >1 disallowed
+		opt = WithRetryJitterFactor(1.1)
+		err = applyConnectionOptions(conf, opt)
+		assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
+	})
 }
 
-func TestWithRetryAttempts(t *testing.T) {
-	conf := &ConnectionConfig{}
-	opt := WithRetryMaxRetries(3)
-	err := applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, conf.Retry.MaxRetries)
+// Validation Tests
 
-	// zero allowed
-	opt = WithRetryMaxRetries(0)
-	err = applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-
-	// negative disallowed
-	opt = WithRetryMaxRetries(-10)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryMaxRetries)
-	assert.ErrorContains(t, err, "max retry count cannot be negative")
-}
-
-func TestWithRetryInitialDelay(t *testing.T) {
-	conf := &ConnectionConfig{}
-	opt := WithRetryInitialDelay(10 * time.Second)
-	err := applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, 10*time.Second, conf.Retry.InitialDelay)
-
-	// zero disallowed
-	opt = WithRetryInitialDelay(0 * time.Second)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
-	assert.ErrorContains(t, err, "initial delay must be positive")
-
-	// negative disallowed
-	opt = WithRetryInitialDelay(-10 * time.Second)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
-}
-
-func TestWithRetryMaxDelay(t *testing.T) {
-	conf := &ConnectionConfig{}
-	opt := WithRetryMaxDelay(10 * time.Second)
-	err := applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, 10*time.Second, conf.Retry.MaxDelay)
-
-	// zero disallowed
-	opt = WithRetryMaxDelay(0 * time.Second)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
-	assert.ErrorContains(t, err, "max delay must be positive")
-
-	// negative disallowed
-	opt = WithRetryMaxDelay(-10 * time.Second)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
-}
-
-func TestWithRetryJitterFactor(t *testing.T) {
-	conf := &ConnectionConfig{}
-
-	opt := WithRetryJitterFactor(0.2)
-	err := applyConnectionOptions(conf, opt)
-	assert.NoError(t, err)
-	assert.Equal(t, 0.2, conf.Retry.JitterFactor)
-
-	// negative disallowed
-	opt = WithRetryJitterFactor(-1)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
-	assert.ErrorContains(t, err, "jitter factor must be between 0.0 and 1.0")
-
-	// >1 disallowed
-	opt = WithRetryJitterFactor(1.1)
-	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
-}
-
-// Config Validation Tests
-
-func TestValidateConfig(t *testing.T) {
+func TestValidateConnectionConfig(t *testing.T) {
 	cases := []struct {
 		name        string
 		conf        ConnectionConfig
