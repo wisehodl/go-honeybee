@@ -2,12 +2,14 @@ package honeybee
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -315,31 +317,79 @@ func TestCloseLogging(t *testing.T) {
 }
 
 func TestReaderLogging(t *testing.T) {
-	t.Run("read message error", func(t *testing.T) {
+	t.Run("clean close by peer", func(t *testing.T) {
 		mockHandler := newMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		readErr := fmt.Errorf("read error")
 		mockSocket := NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
-			return 0, nil, readErr
+			return 0, nil, &websocket.CloseError{
+				Code: websocket.CloseNormalClosure,
+				Text: "goodbye",
+			}
 		}
 
 		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
 		assert.NoError(t, err)
+		defer conn.Close()
+
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer") != nil
+		}, testTimeout, testTick)
+
+		record := findLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
+		assert.NotNil(t, record)
+		assertAttributePresent(t, *record, "code", websocket.CloseNormalClosure)
+		assertAttributePresent(t, *record, "text", "goodbye")
+
+	})
+
+	t.Run("unexpected close", func(t *testing.T) {
+		mockHandler := newMockSlogHandler()
+		logger := slog.New(mockHandler)
+
+		mockSocket := NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, &websocket.CloseError{
+				Code: websocket.CloseProtocolError,
+				Text: "bad protocol",
+			}
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		assert.Eventually(t, func() bool {
+			return findLogRecord(
+				mockHandler.GetRecords(), slog.LevelError, "unexpected close") != nil
+		}, testTimeout, testTick)
+
+		record := findLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
+		assert.NotNil(t, record)
+		assertAttributePresent(t, *record, "code", websocket.CloseProtocolError)
+		assertAttributePresent(t, *record, "text", "bad protocol")
+
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		mockHandler := newMockSlogHandler()
+		logger := slog.New(mockHandler)
+
+		mockSocket := NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, io.EOF
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		assert.NoError(t, err)
+		defer conn.Close()
 
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "read error") != nil
 		}, testTimeout, testTick)
-
-		records := mockHandler.GetRecords()
-
-		record := findLogRecord(records, slog.LevelError, "read error")
-		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "error", readErr)
-
-		conn.Close()
 	})
 }
 
