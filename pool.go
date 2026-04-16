@@ -62,7 +62,7 @@ type pool struct {
 	errors chan error
 	done   chan struct{}
 
-	config *ConnectionConfig
+	config *PoolConfig
 	logger *slog.Logger
 
 	mu     sync.RWMutex
@@ -131,12 +131,12 @@ type OutboundPool struct {
 	dialer Dialer
 }
 
-func NewOutboundPool(config *ConnectionConfig, logger *slog.Logger) (*OutboundPool, error) {
+func NewOutboundPool(config *PoolConfig, logger *slog.Logger) (*OutboundPool, error) {
 	if config == nil {
-		config = GetDefaultConnectionConfig()
+		config = GetDefaultPoolConfig()
 	}
 
-	if err := validateConnectionConfig(config); err != nil {
+	if err := validatePoolConfig(config); err != nil {
 		return nil, err
 	}
 
@@ -200,7 +200,7 @@ func (p *OutboundPool) Connect(url string) error {
 	if p.logger != nil {
 		logger = p.logger.With("url", url)
 	}
-	conn, err := NewConnection(url, p.config, logger)
+	conn, err := NewConnection(url, p.config.ConnectionConfig, logger)
 	if err != nil {
 		return err
 	}

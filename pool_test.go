@@ -68,13 +68,15 @@ func TestPoolConnect(t *testing.T) {
 	})
 
 	t.Run("fails to add connection", func(t *testing.T) {
-		pool, err := NewOutboundPool(&ConnectionConfig{
-			Retry: &RetryConfig{
-				MaxRetries:   1,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-			},
-		}, nil)
+		pool, err := NewOutboundPool(
+			&PoolConfig{
+				ConnectionConfig: &ConnectionConfig{
+					Retry: &RetryConfig{
+						MaxRetries:   1,
+						InitialDelay: 1 * time.Millisecond,
+						MaxDelay:     5 * time.Millisecond,
+					}},
+			}, nil)
 		assert.NoError(t, err)
 		pool.dialer = &MockDialer{
 			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
