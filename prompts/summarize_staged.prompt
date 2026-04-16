@@ -4,7 +4,9 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 SYSTEM_PROMPT_FILE="$SCRIPT_DIR/coder.md"
 PROMPT='
 Summarize the changes made in this diff, given the diff and the after code.
-The rest of the code repository is not provided.
+The rest of the code repository is not provided. Based on the changes, infer
+the reasons behind the changes, try to find problems with the proposed changes,
+and offer suggestions for improvements.
 
 OUTPUT FORMAT:
 
@@ -20,6 +22,10 @@ short paragraph summary of the changes made in the diff
 # Details
 
 detailed breakdown of the changes, grouped by topic
+
+# Comments
+
+comments about inferred intent, possible issues, and potential improvements
 ```
 '
 
