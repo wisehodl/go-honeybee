@@ -2,6 +2,7 @@ package honeybee
 
 import (
 	"fmt"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
@@ -167,6 +168,35 @@ func TestPoolRemove(t *testing.T) {
 		assert.ErrorContains(t, err, "pool is closed")
 	})
 
+}
+
+func TestPoolSend(t *testing.T) {
+	mockSocket := NewMockSocket()
+	outgoingData := make(chan mockOutgoingData, 10)
+	mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+		outgoingData <- mockOutgoingData{msgType: msgType, data: data}
+		return nil
+	}
+	mockDialer := &MockDialer{
+		DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+			return mockSocket, nil, nil
+		},
+	}
+
+	pool, err := NewOutboundPool(nil, nil)
+	assert.NoError(t, err)
+	pool.dialer = mockDialer
+
+	err = pool.Connect("wss://test")
+	assert.NoError(t, err)
+	expectEvent(t, pool.events, "wss://test", EventConnected)
+
+	err = pool.Send("wss://test", []byte("hello"))
+	assert.NoError(t, err)
+
+	expectWrite(t, outgoingData, websocket.TextMessage, []byte("hello"))
+
+	pool.Close()
 }
 
 func expectEvent(
