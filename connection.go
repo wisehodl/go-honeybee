@@ -1,6 +1,7 @@
 package honeybee
 
 import (
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -175,7 +176,23 @@ func (c *Connection) startReader() {
 			messageType, data, err := c.socket.ReadMessage()
 			if err != nil {
 				if c.logger != nil {
-					c.logger.Error("read error", "error", err)
+					var closeErr *websocket.CloseError
+					if stderrors.As(err, &closeErr) {
+						switch closeErr.Code {
+						case websocket.CloseNormalClosure, websocket.CloseGoingAway:
+							c.logger.Info("connection closed by peer",
+								"code", closeErr.Code,
+								"text", closeErr.Text,
+							)
+						default:
+							c.logger.Error("unexpected close",
+								"code", closeErr.Code,
+								"text", closeErr.Text,
+							)
+						}
+					} else {
+						c.logger.Error("read error", "error", err)
+					}
 				}
 				select {
 				case c.errors <- err:
