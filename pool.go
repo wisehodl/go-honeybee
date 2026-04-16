@@ -124,6 +124,22 @@ func (p *pool) removePeer(id string) error {
 	return nil
 }
 
+func (p *pool) send(id string, data []byte) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.closed {
+		return errors.NewPoolError("pool is closed")
+	}
+
+	peer, exists := p.peers[id]
+	if !exists {
+		return errors.NewPoolError("connection not found")
+	}
+
+	return peer.conn.Send(data)
+}
+
 // Outbound Pool
 
 type OutboundPool struct {
@@ -249,6 +265,15 @@ func (p *OutboundPool) Remove(url string) error {
 	}
 
 	return p.removePeer(url)
+}
+
+func (p *OutboundPool) Send(url string, data []byte) error {
+	url, err := NormalizeURL(url)
+	if err != nil {
+		return err
+	}
+
+	return p.send(url, data)
 }
 
 // Inbound Pool
