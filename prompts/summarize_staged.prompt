@@ -1,7 +1,16 @@
 #!/bin/bash
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+REPORT_DIR="$REPO_ROOT/.reports"
 SYSTEM_PROMPT_FILE="$SCRIPT_DIR/coder.md"
+
+mkdir -p "$REPORT_DIR"
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+REPORT_FILE="$REPORT_DIR/diff_$TIMESTAMP.md"
+LATEST_LINK="$REPORT_DIR/latest.md"
+
 PROMPT='
 Summarize the changes made in this diff, given the diff and the after code.
 The rest of the code repository is not provided. Based on the changes, infer
@@ -46,5 +55,9 @@ aicli \
   -sf "$SYSTEM_PROMPT_FILE" \
   -p "$PROMPT" \
   -p "DIFF:\n\n$(diff)" \
-  -p "AFTER CODE:\n\n$(context)" |
-  glow -p
+  -p "AFTER CODE:\n\n$(context)" \
+  -o "$REPORT_FILE"
+
+ln -sf "$REPORT_FILE" "$LATEST_LINK"
+
+glow -p "$REPORT_FILE"
