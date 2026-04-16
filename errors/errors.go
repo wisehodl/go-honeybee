@@ -8,8 +8,8 @@ var (
 	InvalidProtocol = errors.New("URL must use ws:// or wss:// scheme")
 
 	// Configuration Errors
-	InvalidReadTimeout       = errors.New("read timeout must be positive")
-	InvalidWriteTimeout      = errors.New("write timeout must be positive")
+	InvalidIdleTimeout       = errors.New("idle timeout cannot be negative")
+	InvalidWriteTimeout      = errors.New("write timeout cannot be negative")
 	InvalidRetryMaxRetries   = errors.New("max retry count cannot be negative")
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
 	InvalidRetryMaxDelay     = errors.New("max delay must be positive")

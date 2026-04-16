@@ -13,6 +13,82 @@ type CloseHandler func(code int, text string) error
 
 type PoolConfig struct {
 	ConnectionConfig *ConnectionConfig
+	IdleTimeout      time.Duration
+}
+
+type PoolOption func(*PoolConfig) error
+
+func NewPoolConfig(options ...PoolOption) (*PoolConfig, error) {
+	conf := GetDefaultPoolConfig()
+	if err := applyPoolOptions(conf, options...); err != nil {
+		return nil, err
+	}
+	if err := validatePoolConfig(conf); err != nil {
+		return nil, err
+	}
+	return conf, nil
+}
+
+func GetDefaultPoolConfig() *PoolConfig {
+	return &PoolConfig{
+		IdleTimeout:      20 * time.Second,
+		ConnectionConfig: nil,
+	}
+}
+
+func applyPoolOptions(config *PoolConfig, options ...PoolOption) error {
+	for _, option := range options {
+		if err := option(config); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePoolConfig(config *PoolConfig) error {
+	err := validateIdleTimeout(config.IdleTimeout)
+	if err != nil {
+		return err
+	}
+
+	if config.ConnectionConfig != nil {
+		err = validateConnectionConfig(config.ConnectionConfig)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateIdleTimeout(value time.Duration) error {
+	if value < 0 {
+		return errors.InvalidIdleTimeout
+	}
+	return nil
+}
+
+// When IdleTimeout is set to zero, idle timeouts are disabled.
+func WithIdleTimeout(value time.Duration) PoolOption {
+	return func(c *PoolConfig) error {
+		err := validateIdleTimeout(value)
+		if err != nil {
+			return err
+		}
+		c.IdleTimeout = value
+		return nil
+	}
+}
+
+func WithConnectionConfig(cc *ConnectionConfig) PoolOption {
+	return func(c *PoolConfig) error {
+		err := validateConnectionConfig(cc)
+		if err != nil {
+			return err
+		}
+		c.ConnectionConfig = cc
+		return nil
+	}
 }
 
 // Connection Config
@@ -70,7 +146,32 @@ func applyConnectionOptions(config *ConnectionConfig, options ...ConnectionOptio
 }
 
 func validateConnectionConfig(config *ConnectionConfig) error {
+	err := validateWriteTimeout(config.WriteTimeout)
+	if err != nil {
+		return err
+	}
+
 	if config.Retry != nil {
+		err = validateMaxRetries(config.Retry.MaxRetries)
+		if err != nil {
+			return err
+		}
+
+		err = validateInitialDelay(config.Retry.InitialDelay)
+		if err != nil {
+			return err
+		}
+
+		err = validateMaxDelay(config.Retry.MaxDelay)
+		if err != nil {
+			return err
+		}
+
+		err = validateJitterFactor(config.Retry.JitterFactor)
+		if err != nil {
+			return err
+		}
+
 		if config.Retry.InitialDelay > config.Retry.MaxDelay {
 			return errors.NewConfigError("initial delay may not exceed maximum delay")
 		}
@@ -79,7 +180,40 @@ func validateConnectionConfig(config *ConnectionConfig) error {
 	return nil
 }
 
-// Configuration Options
+func validateWriteTimeout(value time.Duration) error {
+	if value < 0 {
+		return errors.InvalidWriteTimeout
+	}
+	return nil
+}
+
+func validateMaxRetries(value int) error {
+	if value < 0 {
+		return errors.InvalidRetryMaxRetries
+	}
+	return nil
+}
+
+func validateInitialDelay(value time.Duration) error {
+	if value <= 0 {
+		return errors.InvalidRetryInitialDelay
+	}
+	return nil
+}
+
+func validateMaxDelay(value time.Duration) error {
+	if value <= 0 {
+		return errors.InvalidRetryMaxDelay
+	}
+	return nil
+}
+
+func validateJitterFactor(value float64) error {
+	if value < 0.0 || value > 1.0 {
+		return errors.InvalidRetryJitterFactor
+	}
+	return nil
+}
 
 func WithCloseHandler(handler CloseHandler) ConnectionOption {
 	return func(c *ConnectionConfig) error {
@@ -91,8 +225,9 @@ func WithCloseHandler(handler CloseHandler) ConnectionOption {
 // When WriteTimeout is set to zero, read timeouts are disabled.
 func WithWriteTimeout(value time.Duration) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		if value < 0 {
-			return errors.InvalidWriteTimeout
+		err := validateWriteTimeout(value)
+		if err != nil {
+			return err
 		}
 		c.WriteTimeout = value
 		return nil
@@ -117,9 +252,12 @@ func WithRetryMaxRetries(value int) ConnectionOption {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
-		if value < 0 {
-			return errors.InvalidRetryMaxRetries
+
+		err := validateMaxRetries(value)
+		if err != nil {
+			return err
 		}
+
 		c.Retry.MaxRetries = value
 		return nil
 	}
@@ -130,9 +268,12 @@ func WithRetryInitialDelay(value time.Duration) ConnectionOption {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
-		if value <= 0 {
-			return errors.InvalidRetryInitialDelay
+
+		err := validateInitialDelay(value)
+		if err != nil {
+			return err
 		}
+
 		c.Retry.InitialDelay = value
 		return nil
 	}
@@ -143,9 +284,12 @@ func WithRetryMaxDelay(value time.Duration) ConnectionOption {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
-		if value <= 0 {
-			return errors.InvalidRetryMaxDelay
+
+		err := validateMaxDelay(value)
+		if err != nil {
+			return err
 		}
+
 		c.Retry.MaxDelay = value
 		return nil
 	}
@@ -156,9 +300,12 @@ func WithRetryJitterFactor(value float64) ConnectionOption {
 		if c.Retry == nil {
 			c.Retry = GetDefaultRetryConfig()
 		}
-		if value < 0.0 || value > 1.0 {
-			return errors.InvalidRetryJitterFactor
+
+		err := validateJitterFactor(value)
+		if err != nil {
+			return err
 		}
+
 		c.Retry.JitterFactor = value
 		return nil
 	}
