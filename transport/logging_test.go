@@ -1,4 +1,4 @@
-package honeybee
+package transport
 
 import (
 	"fmt"
@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
@@ -136,15 +138,15 @@ func toInt64(v any) (int64, bool) {
 
 func TestConnectLogging(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		conn, err := NewConnection("ws://test", nil, logger)
 		assert.NoError(t, err)
 
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
@@ -167,7 +169,7 @@ func TestConnectLogging(t *testing.T) {
 	})
 
 	t.Run("max retries failure", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{
@@ -183,8 +185,8 @@ func TestConnectLogging(t *testing.T) {
 		assert.NoError(t, err)
 
 		dialErr := fmt.Errorf("dial error")
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, dialErr
 			},
 		}
@@ -210,7 +212,7 @@ func TestConnectLogging(t *testing.T) {
 	})
 
 	t.Run("success after retry", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{
@@ -227,13 +229,13 @@ func TestConnectLogging(t *testing.T) {
 
 		attemptCount := 0
 		dialErr := fmt.Errorf("dial error")
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				attemptCount++
 				if attemptCount < 3 {
 					return nil, nil, dialErr
 				}
-				return NewMockSocket(), nil, nil
+				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
 		conn.dialer = mockDialer
@@ -261,10 +263,10 @@ func TestConnectLogging(t *testing.T) {
 
 func TestCloseLogging(t *testing.T) {
 	t.Run("normal close", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
 		assert.NoError(t, err)
 
@@ -273,7 +275,7 @@ func TestCloseLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		records := mockHandler.GetRecords()
 
@@ -286,11 +288,11 @@ func TestCloseLogging(t *testing.T) {
 	})
 
 	t.Run("close with socket error", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		closeErr := fmt.Errorf("close error")
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.CloseFunc = func() error {
 			return closeErr
 		}
@@ -303,7 +305,7 @@ func TestCloseLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "socket close failed") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		records := mockHandler.GetRecords()
 
@@ -318,10 +320,10 @@ func TestCloseLogging(t *testing.T) {
 
 func TestReaderLogging(t *testing.T) {
 	t.Run("clean close by peer", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, &websocket.CloseError{
 				Code: websocket.CloseNormalClosure,
@@ -336,7 +338,7 @@ func TestReaderLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		record := findLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
 		assert.NotNil(t, record)
@@ -346,10 +348,10 @@ func TestReaderLogging(t *testing.T) {
 	})
 
 	t.Run("unexpected close", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, &websocket.CloseError{
 				Code: websocket.CloseProtocolError,
@@ -364,7 +366,7 @@ func TestReaderLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "unexpected close") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		record := findLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
 		assert.NotNil(t, record)
@@ -374,10 +376,10 @@ func TestReaderLogging(t *testing.T) {
 	})
 
 	t.Run("read error", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, io.EOF
 		}
@@ -389,19 +391,19 @@ func TestReaderLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "read error") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 }
 
 func TestWriterLogging(t *testing.T) {
 	t.Run("write deadline error", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
 
 		deadlineErr := fmt.Errorf("deadline error")
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.SetWriteDeadlineFunc = func(time.Time) error {
 			return deadlineErr
 		}
@@ -415,7 +417,7 @@ func TestWriterLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write deadline error") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		records := mockHandler.GetRecords()
 
@@ -427,11 +429,11 @@ func TestWriterLogging(t *testing.T) {
 	})
 
 	t.Run("write message error", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 		logger := slog.New(mockHandler)
 
 		writeErr := fmt.Errorf("write error")
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.WriteMessageFunc = func(int, []byte) error {
 			return writeErr
 		}
@@ -445,7 +447,7 @@ func TestWriterLogging(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write error") != nil
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		records := mockHandler.GetRecords()
 
@@ -459,14 +461,14 @@ func TestWriterLogging(t *testing.T) {
 
 func TestLoggingDisabled(t *testing.T) {
 	t.Run("nil logger produces no logs", func(t *testing.T) {
-		mockHandler := newMockSlogHandler()
+		mockHandler := honeybeetest.NewMockSlogHandler()
 
 		conn, err := NewConnection("ws://test", nil, nil)
 		assert.NoError(t, err)
 
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}

@@ -1,16 +1,17 @@
-package honeybee
+package initiator
 
 import (
+	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
 
 func TestNewPoolConfig(t *testing.T) {
-	conf, err := NewInitiatorPoolConfig()
+	conf, err := NewPoolConfig()
 	assert.NoError(t, err)
 
-	assert.Equal(t, conf, &InitiatorPoolConfig{
+	assert.Equal(t, conf, &PoolConfig{
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -18,9 +19,9 @@ func TestNewPoolConfig(t *testing.T) {
 }
 
 func TestDefaultPoolConfig(t *testing.T) {
-	conf := GetDefaultInitiatorPoolConfig()
+	conf := GetDefaultPoolConfig()
 
-	assert.Equal(t, conf, &InitiatorPoolConfig{
+	assert.Equal(t, conf, &PoolConfig{
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -28,10 +29,10 @@ func TestDefaultPoolConfig(t *testing.T) {
 }
 
 func TestApplyPoolOptions(t *testing.T) {
-	conf := &InitiatorPoolConfig{}
-	err := applyInitiatorPoolOptions(
+	conf := &PoolConfig{}
+	err := applyPoolOptions(
 		conf,
-		WithInitiatorConnectionConfig(&ConnectionConfig{}),
+		WithConnectionConfig(&transport.ConnectionConfig{}),
 	)
 
 	assert.NoError(t, err)
@@ -39,46 +40,46 @@ func TestApplyPoolOptions(t *testing.T) {
 }
 
 func TestWithConnectionConfig(t *testing.T) {
-	conf := &InitiatorPoolConfig{}
-	opt := WithInitiatorConnectionConfig(&ConnectionConfig{WriteTimeout: 1 * time.Second})
-	err := applyInitiatorPoolOptions(conf, opt)
+	conf := &PoolConfig{}
+	opt := WithConnectionConfig(&transport.ConnectionConfig{WriteTimeout: 1 * time.Second})
+	err := applyPoolOptions(conf, opt)
 	assert.NoError(t, err)
 	assert.NotNil(t, conf.ConnectionConfig)
 	assert.Equal(t, 1*time.Second, conf.ConnectionConfig.WriteTimeout)
 
 	// invalid config is rejected
-	conf = &InitiatorPoolConfig{}
-	opt = WithInitiatorConnectionConfig(&ConnectionConfig{WriteTimeout: -1 * time.Second})
-	err = applyInitiatorPoolOptions(conf, opt)
+	conf = &PoolConfig{}
+	opt = WithConnectionConfig(&transport.ConnectionConfig{WriteTimeout: -1 * time.Second})
+	err = applyPoolOptions(conf, opt)
 	assert.Error(t, err)
 }
 
 func TestValidatePoolConfig(t *testing.T) {
 	cases := []struct {
 		name        string
-		conf        InitiatorPoolConfig
+		conf        PoolConfig
 		wantErr     error
 		wantErrText string
 	}{
 		{
 			name: "valid empty",
-			conf: *&InitiatorPoolConfig{},
+			conf: *&PoolConfig{},
 		},
 		{
 			name: "valid defaults",
-			conf: *GetDefaultInitiatorPoolConfig(),
+			conf: *GetDefaultPoolConfig(),
 		},
 		{
 			name: "valid complete",
-			conf: InitiatorPoolConfig{
-				ConnectionConfig: &ConnectionConfig{},
+			conf: PoolConfig{
+				ConnectionConfig: &transport.ConnectionConfig{},
 			},
 		},
 		{
 			name: "invalid connection config",
-			conf: InitiatorPoolConfig{
-				ConnectionConfig: &ConnectionConfig{
-					Retry: &RetryConfig{
+			conf: PoolConfig{
+				ConnectionConfig: &transport.ConnectionConfig{
+					Retry: &transport.RetryConfig{
 						InitialDelay: 10 * time.Second,
 						MaxDelay:     1 * time.Second,
 					},
@@ -90,7 +91,7 @@ func TestValidatePoolConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateInitiatorPoolConfig(&tc.conf)
+			err := ValidatePoolConfig(&tc.conf)
 
 			if tc.wantErr != nil || tc.wantErrText != "" {
 				if tc.wantErr != nil {
