@@ -10,9 +10,20 @@ import (
 
 // Types
 
-type peer struct {
-	conn *transport.Connection
-	stop chan struct{}
+type Peer struct {
+	id     string
+	worker *Worker
+	stop   chan struct{}
+}
+
+type WorkerContext struct {
+	Inbox            chan<- InboxMessage
+	Events           chan<- PoolEvent
+	Errors           chan<- error
+	PoolDone         <-chan struct{}
+	Logger           *slog.Logger
+	Dialer           types.Dialer
+	ConnectionConfig *transport.ConnectionConfig
 }
 
 type InboxMessage struct {
@@ -21,23 +32,12 @@ type InboxMessage struct {
 	ReceivedAt time.Time
 }
 
-type PoolEventKind int
+type PoolEventKind string
 
 const (
-	EventConnected PoolEventKind = iota
-	EventDisconnected
+	EventConnected    PoolEventKind = "connected"
+	EventDisconnected               = "disconnected"
 )
-
-func (s PoolEventKind) String() string {
-	switch s {
-	case EventConnected:
-		return "connected"
-	case EventDisconnected:
-		return "disconnected"
-	default:
-		return "unknown"
-	}
-}
 
 type PoolEvent struct {
 	ID   string
@@ -47,7 +47,7 @@ type PoolEvent struct {
 // Pool
 
 type Pool struct {
-	peers  map[string]*peer
+	peers  map[string]*Peer
 	inbox  chan InboxMessage
 	events chan PoolEvent
 	errors chan error
@@ -72,7 +72,7 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 	}
 
 	p := &Pool{
-		peers:  make(map[string]*peer),
+		peers:  make(map[string]*Peer),
 		inbox:  make(chan InboxMessage, 256),
 		events: make(chan PoolEvent, 10),
 		errors: make(chan error, 10),
@@ -85,7 +85,7 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 	return p, nil
 }
 
-func (p *Pool) Peers() map[string]*peer {
+func (p *Pool) Peers() map[string]*Peer {
 	return p.peers
 }
 
@@ -101,6 +101,10 @@ func (p *Pool) Errors() chan error {
 	return p.errors
 }
 
+func (p *Pool) SetDialer(d types.Dialer) {
+	p.dialer = d
+}
+
 func (p *Pool) Close() {
 	p.mu.Lock()
 	if p.closed {
@@ -112,12 +116,12 @@ func (p *Pool) Close() {
 	close(p.done)
 
 	peers := p.peers
-	p.peers = make(map[string]*peer)
+	p.peers = make(map[string]*Peer)
 
 	p.mu.Unlock()
 
-	for _, conn := range peers {
-		conn.conn.Close()
+	for _, p := range peers {
+		close(p.stop)
 	}
 
 	go func() {
@@ -180,10 +184,8 @@ func (p *Pool) Connect(id string) error {
 		conn.Close()
 		return NewPoolError("connection already exists")
 	}
-	p.peers[id] = &peer{conn: conn, stop: stop}
+	p.peers[id] = &Peer{id: id, worker: nil, stop: stop} // TODO: create worker
 	p.mu.Unlock()
-
-	// TODO: start this connection's incoming message forwarder
 
 	select {
 	case p.events <- PoolEvent{ID: id, Kind: EventConnected}:
@@ -215,7 +217,6 @@ func (p *Pool) Remove(id string) error {
 	p.mu.Unlock()
 
 	close(peer.stop)
-	peer.conn.Close()
 
 	select {
 	case p.events <- PoolEvent{ID: id, Kind: EventDisconnected}:
@@ -244,5 +245,5 @@ func (p *Pool) Send(id string, data []byte) error {
 		return NewPoolError("connection not found")
 	}
 
-	return peer.conn.Send(data)
+	return peer.worker.Send(data)
 }

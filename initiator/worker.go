@@ -2,51 +2,40 @@ package initiator
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"
-	"log/slog"
 	"sync"
 	"time"
 )
 
-// Types
-
-type WorkerContext struct {
-	Inbox    chan<- InboxMessage
-	Events   chan<- PoolEvent
-	Errors   chan<- error
-	Stop     <-chan struct{}
-	PoolDone <-chan struct{}
-	Logger   *slog.Logger
-}
-
 // Worker
 
 type Worker struct {
-	id          string
-	config      *WorkerConfig
-	onReconnect func() (*transport.Connection, error)
+	id     string
+	stop   <-chan struct{}
+	config *WorkerConfig
+	conn   *transport.Connection
 }
 
 func NewWorker(
 	id string,
+	stop <-chan struct{},
 	config *WorkerConfig,
-	onReconnect func() (*transport.Connection, error),
-	logger *slog.Logger,
 
 ) (*Worker, error) {
 	w := &Worker{
-		id:          id,
-		config:      config,
-		onReconnect: onReconnect,
+		id:     id,
+		stop:   stop,
+		config: config,
 	}
 
 	return w, nil
 }
 
+func (w *Worker) Send(data []byte) error {
+	return w.conn.Send(data)
+}
+
 func (w *Worker) Start(
-	inbox chan<- InboxMessage,
-	events chan<- PoolEvent,
-	stop <-chan struct{},
-	poolDone <-chan struct{},
+	ctx WorkerContext,
 	wg *sync.WaitGroup,
 ) {
 }
