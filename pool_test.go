@@ -18,7 +18,7 @@ func TestPoolConnect(t *testing.T) {
 			},
 		}
 
-		pool, err := NewOutboundPool(nil, nil)
+		pool, err := NewInitiatorPool(nil, nil)
 		assert.NoError(t, err)
 
 		pool.dialer = mockDialer
@@ -49,7 +49,7 @@ func TestPoolConnect(t *testing.T) {
 			},
 		}
 
-		pool, err := NewOutboundPool(nil, nil)
+		pool, err := NewInitiatorPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -69,7 +69,7 @@ func TestPoolConnect(t *testing.T) {
 	})
 
 	t.Run("fails to add connection", func(t *testing.T) {
-		pool, err := NewOutboundPool(
+		pool, err := NewInitiatorPool(
 			&PoolConfig{
 				ConnectionConfig: &ConnectionConfig{
 					Retry: &RetryConfig{
@@ -111,7 +111,7 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewOutboundPool(nil, nil)
+		pool, err := NewInitiatorPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -139,7 +139,7 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewOutboundPool(nil, nil)
+		pool, err := NewInitiatorPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -156,7 +156,7 @@ func TestPoolRemove(t *testing.T) {
 			},
 		}
 
-		pool, err := NewOutboundPool(nil, nil)
+		pool, err := NewInitiatorPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -183,7 +183,7 @@ func TestPoolSend(t *testing.T) {
 		},
 	}
 
-	pool, err := NewOutboundPool(nil, nil)
+	pool, err := NewInitiatorPool(nil, nil)
 	assert.NoError(t, err)
 	pool.dialer = mockDialer
 

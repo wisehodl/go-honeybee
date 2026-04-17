@@ -140,14 +140,14 @@ func (p *pool) send(id string, data []byte) error {
 	return peer.conn.Send(data)
 }
 
-// Outbound Pool
+// Initiator Pool
 
-type OutboundPool struct {
+type InitiatorPool struct {
 	*pool
 	dialer Dialer
 }
 
-func NewOutboundPool(config *PoolConfig, logger *slog.Logger) (*OutboundPool, error) {
+func NewInitiatorPool(config *PoolConfig, logger *slog.Logger) (*InitiatorPool, error) {
 	if config == nil {
 		config = GetDefaultPoolConfig()
 	}
@@ -156,7 +156,7 @@ func NewOutboundPool(config *PoolConfig, logger *slog.Logger) (*OutboundPool, er
 		return nil, err
 	}
 
-	p := &OutboundPool{
+	p := &InitiatorPool{
 		pool: &pool{
 			peers:  make(map[string]*peer),
 			inbox:  make(chan InboxMessage, 256),
@@ -172,27 +172,27 @@ func NewOutboundPool(config *PoolConfig, logger *slog.Logger) (*OutboundPool, er
 	return p, nil
 }
 
-func (p *OutboundPool) Peers() map[string]*peer {
+func (p *InitiatorPool) Peers() map[string]*peer {
 	return p.peers
 }
 
-func (p *OutboundPool) Inbox() chan InboxMessage {
+func (p *InitiatorPool) Inbox() chan InboxMessage {
 	return p.inbox
 }
 
-func (p *OutboundPool) Events() chan PoolEvent {
+func (p *InitiatorPool) Events() chan PoolEvent {
 	return p.events
 }
 
-func (p *OutboundPool) Errors() chan error {
+func (p *InitiatorPool) Errors() chan error {
 	return p.errors
 }
 
-func (p *OutboundPool) Close() {
+func (p *InitiatorPool) Close() {
 	p.closeAll()
 }
 
-func (p *OutboundPool) Connect(url string) error {
+func (p *InitiatorPool) Connect(url string) error {
 	url, err := NormalizeURL(url)
 	if err != nil {
 		return err
@@ -258,7 +258,7 @@ func (p *OutboundPool) Connect(url string) error {
 	return nil
 }
 
-func (p *OutboundPool) Remove(url string) error {
+func (p *InitiatorPool) Remove(url string) error {
 	url, err := NormalizeURL(url)
 	if err != nil {
 		return err
@@ -267,7 +267,7 @@ func (p *OutboundPool) Remove(url string) error {
 	return p.removePeer(url)
 }
 
-func (p *OutboundPool) Send(url string, data []byte) error {
+func (p *InitiatorPool) Send(url string, data []byte) error {
 	url, err := NormalizeURL(url)
 	if err != nil {
 		return err
@@ -276,29 +276,29 @@ func (p *OutboundPool) Send(url string, data []byte) error {
 	return p.send(url, data)
 }
 
-// Inbound Pool
+// Responder Pool
 
-type InboundPool struct {
+type ResponderPool struct {
 	*pool
 	idGenerator func() string
 }
 
-func (p *InboundPool) Peers() map[string]*peer {
+func (p *ResponderPool) Peers() map[string]*peer {
 	return p.peers
 }
 
-func (p *InboundPool) Inbox() chan InboxMessage {
+func (p *ResponderPool) Inbox() chan InboxMessage {
 	return p.inbox
 }
 
-func (p *InboundPool) Events() chan PoolEvent {
+func (p *ResponderPool) Events() chan PoolEvent {
 	return p.events
 }
 
-func (p *InboundPool) Errors() chan error {
+func (p *ResponderPool) Errors() chan error {
 	return p.errors
 }
 
-func (p *InboundPool) Close() {
+func (p *ResponderPool) Close() {
 	p.closeAll()
 }
