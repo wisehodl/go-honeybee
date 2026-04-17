@@ -58,8 +58,7 @@ func newInitiatorWorker(
 ) (*InitiatorWorker, error) {
 	w := &InitiatorWorker{
 		worker: &worker{
-			id:     id,
-			logger: logger,
+			id: id,
 		},
 		config:      config,
 		onReconnect: onReconnect,
