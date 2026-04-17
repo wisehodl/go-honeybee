@@ -67,6 +67,13 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 		config = GetDefaultPoolConfig()
 	}
 
+	// if a custom factory is supplied, config.WorkerConfig is not used
+	if config.WorkerFactory == nil {
+		config.WorkerFactory = func(id string, stop <-chan struct{}) (*Worker, error) {
+			return NewWorker(id, stop, config.WorkerConfig)
+		}
+	}
+
 	if err := ValidatePoolConfig(config); err != nil {
 		return nil, err
 	}
