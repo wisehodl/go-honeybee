@@ -14,6 +14,7 @@ var (
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
 	InvalidRetryMaxDelay     = errors.New("max delay must be positive")
 	InvalidRetryJitterFactor = errors.New("jitter factor must be between 0.0 and 1.0")
+	InvalidMaxQueueSize      = errors.New("maximum queue size cannot be negative")
 )
 
 func NewConfigError(text string) error {

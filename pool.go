@@ -62,7 +62,7 @@ type pool struct {
 	errors chan error
 	done   chan struct{}
 
-	config *PoolConfig
+	config *InitiatorPoolConfig
 	logger *slog.Logger
 
 	mu     sync.RWMutex
@@ -147,12 +147,12 @@ type InitiatorPool struct {
 	dialer Dialer
 }
 
-func NewInitiatorPool(config *PoolConfig, logger *slog.Logger) (*InitiatorPool, error) {
+func NewInitiatorPool(config *InitiatorPoolConfig, logger *slog.Logger) (*InitiatorPool, error) {
 	if config == nil {
-		config = GetDefaultPoolConfig()
+		config = GetDefaultInitiatorPoolConfig()
 	}
 
-	if err := validatePoolConfig(config); err != nil {
+	if err := validateInitiatorPoolConfig(config); err != nil {
 		return nil, err
 	}
 

@@ -8,35 +8,42 @@ import (
 // Types
 
 type CloseHandler func(code int, text string) error
+type WorkerFactory func(
+	id string,
+	conn *Connection,
+	onReconnect func() (*Connection, error),
+) Worker
 
-// Pool Config
+// Initiator Pool Config
 
-type PoolConfig struct {
+type InitiatorPoolConfig struct {
 	ConnectionConfig *ConnectionConfig
-	IdleTimeout      time.Duration
+	WorkerFactory    WorkerFactory
+	WorkerConfig     *InitiatorWorkerConfig
 }
 
-type PoolOption func(*PoolConfig) error
+type InitiatorPoolOption func(*InitiatorPoolConfig) error
 
-func NewPoolConfig(options ...PoolOption) (*PoolConfig, error) {
-	conf := GetDefaultPoolConfig()
-	if err := applyPoolOptions(conf, options...); err != nil {
+func NewInitiatorPoolConfig(options ...InitiatorPoolOption) (*InitiatorPoolConfig, error) {
+	conf := GetDefaultInitiatorPoolConfig()
+	if err := applyInitiatorPoolOptions(conf, options...); err != nil {
 		return nil, err
 	}
-	if err := validatePoolConfig(conf); err != nil {
+	if err := validateInitiatorPoolConfig(conf); err != nil {
 		return nil, err
 	}
 	return conf, nil
 }
 
-func GetDefaultPoolConfig() *PoolConfig {
-	return &PoolConfig{
-		IdleTimeout:      20 * time.Second,
+func GetDefaultInitiatorPoolConfig() *InitiatorPoolConfig {
+	return &InitiatorPoolConfig{
 		ConnectionConfig: nil,
+		WorkerFactory:    nil,
+		WorkerConfig:     nil,
 	}
 }
 
-func applyPoolOptions(config *PoolConfig, options ...PoolOption) error {
+func applyInitiatorPoolOptions(config *InitiatorPoolConfig, options ...InitiatorPoolOption) error {
 	for _, option := range options {
 		if err := option(config); err != nil {
 			return err
@@ -45,11 +52,8 @@ func applyPoolOptions(config *PoolConfig, options ...PoolOption) error {
 	return nil
 }
 
-func validatePoolConfig(config *PoolConfig) error {
-	err := validateIdleTimeout(config.IdleTimeout)
-	if err != nil {
-		return err
-	}
+func validateInitiatorPoolConfig(config *InitiatorPoolConfig) error {
+	var err error
 
 	if config.ConnectionConfig != nil {
 		err = validateConnectionConfig(config.ConnectionConfig)
@@ -58,30 +62,18 @@ func validatePoolConfig(config *PoolConfig) error {
 		}
 	}
 
-	return nil
-}
-
-func validateIdleTimeout(value time.Duration) error {
-	if value < 0 {
-		return errors.InvalidIdleTimeout
-	}
-	return nil
-}
-
-// When IdleTimeout is set to zero, idle timeouts are disabled.
-func WithIdleTimeout(value time.Duration) PoolOption {
-	return func(c *PoolConfig) error {
-		err := validateIdleTimeout(value)
+	if config.WorkerConfig != nil {
+		err = validateInitiatorWorkerConfig(config.WorkerConfig)
 		if err != nil {
 			return err
 		}
-		c.IdleTimeout = value
-		return nil
 	}
+
+	return nil
 }
 
-func WithConnectionConfig(cc *ConnectionConfig) PoolOption {
-	return func(c *PoolConfig) error {
+func WithInitiatorConnectionConfig(cc *ConnectionConfig) InitiatorPoolOption {
+	return func(c *InitiatorPoolConfig) error {
 		err := validateConnectionConfig(cc)
 		if err != nil {
 			return err
@@ -89,6 +81,32 @@ func WithConnectionConfig(cc *ConnectionConfig) PoolOption {
 		c.ConnectionConfig = cc
 		return nil
 	}
+}
+
+func WithInitiatorWorkerConfig(wc *InitiatorWorkerConfig) InitiatorPoolOption {
+	return func(c *InitiatorPoolConfig) error {
+		err := validateInitiatorWorkerConfig(wc)
+		if err != nil {
+			return err
+		}
+		c.WorkerConfig = wc
+		return nil
+	}
+}
+
+func WithInitiatorWorkerFactory(wf WorkerFactory) InitiatorPoolOption {
+	return func(c *InitiatorPoolConfig) error {
+		c.WorkerFactory = wf
+		return nil
+	}
+}
+
+// Responder Pool Config
+
+type ResponderPoolConfig struct {
+	ConnectionConfig *ConnectionConfig
+	WorkerFactory    WorkerFactory
+	WorkerConfig     *ResponderWorkerConfig
 }
 
 // Connection Config
@@ -310,3 +328,95 @@ func WithRetryJitterFactor(value float64) ConnectionOption {
 		return nil
 	}
 }
+
+// Initiator Worker Config
+
+type InitiatorWorkerConfig struct {
+	IdleTimeout  time.Duration
+	MaxQueueSize int
+}
+
+type InitiatorWorkerOption func(*InitiatorWorkerConfig) error
+
+func NewInitiatorWorkerConfig(options ...InitiatorWorkerOption) (*InitiatorWorkerConfig, error) {
+	conf := GetDefaultInitiatorWorkerConfig()
+	if err := applyInitiatorWorkerOptions(conf, options...); err != nil {
+		return nil, err
+	}
+	if err := validateInitiatorWorkerConfig(conf); err != nil {
+		return nil, err
+	}
+	return conf, nil
+}
+
+func GetDefaultInitiatorWorkerConfig() *InitiatorWorkerConfig {
+	return &InitiatorWorkerConfig{
+		IdleTimeout:  20 * time.Second,
+		MaxQueueSize: 0, // disabled by default
+	}
+}
+
+func applyInitiatorWorkerOptions(config *InitiatorWorkerConfig, options ...InitiatorWorkerOption) error {
+	for _, option := range options {
+		if err := option(config); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateInitiatorWorkerConfig(config *InitiatorWorkerConfig) error {
+	err := validateIdleTimeout(config.IdleTimeout)
+	if err != nil {
+		return err
+	}
+
+	err = validateMaxQueueSize(config.MaxQueueSize)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateMaxQueueSize(value int) error {
+	if value < 0 {
+		return errors.InvalidMaxQueueSize
+	}
+	return nil
+}
+
+func validateIdleTimeout(value time.Duration) error {
+	if value < 0 {
+		return errors.InvalidIdleTimeout
+	}
+	return nil
+}
+
+// When IdleTimeout is set to zero, idle timeouts are disabled.
+func WithIdleTimeout(value time.Duration) InitiatorWorkerOption {
+	return func(c *InitiatorWorkerConfig) error {
+		err := validateIdleTimeout(value)
+		if err != nil {
+			return err
+		}
+		c.IdleTimeout = value
+		return nil
+	}
+}
+
+// When MaxQueueSize is set to zero, queue limits are disabled.
+func WithMaxQueueSize(value int) InitiatorWorkerOption {
+	return func(c *InitiatorWorkerConfig) error {
+		err := validateMaxQueueSize(value)
+		if err != nil {
+			return err
+		}
+		c.MaxQueueSize = value
+		return nil
+	}
+}
+
+// Responder Worker Config
+
+type ResponderWorkerConfig struct{}

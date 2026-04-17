@@ -70,7 +70,7 @@ func TestPoolConnect(t *testing.T) {
 
 	t.Run("fails to add connection", func(t *testing.T) {
 		pool, err := NewInitiatorPool(
-			&PoolConfig{
+			&InitiatorPoolConfig{
 				ConnectionConfig: &ConnectionConfig{
 					Retry: &RetryConfig{
 						MaxRetries:   1,
