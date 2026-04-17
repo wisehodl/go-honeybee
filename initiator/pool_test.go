@@ -1,7 +1,10 @@
-package honeybee
+package initiator
 
 import (
 	"fmt"
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"net/http"
@@ -11,14 +14,14 @@ import (
 
 func TestPoolConnect(t *testing.T) {
 	t.Run("successfully adds connection", func(t *testing.T) {
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewInitiatorPool(nil, nil)
+		pool, err := NewPool(nil, nil)
 		assert.NoError(t, err)
 
 		pool.dialer = mockDialer
@@ -33,7 +36,7 @@ func TestPoolConnect(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		_, exists := pool.peers["wss://test"]
 		assert.True(t, exists)
@@ -42,14 +45,14 @@ func TestPoolConnect(t *testing.T) {
 	})
 
 	t.Run("does not add duplicate", func(t *testing.T) {
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewInitiatorPool(nil, nil)
+		pool, err := NewPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -69,18 +72,18 @@ func TestPoolConnect(t *testing.T) {
 	})
 
 	t.Run("fails to add connection", func(t *testing.T) {
-		pool, err := NewInitiatorPool(
-			&InitiatorPoolConfig{
-				ConnectionConfig: &ConnectionConfig{
-					Retry: &RetryConfig{
+		pool, err := NewPool(
+			&PoolConfig{
+				ConnectionConfig: &transport.ConnectionConfig{
+					Retry: &transport.RetryConfig{
 						MaxRetries:   1,
 						InitialDelay: 1 * time.Millisecond,
 						MaxDelay:     5 * time.Millisecond,
 					}},
 			}, nil)
 		assert.NoError(t, err)
-		pool.dialer = &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		pool.dialer = &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
@@ -104,14 +107,14 @@ func TestPoolConnect(t *testing.T) {
 
 func TestPoolRemove(t *testing.T) {
 	t.Run("removes known url", func(t *testing.T) {
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewInitiatorPool(nil, nil)
+		pool, err := NewPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -132,14 +135,14 @@ func TestPoolRemove(t *testing.T) {
 	})
 
 	t.Run("unknown url returns error", func(t *testing.T) {
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewInitiatorPool(nil, nil)
+		pool, err := NewPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -149,14 +152,14 @@ func TestPoolRemove(t *testing.T) {
 	})
 
 	t.Run("closed pool returns error", func(t *testing.T) {
-		mockSocket := NewMockSocket()
-		mockDialer := &MockDialer{
-			DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockDialer := &honeybeetest.MockDialer{
+			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewInitiatorPool(nil, nil)
+		pool, err := NewPool(nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -171,19 +174,19 @@ func TestPoolRemove(t *testing.T) {
 }
 
 func TestPoolSend(t *testing.T) {
-	mockSocket := NewMockSocket()
-	outgoingData := make(chan mockOutgoingData, 10)
+	mockSocket := honeybeetest.NewMockSocket()
+	outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
 	mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
-		outgoingData <- mockOutgoingData{msgType: msgType, data: data}
+		outgoingData <- honeybeetest.MockOutgoingData{MsgType: msgType, Data: data}
 		return nil
 	}
-	mockDialer := &MockDialer{
-		DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+	mockDialer := &honeybeetest.MockDialer{
+		DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 			return mockSocket, nil, nil
 		},
 	}
 
-	pool, err := NewInitiatorPool(nil, nil)
+	pool, err := NewPool(nil, nil)
 	assert.NoError(t, err)
 	pool.dialer = mockDialer
 
@@ -194,7 +197,7 @@ func TestPoolSend(t *testing.T) {
 	err = pool.Send("wss://test", []byte("hello"))
 	assert.NoError(t, err)
 
-	expectWrite(t, outgoingData, websocket.TextMessage, []byte("hello"))
+	honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, []byte("hello"))
 
 	pool.Close()
 }
@@ -213,7 +216,7 @@ func expectEvent(
 		default:
 			return false
 		}
-	}, testTimeout, testTick,
+	}, honeybeetest.TestTimeout, honeybeetest.TestTick,
 		fmt.Sprintf("expected event: URL=%q, Kind=%q",
 			expectedURL, expectedKind.String()))
 }

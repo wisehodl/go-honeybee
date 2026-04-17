@@ -1,10 +1,8 @@
-package honeybee
+package transport
 
 import (
 	"net/url"
 	"strings"
-
-	"git.wisehodl.dev/jay/go-honeybee/errors"
 )
 
 func ParseURL(urlStr string) (*url.URL, error) {
@@ -14,7 +12,7 @@ func ParseURL(urlStr string) (*url.URL, error) {
 	}
 
 	if parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss" {
-		return nil, errors.InvalidProtocol
+		return nil, InvalidProtocol
 	}
 
 	return parsedURL, nil

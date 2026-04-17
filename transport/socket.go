@@ -1,19 +1,15 @@
-package honeybee
+package transport
 
 import (
 	"log/slog"
 	"net/http"
 	"time"
 
-	"git.wisehodl.dev/jay/go-honeybee/errors"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 )
 
-type Dialer interface {
-	Dial(urlStr string, requestHeader http.Header) (Socket, *http.Response, error)
-}
-
-func NewDialer() Dialer {
+func NewDialer() types.Dialer {
 	return NewGorillaDialer()
 }
 
@@ -35,36 +31,26 @@ func NewGorillaDialer() *GorillaDialer {
 func (d *GorillaDialer) Dial(
 	urlStr string, requestHeader http.Header,
 ) (
-	Socket, *http.Response, error,
+	types.Socket, *http.Response, error,
 ) {
 	conn, resp, err := d.Dialer.Dial(urlStr, requestHeader)
 	return conn, resp, err
 }
 
-type Socket interface {
-	WriteMessage(messageType int, data []byte) error
-	ReadMessage() (messageType int, p []byte, err error)
-	Close() error
-
-	SetReadDeadline(t time.Time) error
-	SetWriteDeadline(t time.Time) error
-	SetCloseHandler(h func(code int, text string) error)
-}
-
 func AcquireSocket(
 	retryMgr *RetryManager,
-	dialer Dialer,
+	dialer types.Dialer,
 	urlStr string,
 	logger *slog.Logger,
-) (Socket, *http.Response, error) {
+) (types.Socket, *http.Response, error) {
 	if retryMgr == nil {
-		return nil, nil, errors.NewConnectionError("retry manager cannot be nil")
+		return nil, nil, NewConnectionError("retry manager cannot be nil")
 	}
 	if dialer == nil {
-		return nil, nil, errors.NewConnectionError("dialer cannot be nil")
+		return nil, nil, NewConnectionError("dialer cannot be nil")
 	}
 	if urlStr == "" {
-		return nil, nil, errors.NewConnectionError("URL cannot be empty")
+		return nil, nil, NewConnectionError("URL cannot be empty")
 	}
 
 	for {

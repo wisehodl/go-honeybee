@@ -1,7 +1,9 @@
-package honeybee
+package transport
 
 import (
 	"errors"
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
@@ -60,14 +62,14 @@ func TestAcquireSocket(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			attemptIndex := 0
-			mockDialer := &MockDialer{
-				DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
+			mockDialer := &honeybeetest.MockDialer{
+				DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
 					err := tc.mockRuns[attemptIndex]
 					attemptIndex++
 					if err != nil {
 						return nil, nil, err
 					}
-					return NewMockSocket(), nil, nil
+					return honeybeetest.NewMockSocket(), nil, nil
 				},
 			}
 
@@ -93,9 +95,9 @@ func TestAcquireSocket(t *testing.T) {
 }
 
 func TestAcquireSocketGuards(t *testing.T) {
-	validDialer := &MockDialer{
-		DialFunc: func(string, http.Header) (Socket, *http.Response, error) {
-			return NewMockSocket(), nil, nil
+	validDialer := &honeybeetest.MockDialer{
+		DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
 	validRetryMgr := NewRetryManager(GetDefaultRetryConfig())
@@ -103,7 +105,7 @@ func TestAcquireSocketGuards(t *testing.T) {
 	cases := []struct {
 		name     string
 		retryMgr *RetryManager
-		dialer   Dialer
+		dialer   types.Dialer
 		url      string
 		wantErr  string
 	}{

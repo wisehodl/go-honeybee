@@ -1,4 +1,4 @@
-package honeybee
+package transport
 
 import (
 	"github.com/stretchr/testify/assert"

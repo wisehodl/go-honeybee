@@ -1,7 +1,6 @@
-package honeybee
+package transport
 
 import (
-	"git.wisehodl.dev/jay/go-honeybee/errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -72,7 +71,7 @@ func TestApplyConnectionOptions(t *testing.T) {
 		WithRetryMaxRetries(-10),
 	)
 
-	assert.ErrorIs(t, err, errors.InvalidRetryMaxRetries)
+	assert.ErrorIs(t, err, InvalidRetryMaxRetries)
 }
 
 // Option Tests
@@ -103,7 +102,7 @@ func TestWithWriteTimeout(t *testing.T) {
 	conf = &ConnectionConfig{}
 	opt = WithWriteTimeout(-30)
 	err = applyConnectionOptions(conf, opt)
-	assert.ErrorIs(t, err, errors.InvalidWriteTimeout)
+	assert.ErrorIs(t, err, InvalidWriteTimeout)
 	assert.ErrorContains(t, err, "write timeout cannot be negative")
 }
 
@@ -132,7 +131,7 @@ func TestWithRetry(t *testing.T) {
 		// negative disallowed
 		opt = WithRetryMaxRetries(-10)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryMaxRetries)
+		assert.ErrorIs(t, err, InvalidRetryMaxRetries)
 		assert.ErrorContains(t, err, "max retry count cannot be negative")
 	})
 
@@ -146,13 +145,13 @@ func TestWithRetry(t *testing.T) {
 		// zero disallowed
 		opt = WithRetryInitialDelay(0 * time.Second)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
+		assert.ErrorIs(t, err, InvalidRetryInitialDelay)
 		assert.ErrorContains(t, err, "initial delay must be positive")
 
 		// negative disallowed
 		opt = WithRetryInitialDelay(-10 * time.Second)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryInitialDelay)
+		assert.ErrorIs(t, err, InvalidRetryInitialDelay)
 	})
 
 	t.Run("with max delay", func(t *testing.T) {
@@ -165,13 +164,13 @@ func TestWithRetry(t *testing.T) {
 		// zero disallowed
 		opt = WithRetryMaxDelay(0 * time.Second)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
+		assert.ErrorIs(t, err, InvalidRetryMaxDelay)
 		assert.ErrorContains(t, err, "max delay must be positive")
 
 		// negative disallowed
 		opt = WithRetryMaxDelay(-10 * time.Second)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryMaxDelay)
+		assert.ErrorIs(t, err, InvalidRetryMaxDelay)
 	})
 
 	t.Run("with jitter factor", func(t *testing.T) {
@@ -185,13 +184,13 @@ func TestWithRetry(t *testing.T) {
 		// negative disallowed
 		opt = WithRetryJitterFactor(-1)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
+		assert.ErrorIs(t, err, InvalidRetryJitterFactor)
 		assert.ErrorContains(t, err, "jitter factor must be between 0.0 and 1.0")
 
 		// >1 disallowed
 		opt = WithRetryJitterFactor(1.1)
 		err = applyConnectionOptions(conf, opt)
-		assert.ErrorIs(t, err, errors.InvalidRetryJitterFactor)
+		assert.ErrorIs(t, err, InvalidRetryJitterFactor)
 	})
 }
 
@@ -239,7 +238,7 @@ func TestValidateConnectionConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateConnectionConfig(&tc.conf)
+			err := ValidateConnectionConfig(&tc.conf)
 
 			if tc.wantErr != nil || tc.wantErrText != "" {
 				if tc.wantErr != nil {

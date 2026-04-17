@@ -1,7 +1,6 @@
-package honeybee
+package transport
 
 import (
-	"git.wisehodl.dev/jay/go-honeybee/errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -41,17 +40,17 @@ func TestParseURL(t *testing.T) {
 		{
 			name:    "http scheme rejected",
 			url:     "http://example.com",
-			wantErr: errors.InvalidProtocol,
+			wantErr: InvalidProtocol,
 		},
 		{
 			name:    "missing scheme",
 			url:     "example.com:8080",
-			wantErr: errors.InvalidProtocol,
+			wantErr: InvalidProtocol,
 		},
 		{
 			name:    "empty string",
 			url:     "",
-			wantErr: errors.InvalidProtocol,
+			wantErr: InvalidProtocol,
 		},
 		{
 			name:        "malformed url",
@@ -161,5 +160,5 @@ func TestNormalizeURL(t *testing.T) {
 
 func TestNormalizeURLError(t *testing.T) {
 	_, err := NormalizeURL("http://relay.example.com")
-	assert.ErrorIs(t, err, errors.InvalidProtocol)
+	assert.ErrorIs(t, err, InvalidProtocol)
 }

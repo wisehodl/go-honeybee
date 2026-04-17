@@ -1,14 +1,14 @@
-package honeybee
+package transport
 
 import (
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"sync"
 	"time"
 
-	"git.wisehodl.dev/jay/go-honeybee/errors"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 )
 
@@ -38,8 +38,8 @@ func (s ConnectionState) String() string {
 
 type Connection struct {
 	url    *url.URL
-	dialer Dialer
-	socket Socket
+	dialer types.Dialer
+	socket types.Socket
 	config *ConnectionConfig
 	logger *slog.Logger
 
@@ -60,7 +60,7 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 		config = GetDefaultConnectionConfig()
 	}
 
-	if err := validateConnectionConfig(config); err != nil {
+	if err := ValidateConnectionConfig(config); err != nil {
 		return nil, err
 	}
 
@@ -85,16 +85,16 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 	return conn, nil
 }
 
-func NewConnectionFromSocket(socket Socket, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
+func NewConnectionFromSocket(socket types.Socket, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
 	if socket == nil {
-		return nil, errors.NewConnectionError("socket cannot be nil")
+		return nil, NewConnectionError("socket cannot be nil")
 	}
 
 	if config == nil {
 		config = GetDefaultConnectionConfig()
 	}
 
-	if err := validateConnectionConfig(config); err != nil {
+	if err := ValidateConnectionConfig(config); err != nil {
 		return nil, err
 	}
 
@@ -126,11 +126,11 @@ func (c *Connection) Connect() error {
 	defer c.mu.Unlock()
 
 	if c.socket != nil {
-		return errors.NewConnectionError("connection already has socket")
+		return NewConnectionError("connection already has socket")
 	}
 
 	if c.closed {
-		return errors.NewConnectionError("connection is closed")
+		return NewConnectionError("connection is closed")
 	}
 
 	if c.logger != nil {
@@ -177,7 +177,7 @@ func (c *Connection) startReader() {
 			if err != nil {
 				if c.logger != nil {
 					var closeErr *websocket.CloseError
-					if stderrors.As(err, &closeErr) {
+					if errors.As(err, &closeErr) {
 						switch closeErr.Code {
 						case websocket.CloseNormalClosure, websocket.CloseGoingAway:
 							c.logger.Info("connection closed by peer",
@@ -263,16 +263,16 @@ func (c *Connection) Send(data []byte) error {
 	defer c.mu.RUnlock()
 
 	if c.closed {
-		return errors.NewConnectionError("connection closed")
+		return NewConnectionError("connection closed")
 	}
 
 	select {
 	case c.outgoing <- data:
 		return nil
 	case <-c.done:
-		return errors.NewConnectionError("connection closing")
+		return NewConnectionError("connection closing")
 	default:
-		return errors.NewConnectionError("outgoing queue full")
+		return NewConnectionError("outgoing queue full")
 	}
 }
 
@@ -336,4 +336,8 @@ func (c *Connection) State() ConnectionState {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.state
+}
+
+func (c *Connection) SetDialer(d types.Dialer) {
+	c.dialer = d
 }

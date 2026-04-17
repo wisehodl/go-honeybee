@@ -1,8 +1,9 @@
-package honeybee
+package transport
 
 import (
 	"bytes"
 	"fmt"
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -38,7 +39,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 	t.Run("socket close error does not propagate", func(t *testing.T) {
 		expectedErr := fmt.Errorf("socket close failed")
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.CloseFunc = func() error {
 			return expectedErr
 		}
@@ -64,7 +65,8 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick, "errors channel should close")
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
+			"errors channel should close")
 	})
 
 	t.Run("send fails after close", func(t *testing.T) {
@@ -86,7 +88,8 @@ func TestConnectedConnectionClose(t *testing.T) {
 
 		// Send a message to ensure reader loop is blocking
 		canary := []byte("canary")
-		incomingData <- mockIncomingData{msgType: websocket.TextMessage, data: canary}
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.TextMessage, Data: canary}
 
 		assert.Eventually(t, func() bool {
 			select {
@@ -95,7 +98,7 @@ func TestConnectedConnectionClose(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
@@ -119,9 +122,9 @@ func TestConnectedConnectionClose(t *testing.T) {
 		conn, _, incomingData, _ := setupTestConnection(t, nil)
 
 		for i := 0; i < 10; i++ {
-			incomingData <- mockIncomingData{
-				msgType: websocket.TextMessage,
-				data:    []byte(fmt.Sprintf("in-%d", i)),
+			incomingData <- honeybeetest.MockIncomingData{
+				MsgType: websocket.TextMessage,
+				Data:    []byte(fmt.Sprintf("in-%d", i)),
 			}
 			conn.Send([]byte(fmt.Sprintf("out-%d", i)))
 		}

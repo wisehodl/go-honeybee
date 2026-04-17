@@ -1,8 +1,8 @@
-package honeybee
+package transport
 
 import (
-	"bytes"
 	"fmt"
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -17,13 +17,13 @@ func TestStartReader(t *testing.T) {
 		defer conn.Close()
 
 		testData := []byte("hello")
-		incomingData <- mockIncomingData{
-			msgType: websocket.TextMessage,
-			data:    testData,
-			err:     nil,
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.TextMessage,
+			Data:    testData,
+			Err:     nil,
 		}
 
-		expectIncoming(t, conn, testData)
+		honeybeetest.ExpectIncoming(t, conn.Incoming(), testData)
 	})
 
 	t.Run("binary messages route to incoming channel", func(t *testing.T) {
@@ -31,13 +31,13 @@ func TestStartReader(t *testing.T) {
 		defer conn.Close()
 
 		testData := []byte{0x00, 0x01, 0x02}
-		incomingData <- mockIncomingData{
-			msgType: websocket.BinaryMessage,
-			data:    testData,
-			err:     nil,
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.BinaryMessage,
+			Data:    testData,
+			Err:     nil,
 		}
 
-		expectIncoming(t, conn, testData)
+		honeybeetest.ExpectIncoming(t, conn.Incoming(), testData)
 	})
 
 	t.Run("multiple messages processed sequentially", func(t *testing.T) {
@@ -46,20 +46,21 @@ func TestStartReader(t *testing.T) {
 
 		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}
 		for _, msg := range messages {
-			incomingData <- mockIncomingData{msgType: websocket.TextMessage, data: msg, err: nil}
+			incomingData <- honeybeetest.MockIncomingData{
+				MsgType: websocket.TextMessage, Data: msg, Err: nil}
 		}
 
 		for _, expected := range messages {
-			expectIncoming(t, conn, expected)
+			honeybeetest.ExpectIncoming(t, conn.Incoming(), expected)
 		}
 	})
 
 	t.Run("reader exits on socket read error", func(t *testing.T) {
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 
 		mockSocket.CloseFunc = func() error {
-			mockSocket.once.Do(func() {
-				close(mockSocket.closed)
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
 			})
 			return nil
 		}
@@ -80,11 +81,11 @@ func TestStartReader(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		assert.Eventually(t, func() bool {
 			return conn.State() == StateClosed
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 }
 
@@ -97,7 +98,7 @@ func TestStartWriter(t *testing.T) {
 		err := conn.Send(testData)
 		assert.NoError(t, err)
 
-		expectWrite(t, outgoingData, websocket.TextMessage, testData)
+		honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, testData)
 	})
 
 	t.Run("multiple messages processed sequentially", func(t *testing.T) {
@@ -111,7 +112,7 @@ func TestStartWriter(t *testing.T) {
 		}
 
 		for _, expected := range messages {
-			expectWrite(t, outgoingData, websocket.TextMessage, expected)
+			honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, expected)
 		}
 	})
 
@@ -122,12 +123,12 @@ func TestStartWriter(t *testing.T) {
 
 		config := &ConnectionConfig{WriteTimeout: 0}
 
-		outgoingData := make(chan mockOutgoingData, 10)
-		mockSocket := NewMockSocket()
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
 
 		mockSocket.CloseFunc = func() error {
-			mockSocket.once.Do(func() {
-				close(mockSocket.closed)
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
 			})
 			return nil
 		}
@@ -140,8 +141,9 @@ func TestStartWriter(t *testing.T) {
 
 		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
 			select {
-			case outgoingData <- mockOutgoingData{msgType: msgType, data: data}:
-			case <-mockSocket.closed:
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
 				return io.EOF
 			}
 			return nil
@@ -161,19 +163,19 @@ func TestStartWriter(t *testing.T) {
 			default:
 				return false
 			}
-		}, negativeTestTimeout, testTick,
+		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick,
 			"SetWriteDeadline should not be called when timeout is zero")
 	})
 
 	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
 		config := &ConnectionConfig{WriteTimeout: 30 * time.Millisecond}
 
-		outgoingData := make(chan mockOutgoingData, 10)
-		mockSocket := NewMockSocket()
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
 
 		mockSocket.CloseFunc = func() error {
-			mockSocket.once.Do(func() {
-				close(mockSocket.closed)
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
 			})
 			return nil
 		}
@@ -186,8 +188,9 @@ func TestStartWriter(t *testing.T) {
 
 		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
 			select {
-			case outgoingData <- mockOutgoingData{msgType: msgType, data: data}:
-			case <-mockSocket.closed:
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
 				return io.EOF
 			}
 			return nil
@@ -207,18 +210,18 @@ func TestStartWriter(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick,
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
 			"SetWriteDeadline should be called when timeout is positive")
 	})
 
 	t.Run("writer exits on deadline error", func(t *testing.T) {
 		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
 
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 
 		mockSocket.CloseFunc = func() error {
-			mockSocket.once.Do(func() {
-				close(mockSocket.closed)
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
 			})
 			return nil
 		}
@@ -242,15 +245,15 @@ func TestStartWriter(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		assert.Eventually(t, func() bool {
 			return conn.State() == StateClosed
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
 	t.Run("writer exits on socket write error", func(t *testing.T) {
-		mockSocket := NewMockSocket()
+		mockSocket := honeybeetest.NewMockSocket()
 
 		writeErr := fmt.Errorf("write failed")
 		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
@@ -271,45 +274,12 @@ func TestStartWriter(t *testing.T) {
 			default:
 				return false
 			}
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		assert.Eventually(t, func() bool {
 			return conn.State() == StateClosed
-		}, testTimeout, testTick)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 }
 
 // Helpers
-
-func expectIncoming(t *testing.T, conn *Connection, expected []byte) {
-	t.Helper()
-	assert.Eventually(t, func() bool {
-		select {
-		case received := <-conn.Incoming():
-			return bytes.Equal(received, expected)
-		default:
-			return false
-		}
-	}, testTimeout, testTick)
-}
-
-func expectWrite(t *testing.T, outgoingData chan mockOutgoingData, msgType int, expected []byte) {
-	t.Helper()
-
-	var call mockOutgoingData
-	found := assert.Eventually(t, func() bool {
-		select {
-		case received := <-outgoingData:
-			call = received
-			return true
-		default:
-			return false
-		}
-	}, testTimeout, testTick)
-
-	if found {
-
-		assert.Equal(t, msgType, call.msgType)
-		assert.Equal(t, expected, call.data)
-	}
-}
