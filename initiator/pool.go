@@ -211,12 +211,6 @@ func (p *Pool) Remove(id string) error {
 
 	close(peer.stop)
 
-	select {
-	case p.events <- PoolEvent{ID: id, Kind: EventDisconnected}:
-	case <-p.done:
-		return nil
-	}
-
 	return nil
 }
 
