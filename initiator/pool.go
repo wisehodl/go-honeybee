@@ -67,7 +67,9 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 		config = GetDefaultPoolConfig()
 	}
 
-	// if a custom factory is supplied, config.WorkerConfig is not used
+	// If a custom factory is supplied, config.WorkerConfig is not used.
+	// The factory function should be non-blocking or else Connect() may cause
+	// deadlocks.
 	if config.WorkerFactory == nil {
 		config.WorkerFactory = func(id string, stop <-chan struct{}) (*Worker, error) {
 			return NewWorker(id, stop, config.WorkerConfig)
@@ -145,7 +147,6 @@ func (p *Pool) Connect(id string) error {
 		return err
 	}
 
-	// Check for existing connection in pool
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -161,6 +162,7 @@ func (p *Pool) Connect(id string) error {
 	// Create new worker
 	stop := make(chan struct{})
 
+	// The worker factory must be non-blocking to avoid deadlocks
 	worker, err := p.config.WorkerFactory(id, stop)
 	if err != nil {
 		close(stop)
