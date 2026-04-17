@@ -7,11 +7,7 @@ import (
 
 // Types
 
-type WorkerFactory func(
-	id string,
-	conn *transport.Connection,
-	onReconnect func() (*transport.Connection, error),
-) Worker
+type WorkerFactory func(id string, stop <-chan struct{}) Worker
 
 // Pool Config
 
