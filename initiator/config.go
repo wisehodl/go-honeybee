@@ -7,7 +7,7 @@ import (
 
 // Types
 
-type WorkerFactory func(id string, stop <-chan struct{}) Worker
+type WorkerFactory func(id string, stop <-chan struct{}) (*Worker, error)
 
 // Pool Config
 

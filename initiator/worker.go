@@ -21,6 +21,15 @@ func NewWorker(
 	config *WorkerConfig,
 
 ) (*Worker, error) {
+	if config == nil {
+		config = GetDefaultWorkerConfig()
+	}
+
+	err := ValidateWorkerConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	w := &Worker{
 		id:     id,
 		stop:   stop,
