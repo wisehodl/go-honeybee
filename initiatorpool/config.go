@@ -99,8 +99,8 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 // Worker Config
 
 type WorkerConfig struct {
-	IdleTimeout  time.Duration
-	MaxQueueSize int
+	KeepaliveTimeout time.Duration
+	MaxQueueSize     int
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -118,8 +118,8 @@ func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 
 func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
-		IdleTimeout:  20 * time.Second,
-		MaxQueueSize: 0, // disabled by default
+		KeepaliveTimeout: 20 * time.Second,
+		MaxQueueSize:     0, // disabled by default
 	}
 }
 
@@ -133,7 +133,7 @@ func applyWorkerOptions(config *WorkerConfig, options ...WorkerOption) error {
 }
 
 func ValidateWorkerConfig(config *WorkerConfig) error {
-	err := validateIdleTimeout(config.IdleTimeout)
+	err := validateKeepaliveTimeout(config.KeepaliveTimeout)
 	if err != nil {
 		return err
 	}
@@ -153,21 +153,21 @@ func validateMaxQueueSize(value int) error {
 	return nil
 }
 
-func validateIdleTimeout(value time.Duration) error {
+func validateKeepaliveTimeout(value time.Duration) error {
 	if value < 0 {
-		return InvalidIdleTimeout
+		return InvalidKeepaliveTimeout
 	}
 	return nil
 }
 
-// When IdleTimeout is set to zero, idle timeouts are disabled.
-func WithIdleTimeout(value time.Duration) WorkerOption {
+// When KeepaliveTimeout is set to zero, keepalive timeouts are disabled.
+func WithKeepaliveTimeout(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
-		err := validateIdleTimeout(value)
+		err := validateKeepaliveTimeout(value)
 		if err != nil {
 			return err
 		}
-		c.IdleTimeout = value
+		c.KeepaliveTimeout = value
 		return nil
 	}
 }

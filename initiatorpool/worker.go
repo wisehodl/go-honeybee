@@ -57,7 +57,14 @@ func (w *Worker) dial(ctx WorkerContext) (*transport.Connection, error) {
 }
 
 func (w *Worker) Send(data []byte) error {
-	return nil
+	select {
+	case w.outbound <- data:
+		return nil
+	case <-w.stop:
+		return NewWorkerError(w.id, "worker is stopped")
+	default:
+		return NewWorkerError(w.id, "outbound queue full")
+	}
 }
 
 func (w *Worker) Start(
@@ -67,59 +74,45 @@ func (w *Worker) Start(
 }
 
 func (w *Worker) runSession(
-	conn *transport.Connection,
-
 	messages chan<- receivedMessage,
 	heartbeat chan<- struct{},
-	reconnect chan<- struct{},
+	dial chan<- struct{},
 
+	keepalive <-chan struct{},
 	outbound <-chan []byte,
-	idle <-chan struct{},
 	newConn <-chan *transport.Connection,
 
 	ctx WorkerContext,
 
-	workerDone <-chan struct{},
+	workerStop <-chan struct{},
 	poolDone <-chan struct{},
-)
+) {
+}
 
 func (w *Worker) runReader(
 	conn *transport.Connection,
-
 	messages chan<- receivedMessage,
 	heartbeat chan<- struct{},
-
-	workerDone <-chan struct{},
-	poolDone <-chan struct{},
 	sessionDone <-chan struct{},
-
 	onStop func(),
 ) {
 }
 
 func (w *Worker) runWriter(
 	conn *transport.Connection,
-
 	outbound <-chan []byte,
 	heartbeat chan<- struct{},
-
-	workerDone <-chan struct{},
-	poolDone <-chan struct{},
 	sessionDone <-chan struct{},
-
 	onStop func(),
 ) {
 }
 
 func (w *Worker) runStopMonitor(
 	conn *transport.Connection,
-
-	stop <-chan struct{},
-
-	workerDone <-chan struct{},
+	keepalive <-chan struct{},
+	workerStop <-chan struct{},
 	poolDone <-chan struct{},
 	sessionDone <-chan struct{},
-
 	onStop func(),
 ) {
 }
@@ -170,14 +163,14 @@ func (w *Worker) runForwarder(
 	}
 }
 
-func (w *Worker) runIdleMonitor(
+func (w *Worker) runKeepalive(
 	heartbeat <-chan struct{},
-	idle chan<- struct{},
+	keepalive chan<- struct{},
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {
-	// disable idle timeout if not configured
-	if w.config.IdleTimeout <= 0 {
+	// disable keepalive timeout if not configured
+	if w.config.KeepaliveTimeout <= 0 {
 		// wait for stop signal and exit
 		select {
 		case <-stop:
@@ -186,7 +179,7 @@ func (w *Worker) runIdleMonitor(
 		return
 	}
 
-	timer := time.NewTimer(w.config.IdleTimeout)
+	timer := time.NewTimer(w.config.KeepaliveTimeout)
 	defer timer.Stop()
 
 	for {
@@ -203,22 +196,23 @@ func (w *Worker) runIdleMonitor(
 				default:
 				}
 			}
-			timer.Reset(w.config.IdleTimeout)
+			timer.Reset(w.config.KeepaliveTimeout)
 		// timer completed
 		case <-timer.C:
-			// send idle signal, then reset the timer
+			// send keepalive signal, then reset the timer
 			select {
-			case idle <- struct{}{}:
+			case keepalive <- struct{}{}:
 			default:
 			}
-			timer.Reset(w.config.IdleTimeout)
+			timer.Reset(w.config.KeepaliveTimeout)
 		}
 	}
 }
 
-func (w *Worker) runReconnector(
-	reconnect <-chan struct{},
+func (w *Worker) runDialer(
+	dial <-chan struct{},
 	newConn chan<- *transport.Connection,
+	ctx WorkerContext,
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {

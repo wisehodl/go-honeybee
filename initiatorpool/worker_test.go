@@ -105,15 +105,15 @@ func TestRunForwarder(t *testing.T) {
 	})
 }
 
-func TestRunIdleMonitor(t *testing.T) {
-	t.Run("heartbeat resets timer, no idle signal fired", func(t *testing.T) {
+func TestRunKeepalive(t *testing.T) {
+	t.Run("heartbeat resets timer, no keepalive signal fired", func(t *testing.T) {
 		heartbeat := make(chan struct{}, 3)
-		idle := make(chan struct{}, 1)
+		keepalive := make(chan struct{}, 1)
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 100 * time.Millisecond}}
-		go w.runIdleMonitor(heartbeat, idle, stop, nil)
+		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond}}
+		go w.runKeepalive(heartbeat, keepalive, stop, nil)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
@@ -121,10 +121,10 @@ func TestRunIdleMonitor(t *testing.T) {
 			heartbeat <- struct{}{}
 		}
 
-		// because the timer is being reset, idle signal should not be sent
+		// because the timer is being reset, keepalive signal should not be sent
 		assert.Never(t, func() bool {
 			select {
-			case <-idle:
+			case <-keepalive:
 				return true
 			default:
 				return false
@@ -132,19 +132,19 @@ func TestRunIdleMonitor(t *testing.T) {
 		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick)
 	})
 
-	t.Run("idle timeout fires signal", func(t *testing.T) {
+	t.Run("keepalive timeout fires signal", func(t *testing.T) {
 		heartbeat := make(chan struct{})
-		idle := make(chan struct{}, 1)
+		keepalive := make(chan struct{}, 1)
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Millisecond}}
-		go w.runIdleMonitor(heartbeat, idle, stop, nil)
+		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Millisecond}}
+		go w.runKeepalive(heartbeat, keepalive, stop, nil)
 
-		// send no heartbeats, wait for timeout and idle signal
+		// send no heartbeats, wait for timeout and keepalive signal
 		assert.Eventually(t, func() bool {
 			select {
-			case <-idle:
+			case <-keepalive:
 				return true
 			default:
 				return false
@@ -154,13 +154,13 @@ func TestRunIdleMonitor(t *testing.T) {
 
 	t.Run("exits on stop", func(t *testing.T) {
 		heartbeat := make(chan struct{})
-		idle := make(chan struct{}, 1)
+		keepalive := make(chan struct{}, 1)
 		stop := make(chan struct{})
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Second}}
+		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
-			w.runIdleMonitor(heartbeat, idle, stop, nil)
+			w.runKeepalive(heartbeat, keepalive, stop, nil)
 			close(done)
 		}()
 
@@ -176,10 +176,4 @@ func TestRunIdleMonitor(t *testing.T) {
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
-}
-
-func TestRunReconnector(t *testing.T) {
-	t.Run("reconnect emits events, new connection", func(t *testing.T) {})
-	t.Run("dial failure emits error", func(t *testing.T) {})
-	t.Run("exits on stop", func(t *testing.T) {})
 }
