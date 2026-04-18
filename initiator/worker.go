@@ -119,8 +119,8 @@ func (w *Worker) runHealthMonitor(
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {
-	// disable if idle timeout is disabled
-	if w.config.IdleTimeout <= 0 {
+	// disable if reconnect timeout is disabled
+	if w.config.ReconnectTimeout <= 0 {
 		// wait for stop signal and exit
 		select {
 		case <-stop:
@@ -129,7 +129,7 @@ func (w *Worker) runHealthMonitor(
 		return
 	}
 
-	timer := time.NewTimer(w.config.IdleTimeout)
+	timer := time.NewTimer(w.config.ReconnectTimeout)
 	defer timer.Stop()
 
 	for {
@@ -146,7 +146,7 @@ func (w *Worker) runHealthMonitor(
 				default:
 				}
 			}
-			timer.Reset(w.config.IdleTimeout)
+			timer.Reset(w.config.ReconnectTimeout)
 		// timer completed
 		case <-timer.C:
 			// initiate reconnect, then reset the timer
@@ -155,7 +155,7 @@ func (w *Worker) runHealthMonitor(
 			case reconnect <- struct{}{}:
 			default:
 			}
-			timer.Reset(w.config.IdleTimeout)
+			timer.Reset(w.config.ReconnectTimeout)
 		}
 	}
 }

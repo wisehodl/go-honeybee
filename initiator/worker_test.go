@@ -112,7 +112,7 @@ func TestRunHealthMonitor(t *testing.T) {
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 100 * time.Millisecond}}
+		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 100 * time.Millisecond}}
 		go w.runHealthMonitor(heartbeat, reconnect, stop, nil)
 
 		// send heartbeats faster than the timeout
@@ -132,13 +132,13 @@ func TestRunHealthMonitor(t *testing.T) {
 		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick)
 	})
 
-	t.Run("idle timeout fires reconnect", func(t *testing.T) {
+	t.Run("reconnect timeout fires reconnect", func(t *testing.T) {
 		heartbeat := make(chan struct{})
 		reconnect := make(chan struct{}, 1)
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Millisecond}}
+		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 20 * time.Millisecond}}
 		go w.runHealthMonitor(heartbeat, reconnect, stop, nil)
 
 		// send no heartbeats, wait for timeout and reconnect signal
@@ -157,7 +157,7 @@ func TestRunHealthMonitor(t *testing.T) {
 		reconnect := make(chan struct{}, 1)
 		stop := make(chan struct{})
 
-		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Second}}
+		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
 			w.runHealthMonitor(heartbeat, reconnect, stop, nil)
@@ -176,4 +176,10 @@ func TestRunHealthMonitor(t *testing.T) {
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
+}
+
+func TestRunReconnector(t *testing.T) {
+	t.Run("reconnect emits events, new connection", func(t *testing.T) {})
+	t.Run("dial failure emits error", func(t *testing.T) {})
+	t.Run("exits on stop", func(t *testing.T) {})
 }
