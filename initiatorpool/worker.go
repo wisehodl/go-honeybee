@@ -1,4 +1,4 @@
-package initiator
+package initiatorpool
 
 import (
 	"container/list"
@@ -15,10 +15,10 @@ type receivedMessage struct {
 }
 
 type Worker struct {
-	id     string
-	stop   <-chan struct{}
-	config *WorkerConfig
-	conn   *transport.Connection
+	id       string
+	stop     <-chan struct{}
+	config   *WorkerConfig
+	outbound chan []byte
 }
 
 func NewWorker(
@@ -37,16 +37,27 @@ func NewWorker(
 	}
 
 	w := &Worker{
-		id:     id,
-		stop:   stop,
-		config: config,
+		id:       id,
+		stop:     stop,
+		outbound: make(chan []byte, 64),
+		config:   config,
 	}
 
 	return w, nil
 }
 
+func (w *Worker) dial(ctx WorkerContext) (*transport.Connection, error) {
+	conn, err := transport.NewConnection(w.id, ctx.ConnectionConfig, ctx.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.SetDialer(ctx.Dialer)
+	return conn, conn.Connect()
+}
+
 func (w *Worker) Send(data []byte) error {
-	return w.conn.Send(data)
+	return nil
 }
 
 func (w *Worker) Start(
@@ -55,15 +66,61 @@ func (w *Worker) Start(
 ) {
 }
 
-func (w *Worker) runReader(
+func (w *Worker) runSession(
 	conn *transport.Connection,
+
 	messages chan<- receivedMessage,
 	heartbeat chan<- struct{},
 	reconnect chan<- struct{},
-	newConn <-chan *transport.Connection,
-	stop <-chan struct{},
-	poolDone <-chan struct{},
 
+	outbound <-chan []byte,
+	idle <-chan struct{},
+	newConn <-chan *transport.Connection,
+
+	ctx WorkerContext,
+
+	workerDone <-chan struct{},
+	poolDone <-chan struct{},
+)
+
+func (w *Worker) runReader(
+	conn *transport.Connection,
+
+	messages chan<- receivedMessage,
+	heartbeat chan<- struct{},
+
+	workerDone <-chan struct{},
+	poolDone <-chan struct{},
+	sessionDone <-chan struct{},
+
+	onStop func(),
+) {
+}
+
+func (w *Worker) runWriter(
+	conn *transport.Connection,
+
+	outbound <-chan []byte,
+	heartbeat chan<- struct{},
+
+	workerDone <-chan struct{},
+	poolDone <-chan struct{},
+	sessionDone <-chan struct{},
+
+	onStop func(),
+) {
+}
+
+func (w *Worker) runStopMonitor(
+	conn *transport.Connection,
+
+	stop <-chan struct{},
+
+	workerDone <-chan struct{},
+	poolDone <-chan struct{},
+	sessionDone <-chan struct{},
+
+	onStop func(),
 ) {
 }
 
@@ -113,14 +170,14 @@ func (w *Worker) runForwarder(
 	}
 }
 
-func (w *Worker) runHealthMonitor(
+func (w *Worker) runIdleMonitor(
 	heartbeat <-chan struct{},
-	reconnect chan<- struct{},
+	idle chan<- struct{},
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {
-	// disable if reconnect timeout is disabled
-	if w.config.ReconnectTimeout <= 0 {
+	// disable idle timeout if not configured
+	if w.config.IdleTimeout <= 0 {
 		// wait for stop signal and exit
 		select {
 		case <-stop:
@@ -129,7 +186,7 @@ func (w *Worker) runHealthMonitor(
 		return
 	}
 
-	timer := time.NewTimer(w.config.ReconnectTimeout)
+	timer := time.NewTimer(w.config.IdleTimeout)
 	defer timer.Stop()
 
 	for {
@@ -146,16 +203,15 @@ func (w *Worker) runHealthMonitor(
 				default:
 				}
 			}
-			timer.Reset(w.config.ReconnectTimeout)
+			timer.Reset(w.config.IdleTimeout)
 		// timer completed
 		case <-timer.C:
-			// initiate reconnect, then reset the timer
-			// multiple reconnect signals during reconnection is idempotent
+			// send idle signal, then reset the timer
 			select {
-			case reconnect <- struct{}{}:
+			case idle <- struct{}{}:
 			default:
 			}
-			timer.Reset(w.config.ReconnectTimeout)
+			timer.Reset(w.config.IdleTimeout)
 		}
 	}
 }

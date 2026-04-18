@@ -1,4 +1,4 @@
-package initiator
+package initiatorpool
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"
@@ -99,8 +99,8 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 // Worker Config
 
 type WorkerConfig struct {
-	ReconnectTimeout time.Duration
-	MaxQueueSize     int
+	IdleTimeout  time.Duration
+	MaxQueueSize int
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -118,8 +118,8 @@ func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 
 func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
-		ReconnectTimeout: 20 * time.Second,
-		MaxQueueSize:     0, // disabled by default
+		IdleTimeout:  20 * time.Second,
+		MaxQueueSize: 0, // disabled by default
 	}
 }
 
@@ -133,7 +133,7 @@ func applyWorkerOptions(config *WorkerConfig, options ...WorkerOption) error {
 }
 
 func ValidateWorkerConfig(config *WorkerConfig) error {
-	err := validateReconnectTimeout(config.ReconnectTimeout)
+	err := validateIdleTimeout(config.IdleTimeout)
 	if err != nil {
 		return err
 	}
@@ -153,21 +153,21 @@ func validateMaxQueueSize(value int) error {
 	return nil
 }
 
-func validateReconnectTimeout(value time.Duration) error {
+func validateIdleTimeout(value time.Duration) error {
 	if value < 0 {
-		return InvalidReconnectTimeout
+		return InvalidIdleTimeout
 	}
 	return nil
 }
 
-// When ReconnectTimeout is set to zero, idle timeouts are disabled.
-func WithReconnectTimeout(value time.Duration) WorkerOption {
+// When IdleTimeout is set to zero, idle timeouts are disabled.
+func WithIdleTimeout(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
-		err := validateReconnectTimeout(value)
+		err := validateIdleTimeout(value)
 		if err != nil {
 			return err
 		}
-		c.ReconnectTimeout = value
+		c.IdleTimeout = value
 		return nil
 	}
 }
