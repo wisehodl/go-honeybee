@@ -58,7 +58,7 @@ func (w *Worker) Start(
 func (w *Worker) runReader(
 	conn *transport.Connection,
 	messages chan<- receivedMessage,
-	heartbeat chan<- time.Time,
+	heartbeat chan<- struct{},
 	reconnect chan<- struct{},
 	newConn <-chan *transport.Connection,
 	stop <-chan struct{},
@@ -114,10 +114,50 @@ func (w *Worker) runForwarder(
 }
 
 func (w *Worker) runHealthMonitor(
-	heartbeat <-chan time.Time,
+	heartbeat <-chan struct{},
+	reconnect chan<- struct{},
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {
+	// disable if idle timeout is disabled
+	if w.config.IdleTimeout <= 0 {
+		// wait for stop signal and exit
+		select {
+		case <-stop:
+		case <-poolDone:
+		}
+		return
+	}
+
+	timer := time.NewTimer(w.config.IdleTimeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-poolDone:
+			return
+		case <-heartbeat:
+			// drain the timer channel and reset
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(w.config.IdleTimeout)
+		// timer completed
+		case <-timer.C:
+			// initiate reconnect, then reset the timer
+			// multiple reconnect signals during reconnection is idempotent
+			select {
+			case reconnect <- struct{}{}:
+			default:
+			}
+			timer.Reset(w.config.IdleTimeout)
+		}
+	}
 }
 
 func (w *Worker) runReconnector(
