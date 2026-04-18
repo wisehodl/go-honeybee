@@ -1,6 +1,7 @@
 package initiatorpool
 
 import (
+	"context"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
@@ -17,12 +18,12 @@ func _TestPoolConnect(t *testing.T) {
 	t.Run("successfully adds connection", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewPool(context.Background(), nil, nil)
 		assert.NoError(t, err)
 
 		pool.dialer = mockDialer
@@ -48,12 +49,12 @@ func _TestPoolConnect(t *testing.T) {
 	t.Run("does not add duplicate", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewPool(context.Background(), nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -74,6 +75,7 @@ func _TestPoolConnect(t *testing.T) {
 
 	t.Run("fails to add connection", func(t *testing.T) {
 		pool, err := NewPool(
+			context.Background(),
 			&PoolConfig{
 				ConnectionConfig: &transport.ConnectionConfig{
 					Retry: &transport.RetryConfig{
@@ -84,7 +86,7 @@ func _TestPoolConnect(t *testing.T) {
 			}, nil)
 		assert.NoError(t, err)
 		pool.dialer = &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
@@ -111,12 +113,12 @@ func _TestPoolRemove(t *testing.T) {
 	t.Run("removes known url", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewPool(context.Background(), nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -139,12 +141,12 @@ func _TestPoolRemove(t *testing.T) {
 	t.Run("unknown url returns error", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewPool(context.Background(), nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -156,12 +158,12 @@ func _TestPoolRemove(t *testing.T) {
 	t.Run("closed pool returns error", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 
-		pool, err := NewPool(nil, nil)
+		pool, err := NewPool(context.Background(), nil, nil)
 		assert.NoError(t, err)
 		pool.dialer = mockDialer
 
@@ -184,12 +186,12 @@ func _TestPoolSend(t *testing.T) {
 		return nil
 	}
 	mockDialer := &honeybeetest.MockDialer{
-		DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 			return mockSocket, nil, nil
 		},
 	}
 
-	pool, err := NewPool(nil, nil)
+	pool, err := NewPool(context.Background(), nil, nil)
 	assert.NoError(t, err)
 	pool.dialer = mockDialer
 

@@ -1,12 +1,16 @@
 package types
 
 import (
+	"context"
 	"net/http"
 	"time"
 )
 
 type Dialer interface {
-	Dial(urlStr string, requestHeader http.Header) (Socket, *http.Response, error)
+	DialContext(ctx context.Context,
+		url string,
+		header http.Header,
+	) (Socket, *http.Response, error)
 }
 
 type Socket interface {

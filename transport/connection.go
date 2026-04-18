@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -64,13 +65,13 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 		return nil, err
 	}
 
-	parsedURL, err := ParseURL(urlStr)
+	url, err := ParseURL(urlStr)
 	if err != nil {
 		return nil, err
 	}
 
 	conn := &Connection{
-		url:      parsedURL,
+		url:      url,
 		dialer:   NewDialer(),
 		socket:   nil,
 		config:   config,
@@ -85,7 +86,9 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 	return conn, nil
 }
 
-func NewConnectionFromSocket(socket types.Socket, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
+func NewConnectionFromSocket(
+	socket types.Socket, config *ConnectionConfig, logger *slog.Logger,
+) (*Connection, error) {
 	if socket == nil {
 		return nil, NewConnectionError("socket cannot be nil")
 	}
@@ -121,7 +124,7 @@ func NewConnectionFromSocket(socket types.Socket, config *ConnectionConfig, logg
 	return conn, nil
 }
 
-func (c *Connection) Connect() error {
+func (c *Connection) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -140,7 +143,8 @@ func (c *Connection) Connect() error {
 	c.state = StateConnecting
 
 	retryMgr := NewRetryManager(c.config.Retry)
-	socket, _, err := AcquireSocket(retryMgr, c.dialer, c.url.String(), c.logger)
+	socket, _, err := AcquireSocket(
+		ctx, retryMgr, c.dialer, c.url.String(), c.logger)
 
 	if err != nil {
 		c.state = StateDisconnected

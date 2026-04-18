@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -28,19 +29,22 @@ func NewGorillaDialer() *GorillaDialer {
 }
 
 // Returns the Socket interface
-func (d *GorillaDialer) Dial(
-	urlStr string, requestHeader http.Header,
+func (d *GorillaDialer) DialContext(
+	ctx context.Context,
+	url string,
+	header http.Header,
 ) (
 	types.Socket, *http.Response, error,
 ) {
-	conn, resp, err := d.Dialer.Dial(urlStr, requestHeader)
+	conn, resp, err := d.Dialer.DialContext(ctx, url, header)
 	return conn, resp, err
 }
 
 func AcquireSocket(
+	ctx context.Context,
 	retryMgr *RetryManager,
 	dialer types.Dialer,
-	urlStr string,
+	url string,
 	logger *slog.Logger,
 ) (types.Socket, *http.Response, error) {
 	if retryMgr == nil {
@@ -49,7 +53,7 @@ func AcquireSocket(
 	if dialer == nil {
 		return nil, nil, NewConnectionError("dialer cannot be nil")
 	}
-	if urlStr == "" {
+	if url == "" {
 		return nil, nil, NewConnectionError("URL cannot be empty")
 	}
 
@@ -58,7 +62,7 @@ func AcquireSocket(
 			logger.Info("dialing", "attempt", retryMgr.RetryCount()+1)
 		}
 
-		socket, resp, err := dialer.Dial(urlStr, nil)
+		socket, resp, err := dialer.DialContext(ctx, url, nil)
 		if err == nil {
 			if logger != nil {
 				logger.Info("dial successful", "attempt", retryMgr.RetryCount()+1)
@@ -84,7 +88,11 @@ func AcquireSocket(
 				"next_delay", delay)
 		}
 
-		time.Sleep(delay)
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
 		retryMgr.RecordRetry()
 	}
 }

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"errors"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
@@ -63,7 +64,8 @@ func TestAcquireSocket(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			attemptIndex := 0
 			mockDialer := &honeybeetest.MockDialer{
-				DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+				DialContextFunc: func(context.Context, string, http.Header,
+				) (types.Socket, *http.Response, error) {
 					err := tc.mockRuns[attemptIndex]
 					attemptIndex++
 					if err != nil {
@@ -80,7 +82,8 @@ func TestAcquireSocket(t *testing.T) {
 				JitterFactor: 0.0,
 			})
 
-			socket, _, err := AcquireSocket(retryMgr, mockDialer, "ws://test", nil)
+			socket, _, err := AcquireSocket(
+				context.Background(), retryMgr, mockDialer, "ws://test", nil)
 
 			assert.Equal(t, tc.wantRetryCount, retryMgr.RetryCount())
 			if tc.wantErr {
@@ -96,7 +99,8 @@ func TestAcquireSocket(t *testing.T) {
 
 func TestAcquireSocketGuards(t *testing.T) {
 	validDialer := &honeybeetest.MockDialer{
-		DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+		DialContextFunc: func(context.Context, string, http.Header,
+		) (types.Socket, *http.Response, error) {
 			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
@@ -134,7 +138,8 @@ func TestAcquireSocketGuards(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			socket, resp, err := AcquireSocket(tc.retryMgr, tc.dialer, tc.url, nil)
+			socket, resp, err := AcquireSocket(
+				context.Background(), tc.retryMgr, tc.dialer, tc.url, nil)
 
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, tc.wantErr)
