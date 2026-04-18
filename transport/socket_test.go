@@ -3,10 +3,12 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -62,12 +64,12 @@ func TestAcquireSocket(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			attemptIndex := 0
+			attemptIndex := atomic.Int32{}
 			mockDialer := &honeybeetest.MockDialer{
 				DialContextFunc: func(context.Context, string, http.Header,
 				) (types.Socket, *http.Response, error) {
-					err := tc.mockRuns[attemptIndex]
-					attemptIndex++
+					err := tc.mockRuns[attemptIndex.Load()]
+					attemptIndex.Add(1)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -147,4 +149,104 @@ func TestAcquireSocketGuards(t *testing.T) {
 			assert.Nil(t, resp)
 		})
 	}
+}
+
+func TestAcquireSocketContextCancellation(t *testing.T) {
+	t.Run("already-canceled context returns immediately without dialing",
+		func(t *testing.T) {
+			dialCalled := atomic.Bool{}
+			mockDialer := &honeybeetest.MockDialer{
+				DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+					dialCalled.Store(true)
+					return honeybeetest.NewMockSocket(), nil, nil
+				},
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			// cancel before acquiring socket
+			cancel()
+
+			retryMgr := NewRetryManager(GetDefaultRetryConfig())
+			_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+
+			assert.ErrorIs(t, err, context.Canceled)
+			assert.False(t, dialCalled.Load())
+		})
+
+	t.Run("context cancelled during sleep returns before next attempt",
+		func(t *testing.T) {
+			dialCount := atomic.Int32{}
+			mockDialer := &honeybeetest.MockDialer{
+				DialContextFunc: func(_ context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+					dialCount.Add(1)
+					return nil, nil, fmt.Errorf("dial failed")
+				},
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			retryMgr := NewRetryManager(&RetryConfig{
+				MaxRetries:   10,
+				InitialDelay: 1 * time.Second,
+				MaxDelay:     1 * time.Second,
+				JitterFactor: 0.0,
+			})
+
+			done := make(chan error, 1)
+			go func() {
+				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+				done <- err
+			}()
+
+			// wait for first dial to complete, then cancel during sleep
+			assert.Eventually(t, func() bool {
+				return dialCount.Load() >= 1
+			}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+			cancel()
+
+			select {
+			case err := <-done:
+				assert.ErrorIs(t, err, context.Canceled)
+
+				// dial count is 2 because the first retry is always immediate
+				assert.Equal(t, int32(2), dialCount.Load())
+			case <-time.After(honeybeetest.TestTimeout):
+				t.Fatal("AcquireSocket did not return after context cancellation")
+			}
+		})
+
+	t.Run("context cancelled during in-progress dial unblocks and returns",
+		func(t *testing.T) {
+			mockDialer := &honeybeetest.MockDialer{
+				DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+					// block until context is cancelled
+					select {
+					case <-ctx.Done():
+						return nil, nil, ctx.Err()
+					}
+				},
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			retryMgr := NewRetryManager(GetDefaultRetryConfig())
+			done := make(chan error, 1)
+			go func() {
+				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+				done <- err
+			}()
+
+			// wait for dialer to block
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+
+			select {
+			case err := <-done:
+				assert.ErrorIs(t, err, context.Canceled)
+			case <-time.After(honeybeetest.TestTimeout):
+				t.Fatal("AcquireSocket did not return after context cancellation")
+			}
+
+		})
 }

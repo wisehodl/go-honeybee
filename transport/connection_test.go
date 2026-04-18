@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -402,6 +403,52 @@ func TestConnect(t *testing.T) {
 		assert.True(t, handlerSet, "close handler should be set on socket")
 
 		conn.Close()
+	})
+}
+
+func TestConnectContextCancellation(t *testing.T) {
+	t.Run("context cancelled during connect returns before retries exhaust", func(t *testing.T) {
+		config := &ConnectionConfig{
+			Retry: &RetryConfig{
+				MaxRetries:   100,
+				InitialDelay: 500 * time.Millisecond,
+				MaxDelay:     1 * time.Second,
+				JitterFactor: 0.0,
+			},
+		}
+		conn, err := NewConnection("ws://test", config, nil)
+		assert.NoError(t, err)
+
+		dialCount := atomic.Int32{}
+		ctx, cancel := context.WithCancel(context.Background())
+
+		conn.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+				dialCount.Add(1)
+				return nil, nil, fmt.Errorf("dial failed")
+			},
+		}
+
+		done := make(chan error, 1)
+		go func() {
+			done <- conn.Connect(ctx)
+		}()
+
+		// wait for first dial
+		assert.Eventually(t, func() bool {
+			return dialCount.Load() >= 1
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		cancel()
+
+		select {
+		case err := <-done:
+			assert.ErrorIs(t, err, context.Canceled)
+
+			// number of dials is fewer than max retry count
+			assert.Less(t, dialCount.Load(), int32(100))
+		case <-time.After(honeybeetest.TestTimeout):
+			t.Fatal("Connect did not return after context cancellation")
+		}
 	})
 }
 
