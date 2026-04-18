@@ -46,16 +46,6 @@ func NewWorker(
 	return w, nil
 }
 
-func (w *Worker) dial(ctx WorkerContext) (*transport.Connection, error) {
-	conn, err := transport.NewConnection(w.id, ctx.ConnectionConfig, ctx.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	conn.SetDialer(ctx.Dialer)
-	return conn, conn.Connect()
-}
-
 func (w *Worker) Send(data []byte) error {
 	select {
 	case w.outbound <- data:
@@ -209,6 +199,16 @@ func (w *Worker) runKeepalive(
 	}
 }
 
+func (w *Worker) dial(ctx WorkerContext) (*transport.Connection, error) {
+	conn, err := transport.NewConnection(w.id, ctx.ConnectionConfig, ctx.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.SetDialer(ctx.Dialer)
+	return conn, conn.Connect()
+}
+
 func (w *Worker) runDialer(
 	dial <-chan struct{},
 	newConn chan<- *transport.Connection,
@@ -216,4 +216,49 @@ func (w *Worker) runDialer(
 	stop <-chan struct{},
 	poolDone <-chan struct{},
 ) {
+	for {
+		select {
+		case <-stop:
+			return
+		case <-poolDone:
+			return
+		case <-dial:
+			// drain dial signals while connection is being established
+			done := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case <-dial:
+					case <-done:
+						return
+					}
+				}
+			}()
+
+			// dial a new connection
+			conn, err := w.dial(ctx)
+			close(done)
+
+			// send error if dial failed and continue
+			if err != nil {
+				select {
+				case ctx.Errors <- err:
+				case <-stop:
+				case <-poolDone:
+				}
+				continue
+			}
+
+			// send the new connection or close and exit
+			select {
+			case newConn <- conn:
+			case <-stop:
+				conn.Close()
+				return
+			case <-poolDone:
+				conn.Close()
+				return
+			}
+		}
+	}
 }
