@@ -1,4 +1,4 @@
-package initiator
+package initiatorpool
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
@@ -105,15 +105,15 @@ func TestRunForwarder(t *testing.T) {
 	})
 }
 
-func TestRunHealthMonitor(t *testing.T) {
-	t.Run("heartbeat resets timer, no reconnect fired", func(t *testing.T) {
+func TestRunIdleMonitor(t *testing.T) {
+	t.Run("heartbeat resets timer, no idle signal fired", func(t *testing.T) {
 		heartbeat := make(chan struct{}, 3)
-		reconnect := make(chan struct{}, 1)
+		idle := make(chan struct{}, 1)
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 100 * time.Millisecond}}
-		go w.runHealthMonitor(heartbeat, reconnect, stop, nil)
+		w := &Worker{config: &WorkerConfig{IdleTimeout: 100 * time.Millisecond}}
+		go w.runIdleMonitor(heartbeat, idle, stop, nil)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
@@ -121,10 +121,10 @@ func TestRunHealthMonitor(t *testing.T) {
 			heartbeat <- struct{}{}
 		}
 
-		// because the timer is being reset, reconnect should never occur
+		// because the timer is being reset, idle signal should not be sent
 		assert.Never(t, func() bool {
 			select {
-			case <-reconnect:
+			case <-idle:
 				return true
 			default:
 				return false
@@ -132,19 +132,19 @@ func TestRunHealthMonitor(t *testing.T) {
 		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick)
 	})
 
-	t.Run("reconnect timeout fires reconnect", func(t *testing.T) {
+	t.Run("idle timeout fires signal", func(t *testing.T) {
 		heartbeat := make(chan struct{})
-		reconnect := make(chan struct{}, 1)
+		idle := make(chan struct{}, 1)
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 20 * time.Millisecond}}
-		go w.runHealthMonitor(heartbeat, reconnect, stop, nil)
+		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Millisecond}}
+		go w.runIdleMonitor(heartbeat, idle, stop, nil)
 
-		// send no heartbeats, wait for timeout and reconnect signal
+		// send no heartbeats, wait for timeout and idle signal
 		assert.Eventually(t, func() bool {
 			select {
-			case <-reconnect:
+			case <-idle:
 				return true
 			default:
 				return false
@@ -154,13 +154,13 @@ func TestRunHealthMonitor(t *testing.T) {
 
 	t.Run("exits on stop", func(t *testing.T) {
 		heartbeat := make(chan struct{})
-		reconnect := make(chan struct{}, 1)
+		idle := make(chan struct{}, 1)
 		stop := make(chan struct{})
 
-		w := &Worker{config: &WorkerConfig{ReconnectTimeout: 20 * time.Second}}
+		w := &Worker{config: &WorkerConfig{IdleTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
-			w.runHealthMonitor(heartbeat, reconnect, stop, nil)
+			w.runIdleMonitor(heartbeat, idle, stop, nil)
 			close(done)
 		}()
 

@@ -1,11 +1,11 @@
-package initiator
+package initiatorpool
 
 import "errors"
 import "fmt"
 
 var (
-	InvalidReconnectTimeout = errors.New("idle timeout cannot be negative")
-	InvalidMaxQueueSize     = errors.New("maximum queue size cannot be negative")
+	InvalidIdleTimeout  = errors.New("idle timeout cannot be negative")
+	InvalidMaxQueueSize = errors.New("maximum queue size cannot be negative")
 )
 
 func NewConfigError(text string) error {

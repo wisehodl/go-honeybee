@@ -1,4 +1,4 @@
-package initiator
+package initiatorpool
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"
@@ -111,6 +111,9 @@ func (p *Pool) Errors() chan error {
 }
 
 func (p *Pool) SetDialer(d types.Dialer) {
+	if d == nil {
+		panic("dialer cannot be nil")
+	}
 	p.dialer = d
 }
 
