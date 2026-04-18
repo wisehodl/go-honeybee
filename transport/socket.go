@@ -47,6 +47,12 @@ func AcquireSocket(
 	url string,
 	logger *slog.Logger,
 ) (types.Socket, *http.Response, error) {
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
+	}
+
 	if retryMgr == nil {
 		return nil, nil, NewConnectionError("retry manager cannot be nil")
 	}

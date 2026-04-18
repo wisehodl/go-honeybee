@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// Forwarder
-
 func TestRunForwarder(t *testing.T) {
 	t.Run("message passes through to inbox", func(t *testing.T) {
 		messages := make(chan receivedMessage, 1)
@@ -350,5 +348,50 @@ func TestRunDialer(t *testing.T) {
 				return false
 			}
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+
+	t.Run("context cancelled during in-progress dial exits without delivering connection", func(t *testing.T) {
+		w := &Worker{id: "wss://test"}
+		dial := make(chan struct{}, 1)
+		newConn := make(chan *transport.Connection, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		wctx := WorkerContext{
+			Errors:           make(chan error, 1),
+			ConnectionConfig: &transport.ConnectionConfig{Retry: nil},
+			Dialer: &honeybeetest.MockDialer{
+				DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+					// block until context is cancelled
+					select {
+					case <-ctx.Done():
+						return nil, nil, ctx.Err()
+					}
+				},
+			},
+		}
+
+		done := make(chan struct{})
+		go func() {
+			w.runDialer(ctx, wctx, dial, newConn)
+			close(done)
+		}()
+
+		dial <- struct{}{}
+
+		// wait for dialer to block
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+
+		assert.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		// no connection was sent
+		assert.Empty(t, newConn)
 	})
 }
