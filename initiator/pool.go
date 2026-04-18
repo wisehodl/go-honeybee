@@ -36,7 +36,7 @@ type PoolEventKind string
 
 const (
 	EventConnected    PoolEventKind = "connected"
-	EventDisconnected               = "disconnected"
+	EventDisconnected PoolEventKind = "disconnected"
 )
 
 type PoolEvent struct {
