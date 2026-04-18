@@ -1,6 +1,7 @@
 package initiatorpool
 
 import (
+	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
@@ -13,14 +14,12 @@ import (
 type Peer struct {
 	id     string
 	worker *Worker
-	stop   chan struct{}
 }
 
 type WorkerContext struct {
 	Inbox            chan<- InboxMessage
 	Events           chan<- PoolEvent
 	Errors           chan<- error
-	PoolDone         <-chan struct{}
 	Logger           *slog.Logger
 	Dialer           types.Dialer
 	ConnectionConfig *transport.ConnectionConfig
@@ -47,11 +46,13 @@ type PoolEvent struct {
 // Pool
 
 type Pool struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	peers  map[string]*Peer
 	inbox  chan InboxMessage
 	events chan PoolEvent
 	errors chan error
-	done   chan struct{}
 
 	dialer types.Dialer
 	config *PoolConfig
@@ -62,7 +63,8 @@ type Pool struct {
 	closed bool
 }
 
-func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
+func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger,
+) (*Pool, error) {
 	if config == nil {
 		config = GetDefaultPoolConfig()
 	}
@@ -71,8 +73,9 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 	// The factory function should be non-blocking or else Connect() may cause
 	// deadlocks.
 	if config.WorkerFactory == nil {
-		config.WorkerFactory = func(id string, stop <-chan struct{}) (*Worker, error) {
-			return NewWorker(id, stop, config.WorkerConfig)
+		config.WorkerFactory = func(
+			ctx context.Context, id string) (*Worker, error) {
+			return NewWorker(ctx, id, config.WorkerConfig)
 		}
 	}
 
@@ -80,12 +83,15 @@ func NewPool(config *PoolConfig, logger *slog.Logger) (*Pool, error) {
 		return nil, err
 	}
 
+	pctx, cancel := context.WithCancel(ctx)
+
 	p := &Pool{
+		ctx:    pctx,
+		cancel: cancel,
 		peers:  make(map[string]*Peer),
 		inbox:  make(chan InboxMessage, 256),
 		events: make(chan PoolEvent, 10),
 		errors: make(chan error, 10),
-		done:   make(chan struct{}),
 		dialer: transport.NewDialer(),
 		config: config,
 		logger: logger,
@@ -125,16 +131,11 @@ func (p *Pool) Close() {
 	}
 
 	p.closed = true
-	close(p.done)
+	p.cancel()
 
-	peers := p.peers
 	p.peers = make(map[string]*Peer)
 
 	p.mu.Unlock()
-
-	for _, p := range peers {
-		close(p.stop)
-	}
 
 	go func() {
 		p.wg.Wait()
@@ -162,13 +163,9 @@ func (p *Pool) Connect(id string) error {
 		return NewPoolError("connection already exists")
 	}
 
-	// Create new worker
-	stop := make(chan struct{})
-
 	// The worker factory must be non-blocking to avoid deadlocks
-	worker, err := p.config.WorkerFactory(id, stop)
+	worker, err := p.config.WorkerFactory(p.ctx, id)
 	if err != nil {
-		close(stop)
 		return err
 	}
 
@@ -180,7 +177,6 @@ func (p *Pool) Connect(id string) error {
 		Inbox:            p.inbox,
 		Events:           p.events,
 		Errors:           p.errors,
-		PoolDone:         p.done,
 		Logger:           logger,
 		Dialer:           p.dialer,
 		ConnectionConfig: p.config.ConnectionConfig,
@@ -189,7 +185,7 @@ func (p *Pool) Connect(id string) error {
 	p.wg.Add(1)
 	go worker.Start(ctx, &p.wg)
 
-	p.peers[id] = &Peer{id: id, worker: worker, stop: stop}
+	p.peers[id] = &Peer{id: id, worker: worker}
 
 	return nil
 }
@@ -214,7 +210,7 @@ func (p *Pool) Remove(id string) error {
 	delete(p.peers, id)
 	p.mu.Unlock()
 
-	close(peer.stop)
+	peer.worker.Stop()
 
 	return nil
 }

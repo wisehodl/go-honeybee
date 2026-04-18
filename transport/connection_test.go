@@ -2,6 +2,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
@@ -239,7 +240,7 @@ func TestConnect(t *testing.T) {
 
 		conn.socket = honeybeetest.NewMockSocket()
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "already has socket")
 		assert.Equal(t, StateDisconnected, conn.State())
@@ -251,7 +252,7 @@ func TestConnect(t *testing.T) {
 
 		conn.Close()
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "connection is closed")
 		assert.Equal(t, StateClosed, conn.State())
@@ -270,13 +271,13 @@ func TestConnect(t *testing.T) {
 		}
 
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, StateConnected, conn.State())
 
@@ -309,7 +310,7 @@ func TestConnect(t *testing.T) {
 
 		attemptCount := 0
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				attemptCount++
 				if attemptCount < 3 {
 					return nil, nil, fmt.Errorf("dial failed")
@@ -319,7 +320,7 @@ func TestConnect(t *testing.T) {
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, 3, attemptCount)
 		assert.Equal(t, StateConnected, conn.State())
@@ -340,13 +341,13 @@ func TestConnect(t *testing.T) {
 		assert.NoError(t, err)
 
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "dial failed")
 		assert.Equal(t, StateDisconnected, conn.State())
@@ -359,14 +360,14 @@ func TestConnect(t *testing.T) {
 
 		stateDuringDial := StateDisconnected
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				stateDuringDial = conn.state
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
 		conn.dialer = mockDialer
 
-		conn.Connect()
+		conn.Connect(context.Background())
 
 		assert.Equal(t, StateConnecting, stateDuringDial)
 		assert.Equal(t, StateConnected, conn.State())
@@ -390,13 +391,13 @@ func TestConnect(t *testing.T) {
 		}
 
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 		conn.dialer = mockDialer
 
-		conn.Connect()
+		conn.Connect(context.Background())
 
 		assert.True(t, handlerSet, "close handler should be set on socket")
 

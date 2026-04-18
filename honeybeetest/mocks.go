@@ -12,11 +12,15 @@ import (
 // Dialer Mocks
 
 type MockDialer struct {
-	DialFunc func(string, http.Header) (types.Socket, *http.Response, error)
+	DialContextFunc func(
+		context.Context, string, http.Header,
+	) (types.Socket, *http.Response, error)
 }
 
-func (m *MockDialer) Dial(url string, h http.Header) (types.Socket, *http.Response, error) {
-	return m.DialFunc(url, h)
+func (m *MockDialer) DialContext(
+	ctx context.Context, url string, h http.Header,
+) (types.Socket, *http.Response, error) {
+	return m.DialContextFunc(ctx, url, h)
 }
 
 // Socket Mocks

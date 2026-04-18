@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -146,13 +147,13 @@ func TestConnectLogging(t *testing.T) {
 
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -186,13 +187,13 @@ func TestConnectLogging(t *testing.T) {
 
 		dialErr := fmt.Errorf("dial error")
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, dialErr
 			},
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.Error(t, err)
 
 		records := mockHandler.GetRecords()
@@ -230,7 +231,7 @@ func TestConnectLogging(t *testing.T) {
 		attemptCount := 0
 		dialErr := fmt.Errorf("dial error")
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				attemptCount++
 				if attemptCount < 3 {
 					return nil, nil, dialErr
@@ -240,7 +241,7 @@ func TestConnectLogging(t *testing.T) {
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -468,13 +469,13 @@ func TestLoggingDisabled(t *testing.T) {
 
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
-			DialFunc: func(string, http.Header) (types.Socket, *http.Response, error) {
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
 		conn.dialer = mockDialer
 
-		err = conn.Connect()
+		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
 
 		conn.Close()

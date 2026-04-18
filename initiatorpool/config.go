@@ -1,13 +1,14 @@
 package initiatorpool
 
 import (
+	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"time"
 )
 
 // Types
 
-type WorkerFactory func(id string, stop <-chan struct{}) (*Worker, error)
+type WorkerFactory func(ctx context.Context, id string) (*Worker, error)
 
 // Pool Config
 
