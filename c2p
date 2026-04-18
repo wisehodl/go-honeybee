@@ -1,2 +1,2 @@
 #!/bin/bash
-code2prompt -c -e c2p -e go.sum -e LICENSE
+code2prompt -c -e "prompts/*" -e c2p -e go.sum -e LICENSE
