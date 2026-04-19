@@ -107,13 +107,12 @@ func TestWithWriteTimeout(t *testing.T) {
 }
 
 func TestWithRetry(t *testing.T) {
-	t.Run("default", func(t *testing.T) {
-		conf := &ConnectionConfig{}
-		opt := WithRetry()
+	t.Run("without retry", func(t *testing.T) {
+		conf := GetDefaultConnectionConfig()
+		opt := WithoutRetry()
 		err := applyConnectionOptions(conf, opt)
 		assert.NoError(t, err)
-		assert.NotNil(t, conf.Retry)
-		assert.Equal(t, conf.Retry, GetDefaultRetryConfig())
+		assert.Nil(t, conf.Retry)
 	})
 
 	t.Run("with attempts", func(t *testing.T) {

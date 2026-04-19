@@ -8,6 +8,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -57,11 +58,14 @@ func TestRunDialer(t *testing.T) {
 
 			mockSocket := honeybeetest.NewMockSocket()
 			connConfig := &transport.ConnectionConfig{Retry: nil} // disable retry
+			started := make(chan struct{})
+			startOnce := sync.Once{}
 			wctx := WorkerContext{
 				Errors: make(chan error, 1),
 				Dialer: &honeybeetest.MockDialer{
 					DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 						dialCount.Add(1)
+						startOnce.Do(func() { close(started) })
 						<-gate
 						return mockSocket, nil, nil
 					},
@@ -73,7 +77,7 @@ func TestRunDialer(t *testing.T) {
 			dial <- struct{}{}
 
 			// wait for dial to start blocking on gate
-			time.Sleep(20 * time.Millisecond)
+			<-started
 
 			// flood dial while dialer is blocked
 			for i := 0; i < 5; i++ {
