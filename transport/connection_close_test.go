@@ -87,14 +87,14 @@ func TestConnectedConnectionClose(t *testing.T) {
 		incomingData <- honeybeetest.MockIncomingData{
 			MsgType: websocket.TextMessage, Data: canary}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-conn.Incoming():
 				return bytes.Equal(msg, canary)
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected canary message")
 
 		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())

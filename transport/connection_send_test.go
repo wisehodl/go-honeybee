@@ -83,12 +83,11 @@ func TestConnectionSend(t *testing.T) {
 
 		wg.Wait()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			mu.Lock()
 			defer mu.Unlock()
 			return len(messages) == 50
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
-			"should have received 50 messages")
+		}, "should have received 50 messages")
 
 	})
 
@@ -137,15 +136,14 @@ func TestConnectionSend(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		assert.Never(t, func() bool {
+		honeybeetest.Never(t, func() bool {
 			select {
 			case <-deadlineCalled:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick,
-			"SetWriteDeadline should not be called when timeout is zero")
+		}, "SetWriteDeadline should not be called when timeout is zero")
 	})
 
 	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
@@ -184,15 +182,14 @@ func TestConnectionSend(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.NoError(t, err)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-deadlineCalled:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
-			"SetWriteDeadline should be called when timeout is positive")
+		}, "SetWriteDeadline should be called when timeout is positive")
 	})
 
 	t.Run("send fails on deadline error", func(t *testing.T) {
@@ -218,9 +215,9 @@ func TestConnectionSend(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.ErrorContains(t, err, "failed to set write deadline: test error")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 	})
 
 	t.Run("send fails on socket write error", func(t *testing.T) {

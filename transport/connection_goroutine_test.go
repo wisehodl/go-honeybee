@@ -69,8 +69,8 @@ func TestStartReader(t *testing.T) {
 		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
 		assert.NoError(t, err)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 	})
 }

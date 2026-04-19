@@ -31,14 +31,14 @@ func _TestPoolConnect(t *testing.T) {
 		err = pool.Connect("wss://test")
 		assert.NoError(t, err)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case event := <-pool.events:
 				return event.ID == "wss://test" && event.Kind == EventConnected
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected event")
 
 		_, exists := pool.peers["wss://test"]
 		assert.True(t, exists)
@@ -214,14 +214,12 @@ func expectEvent(
 	expectedKind PoolEventKind,
 ) {
 	t.Helper()
-	assert.Eventually(t, func() bool {
+	honeybeetest.Eventually(t, func() bool {
 		select {
 		case e := <-events:
 			return e.ID == expectedURL && e.Kind == expectedKind
 		default:
 			return false
 		}
-	}, honeybeetest.TestTimeout, honeybeetest.TestTick,
-		fmt.Sprintf("expected event: URL=%q, Kind=%q",
-			expectedURL, expectedKind))
+	}, fmt.Sprintf("expected event: URL=%q, Kind=%q", expectedURL, expectedKind))
 }

@@ -16,7 +16,86 @@ import (
 )
 
 func TestRunSessionDial(t *testing.T) {
+	setup := func(t *testing.T) (
+		w *Worker,
+		ctx context.Context,
+		cancel context.CancelFunc,
+		dial chan struct{},
+		keepalive chan struct{},
+		newConn chan *transport.Connection,
+	) {
+		t.Helper()
+		ctx, cancel = context.WithCancel(context.Background())
+		w = &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			config:    GetDefaultWorkerConfig(),
+			heartbeat: make(chan struct{}),
+		}
+		dial = make(chan struct{}, 1)
+		keepalive = make(chan struct{}, 1)
+		newConn = make(chan *transport.Connection, 1)
+		return
+	}
 
+	expectDial := func(t *testing.T, dial <-chan struct{}) {
+		t.Helper()
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-dial:
+				return true
+			default:
+				return false
+			}
+		}, "expected dial signal")
+	}
+
+	t.Run("fires dial immediately on entry", func(t *testing.T) {
+		w, ctx, cancel, dial, keepalive, newConn := setup(t)
+		defer cancel()
+
+		messages := make(chan receivedMessage, 1)
+		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
+
+		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+
+		expectDial(t, dial)
+	})
+
+	t.Run("keepalive fires dial", func(t *testing.T) {
+		w, ctx, cancel, dial, keepalive, newConn := setup(t)
+		defer cancel()
+
+		messages := make(chan receivedMessage, 1)
+		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
+
+		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+
+		// drain initial dial
+		expectDial(t, dial)
+
+		keepalive <- struct{}{}
+		expectDial(t, dial)
+	})
+
+	t.Run("multiple keepalive signals each fire dial", func(t *testing.T) {
+		w, ctx, cancel, dial, keepalive, newConn := setup(t)
+		defer cancel()
+
+		messages := make(chan receivedMessage, 1)
+		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
+
+		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+
+		// drain initial dial
+		expectDial(t, dial)
+
+		for i := 0; i < 3; i++ {
+			keepalive <- struct{}{}
+			expectDial(t, dial)
+		}
+	})
 }
 
 func TestRunReader(t *testing.T) {
@@ -49,14 +128,14 @@ func TestRunReader(t *testing.T) {
 			Data:    []byte("hello"),
 		}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-messages:
 				return string(msg.data) == "hello" && msg.receivedAt.After(before)
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected message")
 	})
 
 	t.Run("heartbeat receives one signal per message", func(t *testing.T) {
@@ -97,9 +176,9 @@ func TestRunReader(t *testing.T) {
 			}
 		}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return received.Load() == count
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, fmt.Sprintf("expected %d messages", count))
 	})
 
 	t.Run("incoming channel close calls conn.Close and onStop", func(t *testing.T) {
@@ -133,13 +212,13 @@ func TestRunReader(t *testing.T) {
 		err := <-conn.Errors()
 		assert.Equal(t, io.EOF, err)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return onStopCalled.Load()
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected onStop to be called")
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
@@ -161,13 +240,13 @@ func TestRunReader(t *testing.T) {
 
 		close(sessionDone)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return onStopCalled.Load()
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected onStop to be called")
 	})
 }
 
@@ -187,13 +266,13 @@ func TestRunStopMonitor(t *testing.T) {
 
 		keepalive <- struct{}{}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return onStopCalled.Load()
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected onStop to be called")
 	})
 
 	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
@@ -210,13 +289,13 @@ func TestRunStopMonitor(t *testing.T) {
 
 		cancel()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return onStopCalled.Load()
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected onStop to be called")
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
@@ -234,13 +313,13 @@ func TestRunStopMonitor(t *testing.T) {
 
 		close(sessionDone)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected closed state")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return onStopCalled.Load()
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected onStop to be called")
 	})
 }
 
@@ -256,14 +335,14 @@ func TestRunForwarder(t *testing.T) {
 
 		messages <- receivedMessage{data: []byte("hello"), receivedAt: time.Now()}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-inbox:
 				return string(msg.Data) == "hello" && msg.ID == "wss://test"
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected message")
 	})
 
 	t.Run("oldest message dropped when queue is full", func(t *testing.T) {
@@ -299,14 +378,14 @@ func TestRunForwarder(t *testing.T) {
 
 		// receive messages from the inbox
 		var received []string
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-inbox:
 				received = append(received, string(msg.Data))
 			default:
 			}
 			return len(received) == 2
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected messages")
 
 		// first message was dropped
 		assert.Equal(t, []string{"second", "third"}, received)
@@ -327,14 +406,14 @@ func TestRunForwarder(t *testing.T) {
 		}()
 
 		cancel()
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-done:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected done signal")
 	})
 }
 
@@ -358,14 +437,14 @@ func TestRunKeepalive(t *testing.T) {
 		}
 
 		// because the timer is being reset, keepalive signal should not be sent
-		assert.Never(t, func() bool {
+		honeybeetest.Never(t, func() bool {
 			select {
 			case <-keepalive:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick)
+		}, "unexpected keepalive signal")
 	})
 
 	t.Run("keepalive timeout fires signal", func(t *testing.T) {
@@ -377,14 +456,14 @@ func TestRunKeepalive(t *testing.T) {
 		go w.runKeepalive(ctx, keepalive)
 
 		// send no heartbeats, wait for timeout and keepalive signal
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-keepalive:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected keepalive signal")
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
@@ -399,14 +478,14 @@ func TestRunKeepalive(t *testing.T) {
 		}()
 
 		cancel()
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-done:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected done signal")
 	})
 }
 
@@ -431,14 +510,14 @@ func TestRunDialer(t *testing.T) {
 		go w.runDialer(ctx, wctx, dial, newConn)
 		dial <- struct{}{}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-newConn:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected new connection")
 	})
 
 	t.Run("concurrent dial signals are drained; only one connection produced.",
@@ -483,14 +562,14 @@ func TestRunDialer(t *testing.T) {
 			close(gate)
 
 			// connection is cleared to connect
-			assert.Eventually(t, func() bool {
+			honeybeetest.Eventually(t, func() bool {
 				select {
 				case <-newConn:
 					return true
 				default:
 					return false
 				}
-			}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+			}, "expected new connection")
 
 			// connection was only dialed once
 			assert.Equal(t, int32(1), dialCount.Load())
@@ -535,25 +614,25 @@ func TestRunDialer(t *testing.T) {
 		go w.runDialer(ctx, wctx, dial, newConn)
 		dial <- struct{}{}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case err := <-errors:
 				return err != nil
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected error")
 
 		dial <- struct{}{}
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-newConn:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected new connection")
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
@@ -572,14 +651,14 @@ func TestRunDialer(t *testing.T) {
 
 		cancel()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-done:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected done signal")
 	})
 
 	t.Run("context cancelled during in-progress dial exits without delivering connection", func(t *testing.T) {
@@ -614,14 +693,14 @@ func TestRunDialer(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		cancel()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-done:
 				return true
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected done signal")
 
 		// no connection was sent
 		assert.Empty(t, newConn)
@@ -661,14 +740,14 @@ func TestWorkerSend(t *testing.T) {
 		assert.Equal(t, 1, int(heartbeatCount.Load()))
 
 		// message was sent by the socket
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-outgoingData:
 				return string(msg.Data) == "hello"
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected message")
 	})
 
 	t.Run("sends one heartbeat per successful send", func(t *testing.T) {

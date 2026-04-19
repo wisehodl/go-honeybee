@@ -273,10 +273,10 @@ func TestCloseLogging(t *testing.T) {
 
 		conn.Close()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
@@ -303,10 +303,10 @@ func TestCloseLogging(t *testing.T) {
 
 		conn.Close()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "socket close failed") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
@@ -336,10 +336,10 @@ func TestReaderLogging(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		record := findLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
 		assert.NotNil(t, record)
@@ -364,10 +364,10 @@ func TestReaderLogging(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "unexpected close") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		record := findLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
 		assert.NotNil(t, record)
@@ -389,10 +389,10 @@ func TestReaderLogging(t *testing.T) {
 		assert.NoError(t, err)
 		defer conn.Close()
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "read error") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 	})
 }
 
@@ -415,10 +415,10 @@ func TestWriterLogging(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.ErrorContains(t, err, "failed to set write deadline: deadline error")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write deadline error") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
@@ -445,10 +445,10 @@ func TestWriterLogging(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.ErrorContains(t, err, "write error")
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return findLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write error") != nil
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
