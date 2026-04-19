@@ -2,110 +2,243 @@ package transport
 
 import (
 	"fmt"
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestConnectionSend(t *testing.T) {
-	cases := []struct {
-		name        string
-		setup       func(*Connection)
-		data        []byte
-		wantErr     bool
-		wantErrText string
-	}{
-		{
-			name:  "send succeeds when open",
-			setup: func(c *Connection) {},
-			data:  []byte("test message"),
-		},
-		{
-			name: "send fails when closed",
-			setup: func(c *Connection) {
-				c.Close()
-			},
-			data:        []byte("test"),
-			wantErr:     true,
-			wantErrText: "connection closed",
-		},
-		{
-			name: "send fails when queue full",
-			setup: func(c *Connection) {
-				// Fill outgoing channel
-				for i := 0; i < 100; i++ {
-					c.outgoing <- []byte("filler")
-				}
-			},
-			data:        []byte("overflow"),
-			wantErr:     true,
-			wantErrText: "outgoing queue full",
-		},
-	}
+	t.Run("writes message to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		defer conn.Close()
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			conn, err := NewConnection("ws://test", nil, nil)
+		testData := []byte("test message")
+		err := conn.Send(testData)
+		assert.NoError(t, err)
+
+		honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, testData)
+	})
+
+	t.Run("writes multiple message to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		defer conn.Close()
+
+		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}
+		for _, msg := range messages {
+			err := conn.Send(msg)
 			assert.NoError(t, err)
-
-			tc.setup(conn)
-
-			err = conn.Send(tc.data)
-
-			if tc.wantErr {
-				assert.Error(t, err)
-				if tc.wantErrText != "" {
-					assert.ErrorContains(t, err, tc.wantErrText)
-				}
-				return
-			}
-
-			assert.NoError(t, err)
-
-			select {
-			case sent := <-conn.outgoing:
-				assert.Equal(t, tc.data, sent)
-			default:
-				t.Fatal("data not sent to outgoing channel")
-			}
-		})
-	}
-}
-
-// Run with `go test -race` to ensure no race conditions occur
-func TestConnectionSendConcurrent(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil, nil)
-	assert.NoError(t, err)
-
-	// continuously consume outgoing channel in background
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-conn.outgoing:
-			case <-done:
-				return
-			}
 		}
-	}()
-	defer close(done)
 
-	// Send from multiple goroutines concurrently
-	const goroutines = 5
-	const messagesPerGoroutine = 10
-	var wg sync.WaitGroup
+		for _, expected := range messages {
+			honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, expected)
+		}
+	})
 
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < messagesPerGoroutine; j++ {
-				data := []byte(fmt.Sprintf("msg-%d-%d", id, j))
-				err := conn.Send(data)
-				assert.NoError(t, err)
+	t.Run("concurrent sends write messages to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		defer conn.Close()
+
+		mu := sync.Mutex{}
+		messages := []string{}
+		done := make(chan struct{})
+
+		go func() {
+			for {
+				select {
+				case msg := <-outgoingData:
+					fmt.Printf("got message %s\n", string(msg.Data))
+					mu.Lock()
+					messages = append(messages, string(msg.Data))
+					mu.Unlock()
+				case <-done:
+					return
+				}
 			}
-		}(i)
-	}
+		}()
 
-	wg.Wait()
+		defer close(done)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 5; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				for j := 0; j < 10; j++ {
+					data := []byte(fmt.Sprintf("msg-%d-%d", id, j))
+					fmt.Printf("sending message %s\n", string(data))
+					for {
+						// send and retry until success
+						err := conn.Send(data)
+						if err != nil {
+							continue
+						} else {
+							break
+						}
+					}
+				}
+			}(i)
+		}
+
+		wg.Wait()
+
+		assert.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(messages) == 50
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
+			"should have received 50 messages")
+
+	})
+
+	t.Run("send fails when connection is closed", func(t *testing.T) {
+		conn, _, _, _ := setupTestConnection(t, nil)
+		conn.Close()
+
+		testData := []byte("test message")
+		err := conn.Send(testData)
+		assert.ErrorIs(t, err, ErrConnectionClosed)
+	})
+
+	t.Run("write timeout disabled when zero", func(t *testing.T) {
+		config := &ConnectionConfig{WriteTimeout: 0}
+
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		deadlineCalled := make(chan struct{}, 1)
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			deadlineCalled <- struct{}{}
+			return nil
+		}
+
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			select {
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
+				return io.EOF
+			}
+			return nil
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.NoError(t, err)
+
+		assert.Never(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, honeybeetest.NegativeTestTimeout, honeybeetest.TestTick,
+			"SetWriteDeadline should not be called when timeout is zero")
+	})
+
+	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
+		config := &ConnectionConfig{WriteTimeout: 30 * time.Millisecond}
+
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		deadlineCalled := make(chan struct{}, 1)
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			deadlineCalled <- struct{}{}
+			return nil
+		}
+
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			select {
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
+				return io.EOF
+			}
+			return nil
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.NoError(t, err)
+
+		assert.Eventually(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
+			"SetWriteDeadline should be called when timeout is positive")
+	})
+
+	t.Run("send fails on deadline error", func(t *testing.T) {
+		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
+
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			return fmt.Errorf("test error")
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.ErrorContains(t, err, "failed to set write deadline: test error")
+
+		assert.Eventually(t, func() bool {
+			return conn.State() == StateClosed
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+
+	t.Run("send fails on socket write error", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+
+		writeErr := fmt.Errorf("test error")
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			return writeErr
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.ErrorIs(t, err, ErrWriteFailed)
+		assert.ErrorContains(t, err, "test error")
+	})
 }

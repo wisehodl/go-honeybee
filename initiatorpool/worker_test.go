@@ -8,6 +8,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -109,18 +110,21 @@ func TestRunForwarder(t *testing.T) {
 
 func TestRunKeepalive(t *testing.T) {
 	t.Run("heartbeat resets timer, no keepalive signal fired", func(t *testing.T) {
-		heartbeat := make(chan struct{}, 3)
+		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond}}
-		go w.runKeepalive(ctx, heartbeat, keepalive)
+		w := &Worker{
+			config:    &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond},
+			heartbeat: heartbeat,
+		}
+		go w.runKeepalive(ctx, keepalive)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
 			time.Sleep(30 * time.Millisecond)
-			heartbeat <- struct{}{}
+			w.heartbeat <- struct{}{}
 		}
 
 		// because the timer is being reset, keepalive signal should not be sent
@@ -135,13 +139,12 @@ func TestRunKeepalive(t *testing.T) {
 	})
 
 	t.Run("keepalive timeout fires signal", func(t *testing.T) {
-		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Millisecond}}
-		go w.runKeepalive(ctx, heartbeat, keepalive)
+		go w.runKeepalive(ctx, keepalive)
 
 		// send no heartbeats, wait for timeout and keepalive signal
 		assert.Eventually(t, func() bool {
@@ -155,14 +158,13 @@ func TestRunKeepalive(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
-		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 
 		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
-			w.runKeepalive(ctx, heartbeat, keepalive)
+			w.runKeepalive(ctx, keepalive)
 			close(done)
 		}()
 
@@ -175,6 +177,73 @@ func TestRunKeepalive(t *testing.T) {
 				return false
 			}
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+}
+
+func TestRunStopMonitor(t *testing.T) {
+	t.Run("keepalive signal calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		keepalive := make(chan struct{}, 1)
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		keepalive <- struct{}{}
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+
+	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		keepalive := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		cancel()
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+
+	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		keepalive := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		close(sessionDone)
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
 	})
 }
 
@@ -393,5 +462,106 @@ func TestRunDialer(t *testing.T) {
 
 		// no connection was sent
 		assert.Empty(t, newConn)
+	})
+}
+
+func TestWorkerSend(t *testing.T) {
+	t.Run("data sent to mock socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupWorkerTestConnection(t)
+		defer conn.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		heartbeat := make(chan struct{})
+		heartbeatCount := atomic.Int32{}
+
+		w := &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		w.conn.Store(conn)
+		defer w.cancel()
+
+		go func() {
+			for range heartbeat {
+				heartbeatCount.Add(1)
+			}
+		}()
+
+		testData := []byte("hello")
+		err := w.Send(testData)
+		assert.NoError(t, err)
+
+		// one heartbeat was sent
+		assert.Equal(t, 1, int(heartbeatCount.Load()))
+
+		// message was sent by the socket
+		assert.Eventually(t, func() bool {
+			select {
+			case msg := <-outgoingData:
+				return string(msg.Data) == "hello"
+			default:
+				return false
+			}
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+
+	t.Run("sends one heartbeat per successful send", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		defer conn.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		heartbeat := make(chan struct{})
+		heartbeatCount := atomic.Int32{}
+
+		w := &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		w.conn.Store(conn)
+		defer w.cancel()
+
+		go func() {
+			for range heartbeat {
+				heartbeatCount.Add(1)
+			}
+		}()
+
+		const count = 3
+		for i := 0; i < count; i++ {
+			err := w.Send([]byte(fmt.Sprintf("msg-%d", i)))
+			assert.NoError(t, err)
+		}
+
+		assert.Equal(t, count, int(heartbeatCount.Load()))
+	})
+
+	t.Run("returns error if connection is unavailable", func(t *testing.T) {
+		// no connection available to worker
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		heartbeat := make(chan struct{})
+
+		w := &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		defer w.cancel()
+
+		go func() {
+			for range heartbeat {
+			}
+		}()
+
+		err := w.Send([]byte("hello"))
+		assert.ErrorIs(t, err, ErrConnectionUnavailable)
 	})
 }

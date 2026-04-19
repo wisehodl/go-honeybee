@@ -155,12 +155,12 @@ func (p *Pool) Connect(id string) error {
 	defer p.mu.Unlock()
 
 	if p.closed {
-		return NewPoolError("pool is closed")
+		return NewPoolError(ErrPoolClosed)
 	}
 	_, exists := p.peers[id]
 
 	if exists {
-		return NewPoolError("connection already exists")
+		return NewPoolError(ErrPeerExists)
 	}
 
 	// The worker factory must be non-blocking to avoid deadlocks
@@ -199,13 +199,13 @@ func (p *Pool) Remove(id string) error {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
-		return NewPoolError("pool is closed")
+		return NewPoolError(ErrPoolClosed)
 	}
 
 	peer, exists := p.peers[id]
 	if !exists {
 		p.mu.Unlock()
-		return NewPoolError("connection not found")
+		return NewPoolError(ErrPeerNotFound)
 	}
 	delete(p.peers, id)
 	p.mu.Unlock()
@@ -225,12 +225,12 @@ func (p *Pool) Send(id string, data []byte) error {
 	defer p.mu.RUnlock()
 
 	if p.closed {
-		return NewPoolError("pool is closed")
+		return NewPoolError(ErrPoolClosed)
 	}
 
 	peer, exists := p.peers[id]
 	if !exists {
-		return NewPoolError("connection not found")
+		return NewPoolError(ErrPeerNotFound)
 	}
 
 	return peer.worker.Send(data)
