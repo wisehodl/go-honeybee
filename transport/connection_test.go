@@ -505,7 +505,10 @@ func setupTestConnection(t *testing.T, config *ConnectionConfig) (
 	// Wire ReadMessage to pull from incomingData channel
 	mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 		select {
-		case data := <-incomingData:
+		case data, ok := <-incomingData:
+			if !ok {
+				return 0, nil, io.EOF
+			}
 			return data.MsgType, data.Data, data.Err
 		case <-mockSocket.Closed:
 			return 0, nil, io.EOF
