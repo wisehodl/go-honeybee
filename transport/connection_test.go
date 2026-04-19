@@ -283,14 +283,14 @@ func TestConnect(t *testing.T) {
 		testData := []byte("test")
 		conn.Send(testData)
 
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-outgoingData:
 				return bytes.Equal(msg.Data, testData)
 			default:
 				return false
 			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected message")
 
 		conn.Close()
 	})
@@ -433,9 +433,9 @@ func TestConnectContextCancellation(t *testing.T) {
 		}()
 
 		// wait for first dial
-		assert.Eventually(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			return dialCount.Load() >= 1
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+		}, "expected dial")
 		cancel()
 
 		select {

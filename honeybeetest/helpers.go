@@ -62,3 +62,13 @@ func ExpectWrite(t *testing.T, outgoingData chan MockOutgoingData, msgType int, 
 		assert.Equal(t, expected, call.Data)
 	}
 }
+
+func Eventually(t *testing.T, condition func() bool, msg string) {
+	t.Helper()
+	assert.Eventually(t, condition, TestTimeout, TestTick, msg)
+}
+
+func Never(t *testing.T, condition func() bool, msg string) {
+	t.Helper()
+	assert.Never(t, condition, NegativeTestTimeout, TestTick, msg)
+}
