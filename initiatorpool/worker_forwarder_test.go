@@ -10,15 +10,15 @@ import (
 
 func TestRunForwarder(t *testing.T) {
 	t.Run("message passes through to inbox", func(t *testing.T) {
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &Worker{id: "wss://test"}
-		go w.runForwarder(ctx, messages, inbox, 0)
+		w := &DefaultWorker{Id: "wss://test"}
+		go w.RunForwarder(ctx, messages, inbox, 0)
 
-		messages <- receivedMessage{data: []byte("hello"), receivedAt: time.Now()}
+		messages <- ReceivedMessage{data: []byte("hello"), receivedAt: time.Now()}
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -31,7 +31,7 @@ func TestRunForwarder(t *testing.T) {
 	})
 
 	t.Run("oldest message dropped when queue is full", func(t *testing.T) {
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -47,13 +47,13 @@ func TestRunForwarder(t *testing.T) {
 			}
 		}()
 
-		w := &Worker{id: "wss://test"}
-		go w.runForwarder(ctx, messages, gatedInbox, 2)
+		w := &DefaultWorker{Id: "wss://test"}
+		go w.RunForwarder(ctx, messages, gatedInbox, 2)
 
 		// send three messages while the gated inbox is blocked
-		messages <- receivedMessage{data: []byte("first"), receivedAt: time.Now()}
-		messages <- receivedMessage{data: []byte("second"), receivedAt: time.Now()}
-		messages <- receivedMessage{data: []byte("third"), receivedAt: time.Now()}
+		messages <- ReceivedMessage{data: []byte("first"), receivedAt: time.Now()}
+		messages <- ReceivedMessage{data: []byte("second"), receivedAt: time.Now()}
+		messages <- ReceivedMessage{data: []byte("third"), receivedAt: time.Now()}
 
 		// allow time for the first message to be dropped
 		time.Sleep(20 * time.Millisecond)
@@ -78,15 +78,15 @@ func TestRunForwarder(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &Worker{id: "wss://test"}
+		w := &DefaultWorker{Id: "wss://test"}
 		done := make(chan struct{})
 		go func() {
-			w.runForwarder(ctx, messages, inbox, 0)
+			w.RunForwarder(ctx, messages, inbox, 0)
 			close(done)
 		}()
 

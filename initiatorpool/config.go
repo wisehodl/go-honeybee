@@ -8,7 +8,7 @@ import (
 
 // Types
 
-type WorkerFactory func(ctx context.Context, id string) (*Worker, error)
+type WorkerFactory func(ctx context.Context, id string) (Worker, error)
 
 // Pool Config
 

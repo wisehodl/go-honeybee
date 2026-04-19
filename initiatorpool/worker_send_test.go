@@ -19,14 +19,14 @@ func TestWorkerSend(t *testing.T) {
 		heartbeat := make(chan struct{})
 		heartbeatCount := atomic.Int32{}
 
-		w := &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			heartbeat: heartbeat,
+		w := &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Heartbeat: heartbeat,
 		}
-		w.conn.Store(conn)
-		defer w.cancel()
+		w.Conn.Store(conn)
+		defer w.Cancel()
 
 		go func() {
 			for range heartbeat {
@@ -61,14 +61,14 @@ func TestWorkerSend(t *testing.T) {
 		heartbeat := make(chan struct{})
 		heartbeatCount := atomic.Int32{}
 
-		w := &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			heartbeat: heartbeat,
+		w := &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Heartbeat: heartbeat,
 		}
-		w.conn.Store(conn)
-		defer w.cancel()
+		w.Conn.Store(conn)
+		defer w.Cancel()
 
 		go func() {
 			for range heartbeat {
@@ -92,13 +92,13 @@ func TestWorkerSend(t *testing.T) {
 
 		heartbeat := make(chan struct{})
 
-		w := &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			heartbeat: heartbeat,
+		w := &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Heartbeat: heartbeat,
 		}
-		defer w.cancel()
+		defer w.Cancel()
 
 		go func() {
 			for range heartbeat {

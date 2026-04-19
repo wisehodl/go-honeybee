@@ -22,7 +22,7 @@ func drainEvent(t *testing.T, events <-chan PoolEvent, kind PoolEventKind) {
 
 func TestRunSessionDial(t *testing.T) {
 	setup := func(t *testing.T) (
-		w *Worker,
+		w *DefaultWorker,
 		ctx context.Context,
 		cancel context.CancelFunc,
 		dial chan struct{},
@@ -31,12 +31,12 @@ func TestRunSessionDial(t *testing.T) {
 	) {
 		t.Helper()
 		ctx, cancel = context.WithCancel(context.Background())
-		w = &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			config:    GetDefaultWorkerConfig(),
-			heartbeat: make(chan struct{}),
+		w = &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Config:    GetDefaultWorkerConfig(),
+			Heartbeat: make(chan struct{}),
 		}
 		dial = make(chan struct{}, 1)
 		keepalive = make(chan struct{}, 1)
@@ -60,10 +60,10 @@ func TestRunSessionDial(t *testing.T) {
 		w, ctx, cancel, dial, keepalive, newConn := setup(t)
 		defer cancel()
 
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 
 		expectDial(t, dial)
 	})
@@ -72,10 +72,10 @@ func TestRunSessionDial(t *testing.T) {
 		w, ctx, cancel, dial, keepalive, newConn := setup(t)
 		defer cancel()
 
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 
 		// drain initial dial
 		expectDial(t, dial)
@@ -88,10 +88,10 @@ func TestRunSessionDial(t *testing.T) {
 		w, ctx, cancel, dial, keepalive, newConn := setup(t)
 		defer cancel()
 
-		messages := make(chan receivedMessage, 1)
+		messages := make(chan ReceivedMessage, 1)
 		wctx := WorkerContext{Events: make(chan PoolEvent, 10)}
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 
 		// drain initial dial
 		expectDial(t, dial)
@@ -105,27 +105,27 @@ func TestRunSessionDial(t *testing.T) {
 
 func TestRunSessionConnect(t *testing.T) {
 	setup := func(t *testing.T) (
-		w *Worker,
+		w *DefaultWorker,
 		ctx context.Context,
 		cancel context.CancelFunc,
 		dial chan struct{},
 		keepalive chan struct{},
 		newConn chan *transport.Connection,
-		messages chan receivedMessage,
+		messages chan ReceivedMessage,
 	) {
 		t.Helper()
 		ctx, cancel = context.WithCancel(context.Background())
-		w = &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			config:    GetDefaultWorkerConfig(),
-			heartbeat: make(chan struct{}),
+		w = &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Config:    GetDefaultWorkerConfig(),
+			Heartbeat: make(chan struct{}),
 		}
 		dial = make(chan struct{}, 1)
 		keepalive = make(chan struct{}, 1)
 		newConn = make(chan *transport.Connection, 1)
-		messages = make(chan receivedMessage, 256)
+		messages = make(chan ReceivedMessage, 256)
 		return
 	}
 
@@ -135,12 +135,12 @@ func TestRunSessionConnect(t *testing.T) {
 		defer cancel()
 
 		conn, _, _, _ := setupWorkerTestConnection(t)
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 
 		newConn <- conn
 
 		honeybeetest.Eventually(t, func() bool {
-			return w.conn.Load() != nil
+			return w.Conn.Load() != nil
 		}, "expected w.conn to be set")
 	})
 
@@ -151,14 +151,14 @@ func TestRunSessionConnect(t *testing.T) {
 		defer cancel()
 
 		conn, _, _, _ := setupWorkerTestConnection(t)
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 
 		newConn <- conn
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case event := <-events:
-				return event.ID == w.id && event.Kind == EventConnected
+				return event.ID == w.Id && event.Kind == EventConnected
 			default:
 				return false
 			}
@@ -168,29 +168,29 @@ func TestRunSessionConnect(t *testing.T) {
 
 func TestRunSessionDisconnect(t *testing.T) {
 	setup := func(t *testing.T) (
-		w *Worker,
+		w *DefaultWorker,
 		ctx context.Context,
 		cancel context.CancelFunc,
 		dial chan struct{},
 		keepalive chan struct{},
 		newConn chan *transport.Connection,
-		messages chan receivedMessage,
+		messages chan ReceivedMessage,
 		conn *transport.Connection,
 		incomingData chan honeybeetest.MockIncomingData,
 	) {
 		t.Helper()
 		ctx, cancel = context.WithCancel(context.Background())
-		w = &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			config:    GetDefaultWorkerConfig(),
-			heartbeat: make(chan struct{}),
+		w = &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Config:    GetDefaultWorkerConfig(),
+			Heartbeat: make(chan struct{}),
 		}
 		dial = make(chan struct{}, 1)
 		keepalive = make(chan struct{}, 1)
 		newConn = make(chan *transport.Connection, 1)
-		messages = make(chan receivedMessage, 256)
+		messages = make(chan ReceivedMessage, 256)
 		conn, _, incomingData, _ = setupWorkerTestConnection(t)
 		return
 	}
@@ -201,7 +201,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		wctx := WorkerContext{Events: events}
 		defer cancel()
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		newConn <- conn
 		drainEvent(t, events, EventConnected)
 
@@ -216,7 +216,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		wctx := WorkerContext{Events: events}
 		defer cancel()
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		newConn <- conn
 		drainEvent(t, events, EventConnected)
 
@@ -224,7 +224,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		drainEvent(t, events, EventDisconnected)
 
 		honeybeetest.Eventually(t, func() bool {
-			return w.conn.Load() == nil
+			return w.Conn.Load() == nil
 		}, "expected w.conn to be cleared")
 	})
 
@@ -234,7 +234,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		wctx := WorkerContext{Events: events}
 		defer cancel()
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		newConn <- conn
 		drainEvent(t, events, EventConnected)
 
@@ -260,7 +260,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		wctx := WorkerContext{Events: events}
 		defer cancel()
 
-		go w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+		go w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		newConn <- conn
 		drainEvent(t, events, EventConnected)
 
@@ -276,27 +276,27 @@ func TestRunSessionDisconnect(t *testing.T) {
 
 func TestRunSessionCancellation(t *testing.T) {
 	setup := func(t *testing.T) (
-		w *Worker,
+		w *DefaultWorker,
 		ctx context.Context,
 		cancel context.CancelFunc,
 		dial chan struct{},
 		keepalive chan struct{},
 		newConn chan *transport.Connection,
-		messages chan receivedMessage,
+		messages chan ReceivedMessage,
 	) {
 		t.Helper()
 		ctx, cancel = context.WithCancel(context.Background())
-		w = &Worker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			config:    GetDefaultWorkerConfig(),
-			heartbeat: make(chan struct{}),
+		w = &DefaultWorker{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Id:        "wss://test",
+			Config:    GetDefaultWorkerConfig(),
+			Heartbeat: make(chan struct{}),
 		}
 		dial = make(chan struct{}, 1)
 		keepalive = make(chan struct{}, 1)
 		newConn = make(chan *transport.Connection, 1)
-		messages = make(chan receivedMessage, 256)
+		messages = make(chan ReceivedMessage, 256)
 		return
 	}
 
@@ -308,7 +308,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+			w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		}()
 
 		cancel()
@@ -342,7 +342,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+			w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		}()
 
 		newConn <- conn
@@ -373,7 +373,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			w.runSession(ctx, wctx, messages, dial, keepalive, newConn)
+			w.RunSession(ctx, wctx, messages, dial, keepalive, newConn)
 		}()
 
 		newConn <- conn
@@ -385,7 +385,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		drainEvent(t, events, EventDisconnected)
 
 		honeybeetest.Eventually(t, func() bool {
-			return w.conn.Load() == nil
+			return w.Conn.Load() == nil
 		}, "expected w.conn to clear")
 	})
 }

@@ -15,7 +15,7 @@ import (
 
 func TestRunDialer(t *testing.T) {
 	t.Run("successful dial delivers connection to newConn", func(t *testing.T) {
-		w := &Worker{id: "wss://test"}
+		w := &DefaultWorker{Id: "wss://test"}
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -31,7 +31,7 @@ func TestRunDialer(t *testing.T) {
 			},
 		}
 
-		go w.runDialer(ctx, wctx, dial, newConn)
+		go w.RunDialer(ctx, wctx, dial, newConn)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -46,7 +46,7 @@ func TestRunDialer(t *testing.T) {
 
 	t.Run("concurrent dial signals are drained; only one connection produced.",
 		func(t *testing.T) {
-			w := &Worker{id: "wss://test"}
+			w := &DefaultWorker{Id: "wss://test"}
 			dial := make(chan struct{}, 1)
 			newConn := make(chan *transport.Connection, 1)
 			ctx, cancel := context.WithCancel(context.Background())
@@ -69,7 +69,7 @@ func TestRunDialer(t *testing.T) {
 				ConnectionConfig: connConfig,
 			}
 
-			go w.runDialer(ctx, wctx, dial, newConn)
+			go w.RunDialer(ctx, wctx, dial, newConn)
 			dial <- struct{}{}
 
 			// wait for dial to start blocking on gate
@@ -107,7 +107,7 @@ func TestRunDialer(t *testing.T) {
 		})
 
 	t.Run("dial failure emits error, succeeds on next signal", func(t *testing.T) {
-		w := &Worker{id: "wss://test"}
+		w := &DefaultWorker{Id: "wss://test"}
 		errors := make(chan error, 1)
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
@@ -135,7 +135,7 @@ func TestRunDialer(t *testing.T) {
 			ConnectionConfig: connConfig,
 		}
 
-		go w.runDialer(ctx, wctx, dial, newConn)
+		go w.RunDialer(ctx, wctx, dial, newConn)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -160,7 +160,7 @@ func TestRunDialer(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
-		w := &Worker{id: "wss://test"}
+		w := &DefaultWorker{Id: "wss://test"}
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -169,7 +169,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			w.runDialer(ctx, wctx, dial, newConn)
+			w.RunDialer(ctx, wctx, dial, newConn)
 			close(done)
 		}()
 
@@ -186,7 +186,7 @@ func TestRunDialer(t *testing.T) {
 	})
 
 	t.Run("context cancelled during in-progress dial exits without delivering connection", func(t *testing.T) {
-		w := &Worker{id: "wss://test"}
+		w := &DefaultWorker{Id: "wss://test"}
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -207,7 +207,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			w.runDialer(ctx, wctx, dial, newConn)
+			w.RunDialer(ctx, wctx, dial, newConn)
 			close(done)
 		}()
 
