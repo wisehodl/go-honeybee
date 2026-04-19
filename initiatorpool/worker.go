@@ -54,9 +54,20 @@ func NewWorker(
 	return w, nil
 }
 
+func (w *Worker) Start(
+	ctx WorkerContext,
+	wg *sync.WaitGroup,
+) {
+}
+
+func (w *Worker) Stop() {
+	w.cancel()
+}
+
 func (w *Worker) Send(data []byte) error {
 	conn := w.conn.Load()
 	if conn == nil {
+		// connection not established by session
 		return NewWorkerError(w.id, ErrConnectionUnavailable)
 	}
 
@@ -74,16 +85,6 @@ func (w *Worker) Send(data []byte) error {
 	return nil
 }
 
-func (w *Worker) Start(
-	ctx WorkerContext,
-	wg *sync.WaitGroup,
-) {
-}
-
-func (w *Worker) Stop() {
-	w.cancel()
-}
-
 func (w *Worker) runSession(
 	ctx context.Context,
 	wctx WorkerContext,
@@ -92,9 +93,72 @@ func (w *Worker) runSession(
 	dial chan<- struct{},
 
 	keepalive <-chan struct{},
-	outbound <-chan []byte,
 	newConn <-chan *transport.Connection,
 ) {
+	for {
+		// request new connection
+		select {
+		case dial <- struct{}{}:
+		default:
+		}
+
+		// obtain new connection
+		var conn *transport.Connection
+	preConn:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-keepalive:
+				select {
+				case dial <- struct{}{}:
+				default:
+				}
+			case conn = <-newConn:
+				break preConn
+			}
+		}
+
+		// set up new connection
+		w.conn.Store(conn)
+		wctx.Events <- PoolEvent{ID: w.id, Kind: EventConnected}
+
+		// set up session
+		sessionDone := make(chan struct{})
+		var once sync.Once
+		onStop := func() {
+			once.Do(func() { close(sessionDone) })
+		}
+
+		// start session
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			w.runReader(conn, messages, sessionDone, onStop)
+		}()
+		go func() {
+			defer wg.Done()
+			w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+		}()
+
+		// complete session
+		wg.Wait()
+
+		// tear down connection
+		w.conn.Store(nil)
+		wctx.Events <- PoolEvent{ID: w.id, Kind: EventDisconnected}
+
+		// exit if worker is shutting down
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// refresh session
+	}
+
 }
 
 func (w *Worker) runReader(
