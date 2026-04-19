@@ -17,8 +17,8 @@ func setupWorkerTestConnection(t *testing.T) (
 ) {
 	t.Helper()
 
-	incomingData = make(chan honeybeetest.MockIncomingData, 100)
-	outgoingData = make(chan honeybeetest.MockOutgoingData, 100)
+	incomingData = make(chan honeybeetest.MockIncomingData, 10)
+	outgoingData = make(chan honeybeetest.MockOutgoingData, 10)
 	mockSocket = honeybeetest.NewMockSocket()
 
 	mockSocket.CloseFunc = func() error {
@@ -28,7 +28,10 @@ func setupWorkerTestConnection(t *testing.T) (
 
 	mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 		select {
-		case data := <-incomingData:
+		case data, ok := <-incomingData:
+			if !ok {
+				return 0, nil, io.EOF
+			}
 			return data.MsgType, data.Data, data.Err
 		case <-mockSocket.Closed:
 			return 0, nil, io.EOF
