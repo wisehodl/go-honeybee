@@ -91,7 +91,7 @@ func NewConnectionFromSocket(
 	socket types.Socket, config *ConnectionConfig, logger *slog.Logger,
 ) (*Connection, error) {
 	if socket == nil {
-		return nil, NewConnectionError("socket cannot be nil")
+		return nil, NewConnectionError(ErrNilSocket)
 	}
 
 	if config == nil {
@@ -128,11 +128,11 @@ func (c *Connection) Connect(ctx context.Context) error {
 	defer c.mu.Unlock()
 
 	if c.socket != nil {
-		return NewConnectionError("connection already has socket")
+		return NewConnectionError(ErrSocketExists)
 	}
 
 	if c.closed {
-		return NewConnectionError("connection is closed")
+		return NewConnectionError(ErrConnectionClosed)
 	}
 
 	if c.logger != nil {
@@ -150,7 +150,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 		if c.logger != nil {
 			c.logger.Error("connection failed", "error", err)
 		}
-		return err
+		return NewConnectionError(err)
 	}
 
 	c.socket = socket
@@ -217,7 +217,7 @@ func (c *Connection) shutdownSetClosed(wait bool) error {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
-		return ErrConnectionClosed
+		return NewConnectionError(ErrConnectionClosed)
 	}
 	c.closed = true
 	c.state = StateClosed
@@ -277,29 +277,37 @@ func (c *Connection) startReader() {
 			default:
 				messageType, data, err := c.socket.ReadMessage()
 				if err != nil {
-					if c.logger != nil {
-						var closeErr *websocket.CloseError
-						if errors.As(err, &closeErr) {
-							switch closeErr.Code {
-							case websocket.CloseNormalClosure, websocket.CloseGoingAway:
+					var wrappedErr error
+					var closeErr *websocket.CloseError
+					if errors.As(err, &closeErr) {
+						switch closeErr.Code {
+						case websocket.CloseNormalClosure, websocket.CloseGoingAway:
+							if c.logger != nil {
 								c.logger.Info("connection closed by peer",
 									"code", closeErr.Code,
 									"text", closeErr.Text,
 								)
-							default:
+							}
+							wrappedErr = fmt.Errorf("%w: %w", ErrPeerClosedClean, err)
+						default:
+							if c.logger != nil {
 								c.logger.Error("unexpected close",
 									"code", closeErr.Code,
 									"text", closeErr.Text,
 								)
 							}
-						} else {
+							wrappedErr = fmt.Errorf("%w: %w", ErrPeerClosedUnexpected, err)
+						}
+					} else {
+						if c.logger != nil {
 							c.logger.Error("read error", "error", err)
 						}
+						wrappedErr = fmt.Errorf("%w: %w", ErrReadError, err)
 					}
 
 					select {
 					case <-c.done:
-					case c.errors <- err:
+					case c.errors <- wrappedErr:
 					}
 					return
 				}
@@ -316,7 +324,6 @@ func (c *Connection) startReader() {
 			}
 		}
 	}()
-
 }
 
 func (c *Connection) Send(data []byte) error {
@@ -324,7 +331,7 @@ func (c *Connection) Send(data []byte) error {
 	defer c.writeMu.Unlock()
 
 	if c.closed {
-		return ErrConnectionClosed
+		return NewConnectionError(ErrConnectionClosed)
 	}
 
 	if c.config.WriteTimeout > 0 {
@@ -333,7 +340,7 @@ func (c *Connection) Send(data []byte) error {
 				c.logger.Error("write deadline error", "error", err)
 			}
 			c.shutdownExternal()
-			return fmt.Errorf("failed to set write deadline: %w", err)
+			return NewConnectionError(fmt.Errorf("%w: %w", ErrFailedWriteDeadline, err))
 		}
 	}
 
@@ -341,7 +348,7 @@ func (c *Connection) Send(data []byte) error {
 		if c.logger != nil {
 			c.logger.Error("write error", "error", err)
 		}
-		return fmt.Errorf("%w: %w", ErrWriteFailed, err)
+		return NewConnectionError(fmt.Errorf("%w: %w", ErrWriteFailed, err))
 	}
 
 	return nil

@@ -54,13 +54,13 @@ func AcquireSocket(
 	}
 
 	if retryMgr == nil {
-		return nil, nil, NewConnectionError("retry manager cannot be nil")
+		return nil, nil, NewConnectionError(ErrNilRetryManager)
 	}
 	if dialer == nil {
-		return nil, nil, NewConnectionError("dialer cannot be nil")
+		return nil, nil, NewConnectionError(ErrNilDialer)
 	}
 	if url == "" {
-		return nil, nil, NewConnectionError("URL cannot be empty")
+		return nil, nil, NewConnectionError(ErrEmptyURL)
 	}
 
 	for {

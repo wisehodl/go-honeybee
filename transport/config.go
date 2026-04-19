@@ -86,7 +86,7 @@ func ValidateConnectionConfig(config *ConnectionConfig) error {
 		}
 
 		if config.Retry.InitialDelay > config.Retry.MaxDelay {
-			return NewConfigError("initial delay may not exceed maximum delay")
+			return NewConfigError(InvalidDelays)
 		}
 	}
 

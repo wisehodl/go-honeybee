@@ -13,16 +13,28 @@ var (
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
 	InvalidRetryMaxDelay     = errors.New("max delay must be positive")
 	InvalidRetryJitterFactor = errors.New("jitter factor must be between 0.0 and 1.0")
+	InvalidDelays            = errors.New("initial delay may not exceed maximum delay")
+
+	// Socket Errors
+	ErrNilRetryManager = errors.New("retry manager cannot be nil")
+	ErrNilDialer       = errors.New("dialer cannot be nil")
+	ErrEmptyURL        = errors.New("URL cannot be empty")
 
 	// Connection Errors
-	ErrConnectionClosed = errors.New("connection closed")
-	ErrWriteFailed      = errors.New("write failed")
+	ErrConnectionClosed     = errors.New("connection closed")
+	ErrWriteFailed          = errors.New("write failed")
+	ErrNilSocket            = errors.New("socket cannot be nil")
+	ErrSocketExists         = errors.New("socket already exists")
+	ErrFailedWriteDeadline  = errors.New("failed to set write deadline")
+	ErrPeerClosedClean      = errors.New("peer closed connection cleanly")
+	ErrPeerClosedUnexpected = errors.New("peer closed connection unexpectedly")
+	ErrReadError            = errors.New("read error")
 )
 
-func NewConfigError(text string) error {
-	return fmt.Errorf("configuration error: %s", text)
+func NewConfigError(err error) error {
+	return fmt.Errorf("configuration error: %w", err)
 }
 
-func NewConnectionError(text string) error {
-	return fmt.Errorf("connection error: %s", text)
+func NewConnectionError(err error) error {
+	return fmt.Errorf("connection error: %w", err)
 }
