@@ -55,9 +55,24 @@ func NewWorker(
 }
 
 func (w *Worker) Start(
-	ctx WorkerContext,
+	wctx WorkerContext,
 	wg *sync.WaitGroup,
 ) {
+	dial := make(chan struct{}, 1)
+	newConn := make(chan *transport.Connection, 1)
+	messages := make(chan receivedMessage, 256)
+	keepalive := make(chan struct{}, 1)
+
+	var owg sync.WaitGroup
+	owg.Add(4)
+
+	go func() { defer owg.Done(); w.runDialer(w.ctx, wctx, dial, newConn) }()
+	go func() { defer owg.Done(); w.runKeepalive(w.ctx, keepalive) }()
+	go func() { defer owg.Done(); w.runForwarder(w.ctx, messages, wctx.Inbox, w.config.MaxQueueSize) }()
+	go func() { defer owg.Done(); w.runSession(w.ctx, wctx, messages, dial, keepalive, newConn) }()
+
+	owg.Wait()
+	wg.Done()
 }
 
 func (w *Worker) Stop() {
