@@ -11,20 +11,26 @@ import (
 
 // Worker
 
-type receivedMessage struct {
+type Worker interface {
+	Start(wctx WorkerContext, wg *sync.WaitGroup)
+	Stop()
+	Send(data []byte) error
+}
+
+type ReceivedMessage struct {
 	data       []byte
 	receivedAt time.Time
 }
 
-type Worker struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+type DefaultWorker struct {
+	Ctx    context.Context
+	Cancel context.CancelFunc
 
-	id     string
-	config *WorkerConfig
+	Id     string
+	Config *WorkerConfig
 
-	conn      atomic.Pointer[transport.Connection]
-	heartbeat chan struct{}
+	Conn      atomic.Pointer[transport.Connection]
+	Heartbeat chan struct{}
 }
 
 func NewWorker(
@@ -32,7 +38,7 @@ func NewWorker(
 	id string,
 	config *WorkerConfig,
 
-) (*Worker, error) {
+) (*DefaultWorker, error) {
 	if config == nil {
 		config = GetDefaultWorkerConfig()
 	}
@@ -43,68 +49,68 @@ func NewWorker(
 	}
 
 	wctx, cancel := context.WithCancel(ctx)
-	w := &Worker{
-		ctx:       wctx,
-		cancel:    cancel,
-		id:        id,
-		config:    config,
-		heartbeat: make(chan struct{}),
+	w := &DefaultWorker{
+		Ctx:       wctx,
+		Cancel:    cancel,
+		Id:        id,
+		Config:    config,
+		Heartbeat: make(chan struct{}),
 	}
 
 	return w, nil
 }
 
-func (w *Worker) Start(
+func (w *DefaultWorker) Start(
 	wctx WorkerContext,
 	wg *sync.WaitGroup,
 ) {
 	dial := make(chan struct{}, 1)
 	newConn := make(chan *transport.Connection, 1)
-	messages := make(chan receivedMessage, 256)
+	messages := make(chan ReceivedMessage, 256)
 	keepalive := make(chan struct{}, 1)
 
 	var owg sync.WaitGroup
 	owg.Add(4)
 
-	go func() { defer owg.Done(); w.runDialer(w.ctx, wctx, dial, newConn) }()
-	go func() { defer owg.Done(); w.runKeepalive(w.ctx, keepalive) }()
-	go func() { defer owg.Done(); w.runForwarder(w.ctx, messages, wctx.Inbox, w.config.MaxQueueSize) }()
-	go func() { defer owg.Done(); w.runSession(w.ctx, wctx, messages, dial, keepalive, newConn) }()
+	go func() { defer owg.Done(); w.RunDialer(w.Ctx, wctx, dial, newConn) }()
+	go func() { defer owg.Done(); w.RunKeepalive(w.Ctx, keepalive) }()
+	go func() { defer owg.Done(); w.RunForwarder(w.Ctx, messages, wctx.Inbox, w.Config.MaxQueueSize) }()
+	go func() { defer owg.Done(); w.RunSession(w.Ctx, wctx, messages, dial, keepalive, newConn) }()
 
 	owg.Wait()
 	wg.Done()
 }
 
-func (w *Worker) Stop() {
-	w.cancel()
+func (w *DefaultWorker) Stop() {
+	w.Cancel()
 }
 
-func (w *Worker) Send(data []byte) error {
-	conn := w.conn.Load()
+func (w *DefaultWorker) Send(data []byte) error {
+	conn := w.Conn.Load()
 	if conn == nil {
 		// connection not established by session
-		return NewWorkerError(w.id, ErrConnectionUnavailable)
+		return NewWorkerError(w.Id, ErrConnectionUnavailable)
 	}
 
 	err := conn.Send(data)
 
 	if err != nil {
-		return NewWorkerError(w.id, err)
+		return NewWorkerError(w.Id, err)
 	}
 
 	select {
-	case w.heartbeat <- struct{}{}:
-	case <-w.ctx.Done():
+	case w.Heartbeat <- struct{}{}:
+	case <-w.Ctx.Done():
 	}
 
 	return nil
 }
 
-func (w *Worker) runSession(
+func (w *DefaultWorker) RunSession(
 	ctx context.Context,
 	wctx WorkerContext,
 
-	messages chan<- receivedMessage,
+	messages chan<- ReceivedMessage,
 	dial chan<- struct{},
 
 	keepalive <-chan struct{},
@@ -135,8 +141,8 @@ func (w *Worker) runSession(
 		}
 
 		// set up new connection
-		w.conn.Store(conn)
-		wctx.Events <- PoolEvent{ID: w.id, Kind: EventConnected}
+		w.Conn.Store(conn)
+		wctx.Events <- PoolEvent{ID: w.Id, Kind: EventConnected}
 
 		// set up session
 		sessionDone := make(chan struct{})
@@ -150,19 +156,19 @@ func (w *Worker) runSession(
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			w.runReader(conn, messages, sessionDone, onStop)
+			w.RunReader(conn, messages, sessionDone, onStop)
 		}()
 		go func() {
 			defer wg.Done()
-			w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+			w.RunStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
 		}()
 
 		// complete session
 		wg.Wait()
 
 		// tear down connection
-		w.conn.Store(nil)
-		wctx.Events <- PoolEvent{ID: w.id, Kind: EventDisconnected}
+		w.Conn.Store(nil)
+		wctx.Events <- PoolEvent{ID: w.Id, Kind: EventDisconnected}
 
 		// exit if worker is shutting down
 		select {
@@ -176,9 +182,9 @@ func (w *Worker) runSession(
 
 }
 
-func (w *Worker) runReader(
+func (w *DefaultWorker) RunReader(
 	conn *transport.Connection,
-	messages chan<- receivedMessage,
+	messages chan<- ReceivedMessage,
 	sessionDone <-chan struct{},
 	onStop func(),
 ) {
@@ -198,14 +204,14 @@ func (w *Worker) runReader(
 			}
 
 			// send message forward
-			messages <- receivedMessage{
+			messages <- ReceivedMessage{
 				data:       data,
 				receivedAt: time.Now(),
 			}
 
 			// send heartbeat
 			select {
-			case w.heartbeat <- struct{}{}:
+			case w.Heartbeat <- struct{}{}:
 			case <-sessionDone:
 				return
 			}
@@ -213,7 +219,7 @@ func (w *Worker) runReader(
 	}
 }
 
-func (w *Worker) runStopMonitor(
+func (w *DefaultWorker) RunStopMonitor(
 	ctx context.Context,
 	conn *transport.Connection,
 	keepalive <-chan struct{},
@@ -232,9 +238,9 @@ func (w *Worker) runStopMonitor(
 	}
 }
 
-func (w *Worker) runForwarder(
+func (w *DefaultWorker) RunForwarder(
 	ctx context.Context,
-	messages <-chan receivedMessage,
+	messages <-chan ReceivedMessage,
 	inbox chan<- InboxMessage,
 	maxQueueSize int,
 ) {
@@ -242,14 +248,14 @@ func (w *Worker) runForwarder(
 
 	for {
 		var out chan<- InboxMessage
-		var next receivedMessage
+		var next ReceivedMessage
 
 		// enable inbox if it is populated
 		if queue.Len() > 0 {
 			out = inbox
 
 			// read the first message in the queue
-			next = queue.Front().Value.(receivedMessage)
+			next = queue.Front().Value.(ReceivedMessage)
 		}
 
 		select {
@@ -265,7 +271,7 @@ func (w *Worker) runForwarder(
 			queue.PushBack(msg)
 		// send next message to inbox
 		case out <- InboxMessage{
-			ID:         w.id,
+			ID:         w.Id,
 			Data:       next.data,
 			ReceivedAt: next.receivedAt,
 		}:
@@ -275,12 +281,12 @@ func (w *Worker) runForwarder(
 	}
 }
 
-func (w *Worker) runKeepalive(
+func (w *DefaultWorker) RunKeepalive(
 	ctx context.Context,
 	keepalive chan<- struct{},
 ) {
 	// disable keepalive timeout if not configured
-	if w.config.KeepaliveTimeout <= 0 {
+	if w.Config.KeepaliveTimeout <= 0 {
 		// wait for cancel and exit
 		select {
 		case <-ctx.Done():
@@ -288,14 +294,14 @@ func (w *Worker) runKeepalive(
 		return
 	}
 
-	timer := time.NewTimer(w.config.KeepaliveTimeout)
+	timer := time.NewTimer(w.Config.KeepaliveTimeout)
 	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-w.heartbeat:
+		case <-w.Heartbeat:
 			// drain the timer channel and reset
 			if !timer.Stop() {
 				select {
@@ -303,7 +309,7 @@ func (w *Worker) runKeepalive(
 				default:
 				}
 			}
-			timer.Reset(w.config.KeepaliveTimeout)
+			timer.Reset(w.Config.KeepaliveTimeout)
 		// timer completed
 		case <-timer.C:
 			// send keepalive signal, then reset the timer
@@ -311,16 +317,16 @@ func (w *Worker) runKeepalive(
 			case keepalive <- struct{}{}:
 			default:
 			}
-			timer.Reset(w.config.KeepaliveTimeout)
+			timer.Reset(w.Config.KeepaliveTimeout)
 		}
 	}
 }
 
-func (w *Worker) dial(
+func (w *DefaultWorker) Dial(
 	ctx context.Context,
 	wctx WorkerContext,
 ) (*transport.Connection, error) {
-	conn, err := transport.NewConnection(w.id, wctx.ConnectionConfig, wctx.Logger)
+	conn, err := transport.NewConnection(w.Id, wctx.ConnectionConfig, wctx.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +335,7 @@ func (w *Worker) dial(
 	return conn, conn.Connect(ctx)
 }
 
-func (w *Worker) runDialer(
+func (w *DefaultWorker) RunDialer(
 	ctx context.Context,
 	wctx WorkerContext,
 
@@ -354,7 +360,7 @@ func (w *Worker) runDialer(
 			}()
 
 			// dial a new connection
-			conn, err := w.dial(ctx, wctx)
+			conn, err := w.Dial(ctx, wctx)
 			close(done)
 
 			// send error if dial failed and continue

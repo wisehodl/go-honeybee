@@ -31,14 +31,14 @@ func makeWorkerContext(t *testing.T) (
 	return
 }
 
-func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *Worker {
+func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *DefaultWorker {
 	t.Helper()
-	return &Worker{
-		ctx:       ctx,
-		cancel:    cancel,
-		id:        "wss://test",
-		config:    GetDefaultWorkerConfig(),
-		heartbeat: make(chan struct{}),
+	return &DefaultWorker{
+		Ctx:       ctx,
+		Cancel:    cancel,
+		Id:        "wss://test",
+		Config:    GetDefaultWorkerConfig(),
+		Heartbeat: make(chan struct{}),
 	}
 }
 
@@ -67,7 +67,7 @@ func TestWorkerStart(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-events:
-				return e.ID == w.id && e.Kind == EventConnected
+				return e.ID == w.Id && e.Kind == EventConnected
 			default:
 				return false
 			}
@@ -154,7 +154,7 @@ func TestWorkerStart(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-inbox:
-				return msg.ID == w.id && string(msg.Data) == "hello"
+				return msg.ID == w.Id && string(msg.Data) == "hello"
 			default:
 				return false
 			}

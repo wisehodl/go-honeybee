@@ -14,16 +14,16 @@ func TestRunKeepalive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &Worker{
-			config:    &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond},
-			heartbeat: heartbeat,
+		w := &DefaultWorker{
+			Config:    &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond},
+			Heartbeat: heartbeat,
 		}
-		go w.runKeepalive(ctx, keepalive)
+		go w.RunKeepalive(ctx, keepalive)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
 			time.Sleep(30 * time.Millisecond)
-			w.heartbeat <- struct{}{}
+			w.Heartbeat <- struct{}{}
 		}
 
 		// because the timer is being reset, keepalive signal should not be sent
@@ -42,8 +42,8 @@ func TestRunKeepalive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Millisecond}}
-		go w.runKeepalive(ctx, keepalive)
+		w := &DefaultWorker{Config: &WorkerConfig{KeepaliveTimeout: 20 * time.Millisecond}}
+		go w.RunKeepalive(ctx, keepalive)
 
 		// send no heartbeats, wait for timeout and keepalive signal
 		honeybeetest.Eventually(t, func() bool {
@@ -60,10 +60,10 @@ func TestRunKeepalive(t *testing.T) {
 		keepalive := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		w := &Worker{config: &WorkerConfig{KeepaliveTimeout: 20 * time.Second}}
+		w := &DefaultWorker{Config: &WorkerConfig{KeepaliveTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
-			w.runKeepalive(ctx, keepalive)
+			w.RunKeepalive(ctx, keepalive)
 			close(done)
 		}()
 

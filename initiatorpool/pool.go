@@ -13,7 +13,7 @@ import (
 
 type Peer struct {
 	id     string
-	worker *Worker
+	worker Worker
 }
 
 type WorkerContext struct {
@@ -74,7 +74,7 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger,
 	// deadlocks.
 	if config.WorkerFactory == nil {
 		config.WorkerFactory = func(
-			ctx context.Context, id string) (*Worker, error) {
+			ctx context.Context, id string) (Worker, error) {
 			return NewWorker(ctx, id, config.WorkerConfig)
 		}
 	}
