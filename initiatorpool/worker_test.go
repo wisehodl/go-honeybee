@@ -6,13 +6,230 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestRunSession(t *testing.T) {
+
+}
+
+func TestRunReader(t *testing.T) {
+	t.Run("message arrives with correct data and non-zero receivedAt", func(t *testing.T) {
+		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+		defer conn.Close()
+
+		messages := make(chan receivedMessage, 1)
+		heartbeat := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStop := func() {}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		go func() {
+			for range heartbeat {
+			}
+		}()
+		go w.runReader(conn, messages, sessionDone, onStop)
+
+		before := time.Now()
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.TextMessage,
+			Data:    []byte("hello"),
+		}
+
+		assert.Eventually(t, func() bool {
+			select {
+			case msg := <-messages:
+				return string(msg.data) == "hello" && msg.receivedAt.After(before)
+			default:
+				return false
+			}
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+
+	t.Run("heartbeat receives one signal per message", func(t *testing.T) {
+		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+		defer conn.Close()
+
+		messages := make(chan receivedMessage, 10)
+		heartbeat := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStop := func() {}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := &Worker{
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+
+		received := atomic.Int32{}
+		go func() {
+			for range heartbeat {
+				received.Add(1)
+			}
+		}()
+		go func() {
+			for range messages {
+			}
+		}()
+		go w.runReader(conn, messages, sessionDone, onStop)
+
+		const count = 3
+		for i := 0; i < count; i++ {
+			incomingData <- honeybeetest.MockIncomingData{
+				MsgType: websocket.TextMessage,
+				Data:    []byte(fmt.Sprintf("msg-%d", i)),
+			}
+		}
+
+		assert.Eventually(t, func() bool {
+			return received.Load() == count
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+	})
+
+	t.Run("incoming channel close calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+
+		messages := make(chan receivedMessage, 1)
+		heartbeat := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+		ctx := context.Background()
+
+		w := &Worker{
+			ctx:       ctx,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		go func() {
+			for range heartbeat {
+			}
+		}()
+		go func() {
+			for range messages {
+			}
+		}()
+		go w.runReader(conn, messages, sessionDone, onStop)
+
+		// simulate remote close
+		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+
+	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+
+		messages := make(chan receivedMessage, 1)
+		heartbeat := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+		ctx := context.Background()
+
+		w := &Worker{
+			ctx:       ctx,
+			id:        "wss://test",
+			heartbeat: heartbeat,
+		}
+		go w.runReader(conn, messages, sessionDone, onStop)
+
+		close(sessionDone)
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+}
+
+func TestRunStopMonitor(t *testing.T) {
+	t.Run("keepalive signal calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		keepalive := make(chan struct{}, 1)
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		keepalive <- struct{}{}
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+
+	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		keepalive := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		cancel()
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+
+	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		keepalive := make(chan struct{})
+		sessionDone := make(chan struct{})
+		onStopCalled := atomic.Bool{}
+		onStop := func() { onStopCalled.Store(true) }
+
+		w := &Worker{id: "wss://test"}
+		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+
+		close(sessionDone)
+
+		assert.Eventually(t, func() bool {
+			return connClosed(conn)
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
+
+		assert.True(t, onStopCalled.Load())
+	})
+}
 
 func TestRunForwarder(t *testing.T) {
 	t.Run("message passes through to inbox", func(t *testing.T) {
@@ -177,73 +394,6 @@ func TestRunKeepalive(t *testing.T) {
 				return false
 			}
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
-	})
-}
-
-func TestRunStopMonitor(t *testing.T) {
-	t.Run("keepalive signal calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		keepalive := make(chan struct{}, 1)
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-
-		w := &Worker{id: "wss://test"}
-		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
-
-		keepalive <- struct{}{}
-
-		assert.Eventually(t, func() bool {
-			return connClosed(conn)
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
-
-		assert.True(t, onStopCalled.Load())
-	})
-
-	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
-		ctx, cancel := context.WithCancel(context.Background())
-
-		keepalive := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-
-		w := &Worker{id: "wss://test"}
-		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
-
-		cancel()
-
-		assert.Eventually(t, func() bool {
-			return connClosed(conn)
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
-
-		assert.True(t, onStopCalled.Load())
-	})
-
-	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		keepalive := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-
-		w := &Worker{id: "wss://test"}
-		go w.runStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
-
-		close(sessionDone)
-
-		assert.Eventually(t, func() bool {
-			return connClosed(conn)
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
-
-		assert.True(t, onStopCalled.Load())
 	})
 }
 
