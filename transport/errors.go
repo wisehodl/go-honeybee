@@ -13,6 +13,10 @@ var (
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
 	InvalidRetryMaxDelay     = errors.New("max delay must be positive")
 	InvalidRetryJitterFactor = errors.New("jitter factor must be between 0.0 and 1.0")
+
+	// Connection Errors
+	ErrConnectionClosed = errors.New("connection closed")
+	ErrWriteFailed      = errors.New("write failed")
 )
 
 func NewConfigError(text string) error {

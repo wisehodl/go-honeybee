@@ -5,6 +5,7 @@ import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,11 +17,14 @@ type receivedMessage struct {
 }
 
 type Worker struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	id       string
-	config   *WorkerConfig
-	outbound chan []byte
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	id     string
+	config *WorkerConfig
+
+	conn      atomic.Pointer[transport.Connection]
+	heartbeat chan struct{}
 }
 
 func NewWorker(
@@ -40,25 +44,34 @@ func NewWorker(
 
 	wctx, cancel := context.WithCancel(ctx)
 	w := &Worker{
-		ctx:      wctx,
-		cancel:   cancel,
-		id:       id,
-		outbound: make(chan []byte, 64),
-		config:   config,
+		ctx:       wctx,
+		cancel:    cancel,
+		id:        id,
+		config:    config,
+		heartbeat: make(chan struct{}),
 	}
 
 	return w, nil
 }
 
 func (w *Worker) Send(data []byte) error {
-	select {
-	case w.outbound <- data:
-		return nil
-	case <-w.ctx.Done():
-		return NewWorkerError(w.id, "worker is stopped")
-	default:
-		return NewWorkerError(w.id, "outbound queue full")
+	conn := w.conn.Load()
+	if conn == nil {
+		return NewWorkerError(w.id, ErrConnectionUnavailable)
 	}
+
+	err := conn.Send(data)
+
+	if err != nil {
+		return NewWorkerError(w.id, err)
+	}
+
+	select {
+	case w.heartbeat <- struct{}{}:
+	case <-w.ctx.Done():
+	}
+
+	return nil
 }
 
 func (w *Worker) Start(
@@ -76,7 +89,6 @@ func (w *Worker) runSession(
 	wctx WorkerContext,
 
 	messages chan<- receivedMessage,
-	heartbeat chan<- struct{},
 	dial chan<- struct{},
 
 	keepalive <-chan struct{},
@@ -88,19 +100,38 @@ func (w *Worker) runSession(
 func (w *Worker) runReader(
 	conn *transport.Connection,
 	messages chan<- receivedMessage,
-	heartbeat chan<- struct{},
 	sessionDone <-chan struct{},
 	onStop func(),
 ) {
-}
+	defer func() {
+		conn.Close()
+		onStop()
+	}()
 
-func (w *Worker) runWriter(
-	conn *transport.Connection,
-	outbound <-chan []byte,
-	heartbeat chan<- struct{},
-	sessionDone <-chan struct{},
-	onStop func(),
-) {
+	for {
+		select {
+		case <-sessionDone:
+			return
+		case data, ok := <-conn.Incoming():
+			if !ok {
+				// connection has closed
+				return
+			}
+
+			// send message forward
+			messages <- receivedMessage{
+				data:       data,
+				receivedAt: time.Now(),
+			}
+
+			// send heartbeat
+			select {
+			case w.heartbeat <- struct{}{}:
+			case <-sessionDone:
+				return
+			}
+		}
+	}
 }
 
 func (w *Worker) runStopMonitor(
@@ -110,6 +141,16 @@ func (w *Worker) runStopMonitor(
 	sessionDone <-chan struct{},
 	onStop func(),
 ) {
+	defer func() {
+		conn.Close()
+		onStop()
+	}()
+
+	select {
+	case <-ctx.Done():
+	case <-keepalive:
+	case <-sessionDone:
+	}
 }
 
 func (w *Worker) runForwarder(
@@ -157,7 +198,6 @@ func (w *Worker) runForwarder(
 
 func (w *Worker) runKeepalive(
 	ctx context.Context,
-	heartbeat <-chan struct{},
 	keepalive chan<- struct{},
 ) {
 	// disable keepalive timeout if not configured
@@ -176,7 +216,7 @@ func (w *Worker) runKeepalive(
 		select {
 		case <-ctx.Done():
 			return
-		case <-heartbeat:
+		case <-w.heartbeat:
 			// drain the timer channel and reset
 			if !timer.Stop() {
 				select {

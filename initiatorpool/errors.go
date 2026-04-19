@@ -4,18 +4,27 @@ import "errors"
 import "fmt"
 
 var (
+	// Config errors
 	InvalidKeepaliveTimeout = errors.New("keepalive timeout cannot be negative")
 	InvalidMaxQueueSize     = errors.New("maximum queue size cannot be negative")
+
+	// Pool errors
+	ErrPoolClosed   = errors.New("pool is closed")
+	ErrPeerNotFound = errors.New("peer not found")
+	ErrPeerExists   = errors.New("peer already exists")
+
+	// Worker errors
+	ErrConnectionUnavailable = errors.New("connection unavailable")
 )
 
 func NewConfigError(text string) error {
 	return fmt.Errorf("configuration error: %s", text)
 }
 
-func NewPoolError(text string) error {
-	return fmt.Errorf("pool error: %s", text)
+func NewPoolError(err error) error {
+	return fmt.Errorf("pool error: %w", err)
 }
 
-func NewWorkerError(id string, text string) error {
-	return fmt.Errorf("worker %q error: %s", id, text)
+func NewWorkerError(id string, err error) error {
+	return fmt.Errorf("worker %q error: %w", id, err)
 }

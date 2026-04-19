@@ -64,7 +64,7 @@ func _TestPoolConnect(t *testing.T) {
 		// trailing slash normalizes to same key
 		err = pool.Connect("wss://test/")
 		assert.Error(t, err)
-		assert.ErrorContains(t, err, "already exists")
+		assert.ErrorIs(t, err, ErrPeerExists)
 
 		pool.mu.RLock()
 		assert.Len(t, pool.peers, 1)
@@ -152,7 +152,7 @@ func _TestPoolRemove(t *testing.T) {
 
 		// remove unknown connection
 		err = pool.Remove("wss://unknown")
-		assert.ErrorContains(t, err, "connection not found")
+		assert.ErrorIs(t, err, ErrPeerNotFound)
 	})
 
 	t.Run("closed pool returns error", func(t *testing.T) {
@@ -172,7 +172,7 @@ func _TestPoolRemove(t *testing.T) {
 
 		// attempt to remove connection
 		err = pool.Remove("wss://test")
-		assert.ErrorContains(t, err, "pool is closed")
+		assert.ErrorIs(t, err, ErrPoolClosed)
 	})
 
 }

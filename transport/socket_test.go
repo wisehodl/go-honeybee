@@ -199,9 +199,9 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 				done <- err
 			}()
 
-			// wait for first dial to complete, then cancel during sleep
+			// wait for first two dials to complete, then cancel during sleep
 			assert.Eventually(t, func() bool {
-				return dialCount.Load() >= 1
+				return dialCount.Load() > 1
 			}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 			cancel()
 

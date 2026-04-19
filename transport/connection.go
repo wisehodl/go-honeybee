@@ -45,15 +45,15 @@ type Connection struct {
 	logger *slog.Logger
 
 	incoming chan []byte
-	outgoing chan []byte
 	errors   chan error
 	done     chan struct{}
 
 	state ConnectionState
 
-	wg     sync.WaitGroup
-	closed bool
-	mu     sync.RWMutex
+	wg      sync.WaitGroup
+	closed  bool
+	mu      sync.RWMutex
+	writeMu sync.Mutex
 }
 
 func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
@@ -77,7 +77,6 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 		config:   config,
 		logger:   logger,
 		incoming: make(chan []byte, 100),
-		outgoing: make(chan []byte, 100),
 		errors:   make(chan error, 10),
 		state:    StateDisconnected,
 		done:     make(chan struct{}),
@@ -108,7 +107,6 @@ func NewConnectionFromSocket(
 		config:   config,
 		logger:   logger,
 		incoming: make(chan []byte, 100),
-		outgoing: make(chan []byte, 100),
 		errors:   make(chan error, 10),
 		state:    StateConnected,
 		done:     make(chan struct{}),
@@ -119,7 +117,6 @@ func NewConnectionFromSocket(
 	}
 
 	conn.startReader()
-	conn.startWriter()
 
 	return conn, nil
 }
@@ -166,7 +163,6 @@ func (c *Connection) Connect(ctx context.Context) error {
 	}
 
 	c.startReader()
-	c.startWriter()
 
 	return nil
 }
@@ -221,63 +217,32 @@ func (c *Connection) startReader() {
 
 }
 
-func (c *Connection) startWriter() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		for {
-			select {
-			case <-c.done:
-				return
-			case data := <-c.outgoing:
-				if c.config.WriteTimeout > 0 {
-					if err := c.socket.SetWriteDeadline(time.Now().Add(c.config.WriteTimeout)); err != nil {
-						if c.logger != nil {
-							c.logger.Error("write deadline error", "error", err)
-						}
-						select {
-						case c.errors <- fmt.Errorf("failed to set write deadline: %w", err):
-						case <-c.done:
-						}
-						c.shutdown()
-						return
-					}
-				}
-
-				if err := c.socket.WriteMessage(websocket.TextMessage, data); err != nil {
-					if c.logger != nil {
-						c.logger.Error("write error", "error", err)
-					}
-					select {
-					case c.errors <- err:
-					case <-c.done:
-					}
-					c.shutdown()
-					return
-				}
-			}
-		}
-	}()
-
-}
-
 func (c *Connection) Send(data []byte) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 
 	if c.closed {
-		return NewConnectionError("connection closed")
+		return ErrConnectionClosed
 	}
 
-	select {
-	case c.outgoing <- data:
-		return nil
-	case <-c.done:
-		return NewConnectionError("connection closing")
-	default:
-		return NewConnectionError("outgoing queue full")
+	if c.config.WriteTimeout > 0 {
+		if err := c.socket.SetWriteDeadline(time.Now().Add(c.config.WriteTimeout)); err != nil {
+			if c.logger != nil {
+				c.logger.Error("write deadline error", "error", err)
+			}
+			c.shutdown()
+			return fmt.Errorf("failed to set write deadline: %w", err)
+		}
 	}
+
+	if err := c.socket.WriteMessage(websocket.TextMessage, data); err != nil {
+		if c.logger != nil {
+			c.logger.Error("write error", "error", err)
+		}
+		return fmt.Errorf("%w: %w", ErrWriteFailed, err)
+	}
+
+	return nil
 }
 
 func (c *Connection) Incoming() <-chan []byte {
@@ -326,7 +291,6 @@ func (c *Connection) shutdown() {
 
 		c.wg.Wait()
 		close(c.incoming)
-		close(c.outgoing)
 		close(c.errors)
 	}()
 

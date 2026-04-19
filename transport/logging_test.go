@@ -413,7 +413,7 @@ func TestWriterLogging(t *testing.T) {
 		assert.NoError(t, err)
 
 		err = conn.Send([]byte("test"))
-		assert.NoError(t, err)
+		assert.ErrorContains(t, err, "failed to set write deadline: deadline error")
 
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
@@ -443,7 +443,7 @@ func TestWriterLogging(t *testing.T) {
 		assert.NoError(t, err)
 
 		err = conn.Send([]byte("test"))
-		assert.NoError(t, err)
+		assert.ErrorContains(t, err, "write error")
 
 		assert.Eventually(t, func() bool {
 			return findLogRecord(
