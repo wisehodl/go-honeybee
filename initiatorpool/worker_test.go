@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func TestRunSession(t *testing.T) {
+func TestRunSessionDial(t *testing.T) {
 
 }
 
@@ -127,14 +127,19 @@ func TestRunReader(t *testing.T) {
 		}()
 		go w.runReader(conn, messages, sessionDone, onStop)
 
-		// simulate remote close
+		// induce connection closure via reader
 		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
 
+		err := <-conn.Errors()
+		assert.Equal(t, io.EOF, err)
+
 		assert.Eventually(t, func() bool {
-			return connClosed(conn)
+			return conn.State() == transport.StateClosed
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
-		assert.True(t, onStopCalled.Load())
+		assert.Eventually(t, func() bool {
+			return onStopCalled.Load()
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
@@ -157,10 +162,12 @@ func TestRunReader(t *testing.T) {
 		close(sessionDone)
 
 		assert.Eventually(t, func() bool {
-			return connClosed(conn)
+			return conn.State() == transport.StateClosed
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
-		assert.True(t, onStopCalled.Load())
+		assert.Eventually(t, func() bool {
+			return onStopCalled.Load()
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 }
 
@@ -181,10 +188,12 @@ func TestRunStopMonitor(t *testing.T) {
 		keepalive <- struct{}{}
 
 		assert.Eventually(t, func() bool {
-			return connClosed(conn)
+			return conn.State() == transport.StateClosed
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
-		assert.True(t, onStopCalled.Load())
+		assert.Eventually(t, func() bool {
+			return onStopCalled.Load()
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
 	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
@@ -202,10 +211,12 @@ func TestRunStopMonitor(t *testing.T) {
 		cancel()
 
 		assert.Eventually(t, func() bool {
-			return connClosed(conn)
+			return conn.State() == transport.StateClosed
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
-		assert.True(t, onStopCalled.Load())
+		assert.Eventually(t, func() bool {
+			return onStopCalled.Load()
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
@@ -224,10 +235,12 @@ func TestRunStopMonitor(t *testing.T) {
 		close(sessionDone)
 
 		assert.Eventually(t, func() bool {
-			return connClosed(conn)
+			return conn.State() == transport.StateClosed
 		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
-		assert.True(t, onStopCalled.Load())
+		assert.Eventually(t, func() bool {
+			return onStopCalled.Load()
+		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 	})
 }
 

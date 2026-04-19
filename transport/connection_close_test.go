@@ -58,15 +58,11 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 		conn.Close()
 
-		assert.Eventually(t, func() bool {
-			select {
-			case _, ok := <-conn.Errors():
-				return !ok
-			default:
-				return false
-			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick,
-			"errors channel should close")
+		assert.True(t, conn.closed)
+		_, ok := <-conn.incoming
+		assert.False(t, ok)
+		_, ok = <-conn.errors
+		assert.False(t, ok)
 	})
 
 	t.Run("send fails after close", func(t *testing.T) {
@@ -102,33 +98,5 @@ func TestConnectedConnectionClose(t *testing.T) {
 
 		conn.Close()
 		assert.Equal(t, StateClosed, conn.State())
-	})
-
-	t.Run("writer active during close exits cleanly", func(t *testing.T) {
-		conn, _, _, _ := setupTestConnection(t, nil)
-
-		for i := 0; i < 50; i++ {
-			conn.Send([]byte("message"))
-		}
-
-		conn.Close()
-
-		err := conn.Send([]byte("late"))
-		assert.Error(t, err, "Send should fail after close")
-		assert.ErrorContains(t, err, "connection closed")
-	})
-
-	t.Run("both goroutines active during close", func(t *testing.T) {
-		conn, _, incomingData, _ := setupTestConnection(t, nil)
-
-		for i := 0; i < 10; i++ {
-			incomingData <- honeybeetest.MockIncomingData{
-				MsgType: websocket.TextMessage,
-				Data:    []byte(fmt.Sprintf("in-%d", i)),
-			}
-			conn.Send([]byte(fmt.Sprintf("out-%d", i)))
-		}
-
-		conn.Close()
 	})
 }

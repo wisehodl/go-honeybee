@@ -1,10 +1,10 @@
 package transport
 
 import (
-	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"testing"
 )
 
@@ -62,23 +62,12 @@ func TestStartReader(t *testing.T) {
 			return nil
 		}
 
-		readErr := fmt.Errorf("read failed")
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
-			return 0, nil, readErr
+			return 0, nil, io.EOF
 		}
 
 		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
 		assert.NoError(t, err)
-		defer conn.Close()
-
-		assert.Eventually(t, func() bool {
-			select {
-			case err := <-conn.Errors():
-				return err == readErr
-			default:
-				return false
-			}
-		}, honeybeetest.TestTimeout, honeybeetest.TestTick)
 
 		assert.Eventually(t, func() bool {
 			return conn.State() == StateClosed

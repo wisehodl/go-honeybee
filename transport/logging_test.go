@@ -281,7 +281,7 @@ func TestCloseLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
-			{slog.LevelInfo, "closing", map[string]any{"state": "connected"}},
+			{slog.LevelInfo, "shutting down", map[string]any{}},
 			{slog.LevelInfo, "closed", map[string]any{}},
 		}
 
@@ -311,7 +311,7 @@ func TestCloseLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []expectedLog{
-			{slog.LevelInfo, "closing", map[string]any{"state": "connected"}},
+			{slog.LevelInfo, "shutting down", map[string]any{}},
 			{slog.LevelError, "socket close failed", map[string]any{"error": closeErr}},
 		}
 

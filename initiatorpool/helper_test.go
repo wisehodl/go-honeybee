@@ -51,12 +51,3 @@ func setupWorkerTestConnection(t *testing.T) (
 	assert.NoError(t, err)
 	return
 }
-
-func connClosed(conn *transport.Connection) bool {
-	select {
-	case _, ok := <-conn.Errors():
-		return !ok
-	default:
-		return false
-	}
-}
