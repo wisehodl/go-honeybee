@@ -50,7 +50,6 @@ func TestConnectionSend(t *testing.T) {
 			for {
 				select {
 				case msg := <-outgoingData:
-					fmt.Printf("got message %s\n", string(msg.Data))
 					mu.Lock()
 					messages = append(messages, string(msg.Data))
 					mu.Unlock()
@@ -69,7 +68,6 @@ func TestConnectionSend(t *testing.T) {
 				defer wg.Done()
 				for j := 0; j < 10; j++ {
 					data := []byte(fmt.Sprintf("msg-%d-%d", id, j))
-					fmt.Printf("sending message %s\n", string(data))
 					for {
 						// send and retry until success
 						err := conn.Send(data)
