@@ -17,8 +17,8 @@ var (
 	ErrConnectionUnavailable = errors.New("connection unavailable")
 )
 
-func NewConfigError(text string) error {
-	return fmt.Errorf("configuration error: %s", text)
+func NewConfigError(err error) error {
+	return fmt.Errorf("configuration error: %w", err)
 }
 
 func NewPoolError(err error) error {

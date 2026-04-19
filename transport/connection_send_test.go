@@ -213,7 +213,7 @@ func TestConnectionSend(t *testing.T) {
 		defer conn.Close()
 
 		err = conn.Send([]byte("test"))
-		assert.ErrorContains(t, err, "failed to set write deadline: test error")
+		assert.ErrorIs(t, err, ErrFailedWriteDeadline)
 
 		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == StateClosed

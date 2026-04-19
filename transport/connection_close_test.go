@@ -73,7 +73,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 		err = conn.Send([]byte("test"))
 		assert.Error(t, err)
-		assert.ErrorContains(t, err, "connection closed")
+		assert.ErrorIs(t, err, ErrConnectionClosed)
 	})
 
 }

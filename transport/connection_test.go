@@ -3,9 +3,11 @@ package transport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
@@ -241,7 +243,7 @@ func TestConnect(t *testing.T) {
 
 		err = conn.Connect(context.Background())
 		assert.Error(t, err)
-		assert.ErrorContains(t, err, "already has socket")
+		assert.ErrorIs(t, err, ErrSocketExists)
 		assert.Equal(t, StateDisconnected, conn.State())
 	})
 
@@ -253,7 +255,7 @@ func TestConnect(t *testing.T) {
 
 		err = conn.Connect(context.Background())
 		assert.Error(t, err)
-		assert.ErrorContains(t, err, "connection is closed")
+		assert.ErrorIs(t, err, ErrConnectionClosed)
 		assert.Equal(t, StateClosed, conn.State())
 	})
 
@@ -467,17 +469,72 @@ func TestConnectionIncoming(t *testing.T) {
 }
 
 func TestConnectionErrors(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil, nil)
-	assert.NoError(t, err)
+	t.Run("clean close by peer", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, &websocket.CloseError{
+				Code: websocket.CloseNormalClosure,
+				Text: "goodbye",
+			}
+		}
 
-	errors := conn.Errors()
-	assert.NotNil(t, errors)
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
 
-	// send data through the channel to verify they are the same
-	testErr := fmt.Errorf("test error")
-	conn.errors <- testErr
-	received := <-errors
-	assert.Equal(t, testErr, received)
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return errors.Is(err, ErrPeerClosedClean)
+			default:
+				return false
+			}
+		}, "expected clean close error")
+	})
+
+	t.Run("unexpected close", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, &websocket.CloseError{
+				Code: websocket.CloseProtocolError,
+				Text: "bad protocol",
+			}
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return errors.Is(err, ErrPeerClosedUnexpected)
+			default:
+				return false
+			}
+		}, "expected unexpected close error")
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, io.EOF
+		}
+
+		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return errors.Is(err, ErrReadError)
+			default:
+				return false
+			}
+		}, "expected read error")
+
+	})
 }
 
 // Test helpers

@@ -125,7 +125,7 @@ func TestRunReader(t *testing.T) {
 		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
 
 		err := <-conn.Errors()
-		assert.Equal(t, io.EOF, err)
+		assert.ErrorIs(t, err, io.EOF)
 
 		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
