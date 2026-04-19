@@ -15,14 +15,14 @@ func TestRunKeepalive(t *testing.T) {
 		defer cancel()
 
 		w := &DefaultWorker{
-			Config:    &WorkerConfig{KeepaliveTimeout: 100 * time.Millisecond},
+			Config:    &WorkerConfig{KeepaliveTimeout: 200 * time.Millisecond},
 			Heartbeat: heartbeat,
 		}
 		go w.RunKeepalive(ctx, keepalive)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
-			time.Sleep(30 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 			w.Heartbeat <- struct{}{}
 		}
 

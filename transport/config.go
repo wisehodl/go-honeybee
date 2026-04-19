@@ -147,15 +147,9 @@ func WithWriteTimeout(value time.Duration) ConnectionOption {
 	}
 }
 
-// WithRetry enables retry with default parameters (infinite retries,
-// 1s initial delay, 5s max delay, 0.5 jitter factor).
-//
-// If passed after granular retry options (WithRetryMaxRetries, etc.),
-// it will overwrite them. Use either WithRetry alone or the granular
-// options; not both.
-func WithRetry() ConnectionOption {
+func WithoutRetry() ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		c.Retry = GetDefaultRetryConfig()
+		c.Retry = nil
 		return nil
 	}
 }

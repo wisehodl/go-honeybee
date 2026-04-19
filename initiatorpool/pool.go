@@ -100,8 +100,15 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger,
 	return p, nil
 }
 
-func (p *Pool) Peers() map[string]*Peer {
-	return p.peers
+func (p *Pool) Peers() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	ids := make([]string, 0, len(p.peers))
+	for i, _ := range p.peers {
+		ids = append(ids, i)
+	}
+	return ids
 }
 
 func (p *Pool) Inbox() chan InboxMessage {
@@ -131,8 +138,9 @@ func (p *Pool) Close() {
 	}
 
 	p.closed = true
-	p.cancel()
+	p.cancel() // closes all workers
 
+	// remove all peers
 	p.peers = make(map[string]*Peer)
 
 	p.mu.Unlock()
