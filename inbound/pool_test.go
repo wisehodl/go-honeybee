@@ -310,7 +310,7 @@ func TestPoolEvents(t *testing.T) {
 			Err: &websocket.CloseError{Code: websocket.CloseNormalClosure},
 		}
 
-		expectEvent(t, pool.Events(), "peer-1", EventPeerDisconnected)
+		expectEvent(t, pool.Events(), "peer-1", EventDisconnected)
 
 		honeybeetest.Eventually(t, func() bool {
 			return !slices.Contains(pool.Peers(), "peer-1")
@@ -328,7 +328,7 @@ func TestPoolEvents(t *testing.T) {
 			Err: &websocket.CloseError{Code: websocket.CloseProtocolError},
 		}
 
-		expectEvent(t, pool.Events(), "peer-1", EventPeerDropped)
+		expectEvent(t, pool.Events(), "peer-1", EventDropped)
 
 		honeybeetest.Eventually(t, func() bool {
 			return !slices.Contains(pool.Peers(), "peer-1")
@@ -337,7 +337,7 @@ func TestPoolEvents(t *testing.T) {
 
 	t.Run("EventPeerEvicted emitted on watchdog timeout", func(t *testing.T) {
 		config, err := NewPoolConfig(
-			WithWorkerConfig(&WorkerConfig{DeadTimeout: 20 * time.Millisecond}),
+			WithWorkerConfig(&WorkerConfig{InactivityTimeout: 20 * time.Millisecond}),
 		)
 		assert.NoError(t, err)
 
@@ -348,7 +348,7 @@ func TestPoolEvents(t *testing.T) {
 		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
-		expectEvent(t, pool.Events(), "peer-1", EventPeerEvicted)
+		expectEvent(t, pool.Events(), "peer-1", EventEvicted)
 
 		honeybeetest.Eventually(t, func() bool {
 			return !slices.Contains(pool.Peers(), "peer-1")

@@ -12,18 +12,18 @@ import (
 
 // Types
 
-type PoolEventKind string
+type PoolEventKind int
 
 const (
-	EventPeerDisconnected PoolEventKind = "disconnected"
-	EventPeerDropped      PoolEventKind = "dropped"
-	EventPeerEvicted      PoolEventKind = "evicted"
+	EventDisconnected PoolEventKind = iota
+	EventDropped
+	EventEvicted
 )
 
 var workerToPoolEvent = map[WorkerExitKind]PoolEventKind{
-	ExitCleanDisconnect: EventPeerDisconnected,
-	ExitUnexpectedDrop:  EventPeerDropped,
-	ExitInactive:        EventPeerEvicted,
+	ExitDisconnected: EventDisconnected,
+	ExitError:        EventDropped,
+	ExitPolicy:       EventEvicted,
 }
 
 type OnExitFunction func(kind WorkerExitKind)

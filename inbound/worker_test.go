@@ -99,7 +99,7 @@ func TestWorkerStart(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			val := v.exitKind.Load()
-			return val != nil && val.(WorkerExitKind) == ExitCleanDisconnect
+			return val != nil && val.(WorkerExitKind) == ExitDisconnected
 		}, "expected ExitCleanDisconnect")
 	})
 
@@ -115,7 +115,7 @@ func TestWorkerStart(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			val := v.exitKind.Load()
-			return val != nil && val.(WorkerExitKind) == ExitUnexpectedDrop
+			return val != nil && val.(WorkerExitKind) == ExitError
 		}, "expected ExitUnexpectedDrop")
 	})
 
@@ -124,7 +124,7 @@ func TestWorkerStart(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		worker, err := NewWorker(ctx, "peer-1", conn, &WorkerConfig{
-			DeadTimeout: 20 * time.Millisecond,
+			InactivityTimeout: 20 * time.Millisecond,
 		})
 		assert.NoError(t, err)
 		worker.cancel = cancel
@@ -146,7 +146,7 @@ func TestWorkerStart(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			val := exitKind.Load()
-			return val != nil && val.(WorkerExitKind) == ExitInactive
+			return val != nil && val.(WorkerExitKind) == ExitPolicy
 		}, "expected ExitInactive")
 	})
 }

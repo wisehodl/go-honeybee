@@ -15,12 +15,12 @@ type Worker interface {
 	Send(data []byte) error
 }
 
-type WorkerExitKind string
+type WorkerExitKind int
 
 const (
-	ExitCleanDisconnect WorkerExitKind = "disconnected"
-	ExitUnexpectedDrop  WorkerExitKind = "dropped"
-	ExitInactive        WorkerExitKind = "inactive"
+	ExitDisconnected WorkerExitKind = iota
+	ExitError
+	ExitPolicy
 )
 
 type ReceivedMessage struct {
@@ -79,7 +79,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin, wg *sync.WaitGroup) {
 
 	go func() {
 		defer owg.Done()
-		RunWatchdog(w.ctx, pool.OnExit, w.heartbeat, w.config.DeadTimeout)
+		RunWatchdog(w.ctx, pool.OnExit, w.heartbeat, w.config.InactivityTimeout)
 	}()
 
 	owg.Wait()
@@ -119,14 +119,14 @@ func RunReader(
 			if !ok {
 				// determine exit kind
 				// by default, the peer dropped unexpectedly
-				kind := ExitUnexpectedDrop
+				kind := ExitError
 				select {
 				// the peer-side error is sent before the connection is closed,
 				// so a non-blocking call here is correct
 				// if an error is not sent, then assume the default event kind
 				case err := <-conn.Errors():
 					if errors.Is(err, transport.ErrPeerClosedClean) {
-						kind = ExitCleanDisconnect
+						kind = ExitDisconnected
 					}
 				default:
 				}
@@ -228,7 +228,7 @@ func RunWatchdog(
 		// timer completed
 		case <-timer.C:
 			// signal peer is inactive
-			onInactive(ExitInactive)
+			onInactive(ExitPolicy)
 			return
 		}
 	}
