@@ -31,8 +31,8 @@ type OutboundPoolEventKind = outbound.PoolEventKind
 // Pool event constants
 
 const (
-	EventConnected    = outbound.EventConnected
-	EventDisconnected = outbound.EventDisconnected
+	OutboundEventConnected    = outbound.EventConnected
+	OutboundEventDisconnected = outbound.EventDisconnected
 )
 
 // Inbound Pool types
@@ -52,17 +52,17 @@ type InboundPoolEventKind = inbound.PoolEventKind
 // Inbound Pool event constants
 
 const (
-	EventPeerDisconnected = inbound.EventDisconnected
-	EventPeerDropped      = inbound.EventDropped
-	EventPeerEvicted      = inbound.EventEvicted
+	InboundEventDisconnected = inbound.EventDisconnected
+	InboundEventDropped      = inbound.EventDropped
+	InboundEventEvicted      = inbound.EventEvicted
 )
 
 // Inbound Worker exit kinds
 
 const (
-	ExitCleanDisconnect = inbound.ExitDisconnected
-	ExitUnexpectedDrop  = inbound.ExitError
-	ExitInactive        = inbound.ExitPolicy
+	InboundExitDisconnected = inbound.ExitDisconnected
+	InboundExitError        = inbound.ExitError
+	InboundExitPolicy       = inbound.ExitPolicy
 )
 
 // Connection constructors
@@ -141,8 +141,8 @@ var (
 // Inbound Worker options
 
 var (
-	WithInboundDeadTimeout  = inbound.WithDeadTimeout
-	WithInboundMaxQueueSize = inbound.WithMaxQueueSize
+	WithInboundInactivityTimeout = inbound.WithInactivityTimeout
+	WithInboundMaxQueueSize      = inbound.WithMaxQueueSize
 )
 
 // Socket type — needed for inbound pool.Add and pool.Replace
