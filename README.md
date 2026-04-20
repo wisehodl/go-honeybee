@@ -4,7 +4,7 @@ WebSocket connection and pool primitives for Go. Zero protocol awareness.
 
 ## Library Map
 
-```
+```txt
 honeybee.go            top-level re-exports and constructors
 
 transport/             single-connection primitives
@@ -132,9 +132,9 @@ go func() {
 go func() {
     for ev := range pool.Events() {
         switch ev.Kind {
-        case honeybee.EventPeerDisconnected: // clean close
-        case honeybee.EventPeerDropped:      // unexpected drop or read error
-        case honeybee.EventPeerEvicted:      // inactivity timeout, if enabled
+        case honeybee.InboundEventDisconnected: // clean close
+        case honeybee.InboundEventDropped:      // unexpected drop or read error
+        case honeybee.InboundEventEvicted:      // inactivity timeout, if enabled
         }
     }
 }()
@@ -147,7 +147,7 @@ pool.Send(peerID, []byte("response"))
 
 Use `Replace` if you need to replace a socket for a peer and maintain its ID. No events are emitted during this process.
 
-The watchdog is configured via `WithInboundDeadTimeout`. When set to zero, it is disabled. When set, the watchdog will observe message traffic on the wire and disconnect if no messages are seen for the configured duration. The watchdog is disabled by default, meaning that connections will persist until manually removed or remotely terminated.
+The watchdog is configured via `WithInboundInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog will observe message traffic on the wire and disconnect if no messages are seen for the configured duration. The watchdog is disabled by default, meaning that connections will persist until manually removed or remotely terminated.
 
 ### Outbound Pool
 
@@ -172,8 +172,8 @@ go func() {
     for ev := range pool.Events() {
 	    // used to determine when a connection is live
         switch ev.Kind {
-        case honeybee.EventConnected:
-        case honeybee.EventDisconnected:
+        case honeybee.OutboundEventConnected:
+        case honeybee.OutboundEventDisconnected:
         }
     }
 }()
@@ -184,17 +184,17 @@ pool.Send("wss://peer.example.com", []byte("hello"))
 
 URLs are normalized by the pool. For example: `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer.
 
-Every time a connection is established, `EventConnected` is emitted. Every time a connection drops for any reason, `EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
+Every time a connection is established, `OutboundEventConnected` is emitted. Every time a connection drops for any reason, `OutboundEventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
 
 Keepalive is configured via `WithOutboundKeepaliveTimeout`. The worker records a heartbeat on every inbound message and every successful send. If no heartbeats come in before the keepalive timer runs out, the connection is proactively disconnected and reconnected. When set to zero, the keepalive mechanism is disabled.
 
-`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should try again after observing an `EventConnected` event and maintain their own write buffers.
+`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should try again after observing an `OutboundEventConnected` event and maintain their own write buffers.
 
 Dial failures surface on `pool.Errors()`. These do not stop the pool though. It will continue retrying according to the connection's retry config and the keepalive mechanism.
 
 ## Extensibility
 
-The pool owns peer registry, event plumbing, and lifecycle. The worker owns what happens on the wire. Everything between `pool.Add` or `pool.Connect` and the `EventPeerDisconnected`/`EventDisconnected` event is the worker's responsibility, and it is fully replaceable.
+The pool owns peer registry, event plumbing, and lifecycle. The worker owns what happens on the wire. Everything between `pool.Add` or `pool.Connect` and the `InboundEventDisconnected`/`OutboundEventDisconnected` event is the worker's responsibility, and it is fully replaceable.
 
 ### The Worker Interface
 
@@ -202,7 +202,7 @@ Both pools accept any type implementing:
 
 ```go
 type Worker interface {
-    Start(pool PoolPlugin, wg *sync.WaitGroup)
+    Start(pool PoolPlugin)
     Stop()
     Send(data []byte) error
 }
@@ -241,7 +241,7 @@ type SequencedWorker struct {
     seq atomic.Uint64
 }
 
-func (w *SequencedWorker) Start(pool inbound.PoolPlugin, wg *sync.WaitGroup) {
+func (w *SequencedWorker) Start(pool inbound.PoolPlugin) {
     // wrap pool.Inbox with a channel that tags messages,
     // call w.DefaultWorker.Start with the wrapped plugin
 }
@@ -249,7 +249,8 @@ func (w *SequencedWorker) Start(pool inbound.PoolPlugin, wg *sync.WaitGroup) {
 
 **Level 3: Implement `Worker` from scratch.** The contract is minimal:
 
-1. `Start` runs until the worker is done, then returns. It must call `wg.Done()` exactly once before returning.
+1. `Start` runs until the worker is done, then returns. The pool handles its
+   own waitgroup to monitor each worker.
 2. `Stop` causes `Start` to return in bounded time. Typically this cancels a context.
 3. `Send` writes data and returns an error if it cannot. It is called from arbitrary goroutines and must be safe for concurrent use.
 4. For inbound workers, call `pool.OnExit(kind)` exactly once when the worker exits on its own (not in response to `Stop`). The pool wraps this in `sync.Once` defensively, but a well-behaved worker calls it once.
@@ -281,7 +282,7 @@ Connection and retry:
 
 Inbound worker:
 
-- `WithInboundDeadTimeout(duration)` enables the watchdog.
+- `WithInboundInactivityTimeout(duration)` enables the watchdog.
 - `WithInboundMaxQueueSize(int)` bounds the forwarder's internal queue.
 
 Outbound worker:
@@ -299,20 +300,20 @@ All option functions validate their inputs. Invalid values return errors at appl
 
 ### Defaults
 
-| Setting                     | Default | Disabled Value   | Notes                           |
-| --------------------------- | ------- | ---------------- | ------------------------------- |
-| `WriteTimeout`              | 30s     | `0`              | Per-message write deadline      |
-| `Retry` enabled             | yes     | `WithoutRetry()` | Applies to `Connect()` only     |
-| `Retry.MaxRetries`          | `0`     | —                | `0` means infinite              |
-| `Retry.InitialDelay`        | 1s      | —                | Must be positive                |
-| `Retry.MaxDelay`            | 5s      | —                | Must be at least `InitialDelay` |
-| `Retry.JitterFactor`        | 0.5     | `0.0`            | Range [0.0, 1.0]                |
-| Inbound `MaxQueueSize`      | `0`     | `0`              | `0` means unbounded             |
-| Inbound `DeadTimeout`       | `0`     | `0`              | `0` disables watchdog           |
-| Outbound `KeepaliveTimeout` | 20s     | `0`              | `0` disables keepalive          |
-| Outbound `MaxQueueSize`     | `0`     | `0`              | `0` means unbounded             |
-| Connection inbox buffer     | 100     | —                | Not configurable                |
-| Connection errors buffer    | 10      | —                | Not configurable                |
+| Setting                      | Default | Disabled Value   | Notes                           |
+| ---------------------------- | ------- | ---------------- | ------------------------------- |
+| `WriteTimeout`               | 30s     | `0`              | Per-message write deadline      |
+| `Retry` enabled              | yes     | `WithoutRetry()` | Applies to `Connect()` only     |
+| `Retry.MaxRetries`           | `0`     | —                | `0` means infinite              |
+| `Retry.InitialDelay`         | 1s      | —                | Must be positive                |
+| `Retry.MaxDelay`             | 5s      | —                | Must be at least `InitialDelay` |
+| `Retry.JitterFactor`         | 0.5     | `0.0`            | Range [0.0, 1.0]                |
+| Inbound `MaxQueueSize`       | `0`     | `0`              | `0` means unbounded             |
+| Inbound `InactivityTimeout`  | `0`     | `0`              | `0` disables watchdog           |
+| Outbound `KeepaliveTimeout`  | 20s     | `0`              | `0` disables keepalive          |
+| Outbound `MaxQueueSize`      | `0`     | `0`              | `0` means unbounded             |
+| Connection inbox buffer      | 100     | —                | Not configurable                |
+| Connection errors buffer     | 10      | —                | Not configurable                |
 
 ## Testing
 
