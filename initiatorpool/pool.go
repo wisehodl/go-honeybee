@@ -16,7 +16,7 @@ type Peer struct {
 	worker Worker
 }
 
-type WorkerContext struct {
+type PoolPlugin struct {
 	Inbox            chan<- InboxMessage
 	Events           chan<- PoolEvent
 	Errors           chan<- error
@@ -181,7 +181,7 @@ func (p *Pool) Connect(id string) error {
 	if p.logger != nil {
 		logger = p.logger.With("id", id)
 	}
-	ctx := WorkerContext{
+	ctx := PoolPlugin{
 		Inbox:            p.inbox,
 		Events:           p.events,
 		Errors:           p.errors,

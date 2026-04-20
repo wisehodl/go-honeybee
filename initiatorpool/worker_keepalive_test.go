@@ -11,19 +11,16 @@ func TestRunKeepalive(t *testing.T) {
 	t.Run("heartbeat resets timer, no keepalive signal fired", func(t *testing.T) {
 		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
+		timeout := 200 * time.Millisecond
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &DefaultWorker{
-			Config:    &WorkerConfig{KeepaliveTimeout: 200 * time.Millisecond},
-			Heartbeat: heartbeat,
-		}
-		go w.RunKeepalive(ctx, keepalive)
+		go RunKeepalive(ctx, heartbeat, keepalive, timeout)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
 			time.Sleep(20 * time.Millisecond)
-			w.Heartbeat <- struct{}{}
+			heartbeat <- struct{}{}
 		}
 
 		// because the timer is being reset, keepalive signal should not be sent
@@ -38,12 +35,13 @@ func TestRunKeepalive(t *testing.T) {
 	})
 
 	t.Run("keepalive timeout fires signal", func(t *testing.T) {
+		heartbeat := make(chan struct{}, 1)
 		keepalive := make(chan struct{}, 1)
+		timeout := 20 * time.Millisecond
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &DefaultWorker{Config: &WorkerConfig{KeepaliveTimeout: 20 * time.Millisecond}}
-		go w.RunKeepalive(ctx, keepalive)
+		go RunKeepalive(ctx, heartbeat, keepalive, timeout)
 
 		// send no heartbeats, wait for timeout and keepalive signal
 		honeybeetest.Eventually(t, func() bool {
@@ -57,13 +55,14 @@ func TestRunKeepalive(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
+		heartbeat := make(chan struct{}, 1)
 		keepalive := make(chan struct{}, 1)
+		timeout := 20 * time.Second
 		ctx, cancel := context.WithCancel(context.Background())
 
-		w := &DefaultWorker{Config: &WorkerConfig{KeepaliveTimeout: 20 * time.Second}}
 		done := make(chan struct{})
 		go func() {
-			w.RunKeepalive(ctx, keepalive)
+			RunKeepalive(ctx, heartbeat, keepalive, timeout)
 			close(done)
 		}()
 

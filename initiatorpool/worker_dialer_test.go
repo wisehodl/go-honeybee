@@ -16,14 +16,14 @@ import (
 
 func TestRunDialer(t *testing.T) {
 	t.Run("successful dial delivers connection to newConn", func(t *testing.T) {
-		w := &DefaultWorker{Id: "wss://test"}
+		url := "wss://test"
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		mockSocket := honeybeetest.NewMockSocket()
-		wctx := WorkerContext{
+		pool := PoolPlugin{
 			Errors: make(chan error, 1),
 			Dialer: &honeybeetest.MockDialer{
 				DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
@@ -32,7 +32,7 @@ func TestRunDialer(t *testing.T) {
 			},
 		}
 
-		go w.RunDialer(ctx, wctx, dial, newConn)
+		go RunDialer(url, ctx, pool, dial, newConn)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -47,7 +47,7 @@ func TestRunDialer(t *testing.T) {
 
 	t.Run("concurrent dial signals are drained; only one connection produced.",
 		func(t *testing.T) {
-			w := &DefaultWorker{Id: "wss://test"}
+			url := "wss://test"
 			dial := make(chan struct{}, 1)
 			newConn := make(chan *transport.Connection, 1)
 			ctx, cancel := context.WithCancel(context.Background())
@@ -60,7 +60,7 @@ func TestRunDialer(t *testing.T) {
 			connConfig := &transport.ConnectionConfig{Retry: nil} // disable retry
 			started := make(chan struct{})
 			startOnce := sync.Once{}
-			wctx := WorkerContext{
+			pool := PoolPlugin{
 				Errors: make(chan error, 1),
 				Dialer: &honeybeetest.MockDialer{
 					DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
@@ -73,7 +73,7 @@ func TestRunDialer(t *testing.T) {
 				ConnectionConfig: connConfig,
 			}
 
-			go w.RunDialer(ctx, wctx, dial, newConn)
+			go RunDialer(url, ctx, pool, dial, newConn)
 			dial <- struct{}{}
 
 			// wait for dial to start blocking on gate
@@ -111,7 +111,7 @@ func TestRunDialer(t *testing.T) {
 		})
 
 	t.Run("dial failure emits error, succeeds on next signal", func(t *testing.T) {
-		w := &DefaultWorker{Id: "wss://test"}
+		url := "wss://test"
 		errors := make(chan error, 1)
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
@@ -122,7 +122,7 @@ func TestRunDialer(t *testing.T) {
 		dialCount := atomic.Int32{}
 		mockSocket := honeybeetest.NewMockSocket()
 		connConfig := &transport.ConnectionConfig{Retry: nil} // disable retry
-		wctx := WorkerContext{
+		pool := PoolPlugin{
 			Errors: errors,
 			Dialer: &honeybeetest.MockDialer{
 				DialContextFunc: func(
@@ -139,7 +139,7 @@ func TestRunDialer(t *testing.T) {
 			ConnectionConfig: connConfig,
 		}
 
-		go w.RunDialer(ctx, wctx, dial, newConn)
+		go RunDialer(url, ctx, pool, dial, newConn)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -164,16 +164,16 @@ func TestRunDialer(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
-		w := &DefaultWorker{Id: "wss://test"}
+		url := "wss://test"
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		wctx := WorkerContext{Errors: make(chan error, 1)}
+		pool := PoolPlugin{Errors: make(chan error, 1)}
 
 		done := make(chan struct{})
 		go func() {
-			w.RunDialer(ctx, wctx, dial, newConn)
+			RunDialer(url, ctx, pool, dial, newConn)
 			close(done)
 		}()
 
@@ -190,12 +190,12 @@ func TestRunDialer(t *testing.T) {
 	})
 
 	t.Run("context cancelled during in-progress dial exits without delivering connection", func(t *testing.T) {
-		w := &DefaultWorker{Id: "wss://test"}
+		url := "wss://test"
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		wctx := WorkerContext{
+		pool := PoolPlugin{
 			Errors:           make(chan error, 1),
 			ConnectionConfig: &transport.ConnectionConfig{Retry: nil},
 			Dialer: &honeybeetest.MockDialer{
@@ -211,7 +211,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			w.RunDialer(ctx, wctx, dial, newConn)
+			RunDialer(url, ctx, pool, dial, newConn)
 			close(done)
 		}()
 

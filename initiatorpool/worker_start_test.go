@@ -17,13 +17,13 @@ func makeWorkerContext(t *testing.T) (
 	inbox chan InboxMessage,
 	events chan PoolEvent,
 	errors chan error,
-	wctx WorkerContext,
+	pool PoolPlugin,
 ) {
 	t.Helper()
 	inbox = make(chan InboxMessage, 256)
 	events = make(chan PoolEvent, 10)
 	errors = make(chan error, 10)
-	wctx = WorkerContext{
+	pool = PoolPlugin{
 		Inbox:  inbox,
 		Events: events,
 		Errors: errors,
@@ -56,13 +56,13 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, wctx := makeWorkerContext(t)
+		_, events, _, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -79,13 +79,13 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, wctx := makeWorkerContext(t)
+		_, events, _, pool := makeWorkerContext(t)
 		_, mockSocket, _, outgoingData := setupWorkerTestConnection(t)
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -114,7 +114,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		inbox, events, _, wctx := makeWorkerContext(t)
+		inbox, events, _, pool := makeWorkerContext(t)
 
 		incomingData := make(chan honeybeetest.MockIncomingData, 10)
 		mockSocket := honeybeetest.NewMockSocket()
@@ -131,11 +131,11 @@ func TestWorkerStart(t *testing.T) {
 			}
 		}
 
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -166,13 +166,13 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, wctx := makeWorkerContext(t)
+		_, events, _, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupWorkerTestConnection(t)
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -209,13 +209,13 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, wctx := makeWorkerContext(t)
+		_, events, _, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -254,13 +254,13 @@ func TestWorkerStart(t *testing.T) {
 		workerCtx, workerCancel := context.WithCancel(parentCtx)
 
 		w := makeWorker(t, workerCtx, workerCancel)
-		_, events, _, wctx := makeWorkerContext(t)
+		_, events, _, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		wctx.Dialer = mockDialer(mockSocket)
+		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -292,9 +292,9 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, _, errors, wctx := makeWorkerContext(t)
-		wctx.ConnectionConfig = &transport.ConnectionConfig{Retry: nil}
-		wctx.Dialer = &honeybeetest.MockDialer{
+		_, _, errors, pool := makeWorkerContext(t)
+		pool.ConnectionConfig = &transport.ConnectionConfig{Retry: nil}
+		pool.Dialer = &honeybeetest.MockDialer{
 			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
@@ -302,7 +302,7 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(wctx, &wg)
+		go w.Start(pool, &wg)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {

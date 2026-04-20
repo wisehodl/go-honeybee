@@ -10,13 +10,13 @@ import (
 
 func TestRunForwarder(t *testing.T) {
 	t.Run("message passes through to inbox", func(t *testing.T) {
+		id := "wss://test"
 		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &DefaultWorker{Id: "wss://test"}
-		go w.RunForwarder(ctx, messages, inbox, 0)
+		go RunForwarder(id, ctx, messages, inbox, 0)
 
 		messages <- ReceivedMessage{data: []byte("hello"), receivedAt: time.Now()}
 
@@ -31,6 +31,7 @@ func TestRunForwarder(t *testing.T) {
 	})
 
 	t.Run("oldest message dropped when queue is full", func(t *testing.T) {
+		id := "wss://test"
 		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -47,8 +48,7 @@ func TestRunForwarder(t *testing.T) {
 			}
 		}()
 
-		w := &DefaultWorker{Id: "wss://test"}
-		go w.RunForwarder(ctx, messages, gatedInbox, 2)
+		go RunForwarder(id, ctx, messages, gatedInbox, 2)
 
 		// send three messages while the gated inbox is blocked
 		messages <- ReceivedMessage{data: []byte("first"), receivedAt: time.Now()}
@@ -78,15 +78,15 @@ func TestRunForwarder(t *testing.T) {
 	})
 
 	t.Run("exits on context cancellation", func(t *testing.T) {
+		id := "wss://test"
 		messages := make(chan ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &DefaultWorker{Id: "wss://test"}
 		done := make(chan struct{})
 		go func() {
-			w.RunForwarder(ctx, messages, inbox, 0)
+			RunForwarder(id, ctx, messages, inbox, 0)
 			close(done)
 		}()
 
