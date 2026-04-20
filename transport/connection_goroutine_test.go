@@ -10,7 +10,7 @@ import (
 
 func TestStartReader(t *testing.T) {
 	t.Run("text messages route to incoming channel", func(t *testing.T) {
-		conn, _, incomingData, _ := setupTestConnection(t, nil)
+		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		testData := []byte("hello")
@@ -24,7 +24,7 @@ func TestStartReader(t *testing.T) {
 	})
 
 	t.Run("binary messages route to incoming channel", func(t *testing.T) {
-		conn, _, incomingData, _ := setupTestConnection(t, nil)
+		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		testData := []byte{0x00, 0x01, 0x02}
@@ -38,7 +38,7 @@ func TestStartReader(t *testing.T) {
 	})
 
 	t.Run("multiple messages processed sequentially", func(t *testing.T) {
-		conn, _, incomingData, _ := setupTestConnection(t, nil)
+		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}

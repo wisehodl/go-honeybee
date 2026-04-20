@@ -539,54 +539,18 @@ func TestConnectionErrors(t *testing.T) {
 
 // Test helpers
 
-func setupTestConnection(t *testing.T, config *ConnectionConfig) (
+func setupTestConnection(t *testing.T) (
 	conn *Connection,
-	mockSocket *honeybeetest.MockSocket,
-	incomingData chan honeybeetest.MockIncomingData,
-	outgoingData chan honeybeetest.MockOutgoingData,
+	socket *honeybeetest.MockSocket,
+	incoming chan honeybeetest.MockIncomingData,
+	outgoing chan honeybeetest.MockOutgoingData,
 ) {
 	t.Helper()
 
-	incomingData = make(chan honeybeetest.MockIncomingData, 10)
-	outgoingData = make(chan honeybeetest.MockOutgoingData, 10)
-
-	mockSocket = honeybeetest.NewMockSocket()
-
-	mockSocket.CloseFunc = func() error {
-		mockSocket.Once.Do(func() {
-			close(mockSocket.Closed)
-		})
-		return nil
-	}
-
-	// Wire ReadMessage to pull from incomingData channel
-	mockSocket.ReadMessageFunc = func() (int, []byte, error) {
-		select {
-		case data, ok := <-incomingData:
-			if !ok {
-				return 0, nil, io.EOF
-			}
-			return data.MsgType, data.Data, data.Err
-		case <-mockSocket.Closed:
-			return 0, nil, io.EOF
-		}
-	}
-
-	// Wire WriteMessage to push to outgoingData channel
-	mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
-		select {
-		case outgoingData <- honeybeetest.MockOutgoingData{MsgType: msgType, Data: data}:
-			return nil
-		case <-mockSocket.Closed:
-			return io.EOF
-		default:
-			return fmt.Errorf("mock outgoing chanel unavailable")
-		}
-	}
+	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
 
 	var err error
-	conn, err = NewConnectionFromSocket(mockSocket, config, nil)
+	conn, err = NewConnectionFromSocket(socket, nil, nil)
 	assert.NoError(t, err)
-
-	return conn, mockSocket, incomingData, outgoingData
+	return
 }

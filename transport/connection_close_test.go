@@ -80,7 +80,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 func TestConnectedConnectionClose(t *testing.T) {
 	t.Run("blocked on ReadMessage, unblocks on closed", func(t *testing.T) {
-		conn, _, incomingData, _ := setupTestConnection(t, nil)
+		conn, _, incomingData, _ := setupTestConnection(t)
 
 		// Send a message to ensure reader loop is blocking
 		canary := []byte("canary")

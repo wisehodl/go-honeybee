@@ -3,6 +3,7 @@ package honeybeetest
 import (
 	"bytes"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"testing"
 	"time"
 )
@@ -26,6 +27,50 @@ type MockIncomingData struct {
 type MockOutgoingData struct {
 	MsgType int
 	Data    []byte
+}
+
+// Setup
+
+func SetupTestSocket(t *testing.T) (
+	socket *MockSocket,
+	incoming chan MockIncomingData,
+	outgoing chan MockOutgoingData,
+) {
+	t.Helper()
+
+	incoming = make(chan MockIncomingData, 10)
+	outgoing = make(chan MockOutgoingData, 10)
+	socket = NewMockSocket()
+
+	socket.CloseFunc = func() error {
+		socket.Once.Do(func() { close(socket.Closed) })
+		return nil
+	}
+
+	socket.ReadMessageFunc = func() (int, []byte, error) {
+		select {
+		case data, ok := <-incoming:
+			if !ok {
+				return 0, nil, io.EOF
+			}
+			return data.MsgType, data.Data, data.Err
+		case <-socket.Closed:
+			return 0, nil, io.EOF
+		}
+	}
+
+	socket.WriteMessageFunc = func(msgType int, data []byte) error {
+		select {
+		case outgoing <- MockOutgoingData{MsgType: msgType, Data: data}:
+			return nil
+		case <-socket.Closed:
+			return io.EOF
+		default:
+			return io.EOF
+		}
+	}
+
+	return
 }
 
 // Helpers
