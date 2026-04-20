@@ -1,4 +1,4 @@
-package responderpool
+package inbound
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func TestRunWatchdog(t *testing.T) {
 		defer cancel()
 
 		called := atomic.Bool{}
-		go RunWatchdog(ctx, func() { called.Store(true) }, heartbeat, 200*time.Millisecond)
+		go RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 200*time.Millisecond)
 
 		for i := 0; i < 5; i++ {
 			time.Sleep(20 * time.Millisecond)
@@ -33,10 +33,12 @@ func TestRunWatchdog(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		var gotKind WorkerExitKind
 		count := atomic.Int32{}
 		done := make(chan struct{})
-		go RunWatchdog(ctx, func() {
+		go RunWatchdog(ctx, func(kind WorkerExitKind) {
 			count.Add(1)
+			gotKind = kind
 			close(done)
 		}, heartbeat, 20*time.Millisecond)
 
@@ -50,6 +52,7 @@ func TestRunWatchdog(t *testing.T) {
 		}, "expected onInactive")
 
 		assert.Equal(t, int32(1), count.Load())
+		assert.Equal(t, ExitInactive, gotKind)
 	})
 
 	t.Run("ctx.Done exits without calling onInactive", func(t *testing.T) {
@@ -59,7 +62,7 @@ func TestRunWatchdog(t *testing.T) {
 		called := atomic.Bool{}
 		done := make(chan struct{})
 		go func() {
-			RunWatchdog(ctx, func() { called.Store(true) }, heartbeat, 20*time.Second)
+			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 20*time.Second)
 			close(done)
 		}()
 
@@ -77,14 +80,14 @@ func TestRunWatchdog(t *testing.T) {
 		assert.False(t, called.Load())
 	})
 
-	t.Run("zero timeout exits on ctx.Done without firing", func(t *testing.T) {
+	t.Run("zero timeout exits on ctx.Done without firing onInactive", func(t *testing.T) {
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 
 		called := atomic.Bool{}
 		done := make(chan struct{})
 		go func() {
-			RunWatchdog(ctx, func() { called.Store(true) }, heartbeat, 0)
+			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 0)
 			close(done)
 		}()
 
@@ -100,5 +103,33 @@ func TestRunWatchdog(t *testing.T) {
 		}, "expected RunWatchdog to exit")
 
 		assert.False(t, called.Load())
+	})
+
+	t.Run("disabled keepalive drains heartbeats without blocking", func(t *testing.T) {
+		heartbeat := make(chan struct{})
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		done := make(chan struct{})
+		go func() {
+			RunWatchdog(ctx, func(WorkerExitKind) {}, heartbeat, 0)
+			close(done)
+		}()
+
+		// these must not block
+		for i := 0; i < 5; i++ {
+			heartbeat <- struct{}{}
+		}
+
+		cancel()
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, "expected RunWatchdog to exit")
 	})
 }

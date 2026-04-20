@@ -1,7 +1,8 @@
 // responderpool/config.go
-package responderpool
+package inbound
 
 import (
+	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"time"
 )
@@ -90,9 +91,17 @@ func WithDeadTimeout(value time.Duration) WorkerOption {
 
 // Pool Config
 
+type WorkerFactory func(
+	ctx context.Context,
+	id string,
+	conn *transport.Connection,
+	config *WorkerConfig,
+) (Worker, error)
+
 type PoolConfig struct {
 	ConnectionConfig *transport.ConnectionConfig
 	WorkerConfig     *WorkerConfig
+	WorkerFactory    WorkerFactory
 }
 
 type PoolOption func(*PoolConfig) error
@@ -112,6 +121,7 @@ func GetDefaultPoolConfig() *PoolConfig {
 	return &PoolConfig{
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
+		WorkerFactory:    nil,
 	}
 }
 
@@ -154,6 +164,13 @@ func WithWorkerConfig(wc *WorkerConfig) PoolOption {
 			return err
 		}
 		c.WorkerConfig = wc
+		return nil
+	}
+}
+
+func WithWorkerFactory(wf WorkerFactory) PoolOption {
+	return func(c *PoolConfig) error {
+		c.WorkerFactory = wf
 		return nil
 	}
 }

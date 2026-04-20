@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func setupWorkerTestConnection(t *testing.T) (
+func setupTestConnection(t *testing.T) (
 	conn *transport.Connection,
 	mockSocket *honeybeetest.MockSocket,
 	incomingData chan honeybeetest.MockIncomingData,

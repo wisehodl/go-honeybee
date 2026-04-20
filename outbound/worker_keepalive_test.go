@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -75,5 +75,28 @@ func TestRunKeepalive(t *testing.T) {
 				return false
 			}
 		}, "expected done signal")
+	})
+
+	t.Run("disabled keepalive drains heartbeats without blocking", func(t *testing.T) {
+		heartbeat := make(chan struct{})
+		keepalive := make(chan struct{}, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go RunKeepalive(ctx, heartbeat, keepalive, 0)
+
+		// these must not block
+		for i := 0; i < 5; i++ {
+			heartbeat <- struct{}{}
+		}
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case <-keepalive:
+				return true
+			default:
+				return false
+			}
+		}, "keepalive signal should not fire when disabled")
 	})
 }

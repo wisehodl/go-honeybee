@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 func TestWorkerSend(t *testing.T) {
 	t.Run("data sent to mock socket", func(t *testing.T) {
-		conn, _, _, outgoingData := setupWorkerTestConnection(t)
+		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -20,13 +20,13 @@ func TestWorkerSend(t *testing.T) {
 		heartbeatCount := atomic.Int32{}
 
 		w := &DefaultWorker{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
 		}
-		w.Conn.Store(conn)
-		defer w.Cancel()
+		w.conn.Store(conn)
+		defer w.cancel()
 
 		go func() {
 			for range heartbeat {
@@ -53,7 +53,7 @@ func TestWorkerSend(t *testing.T) {
 	})
 
 	t.Run("sends one heartbeat per successful send", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
+		conn, _, _, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -62,13 +62,13 @@ func TestWorkerSend(t *testing.T) {
 		heartbeatCount := atomic.Int32{}
 
 		w := &DefaultWorker{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
 		}
-		w.Conn.Store(conn)
-		defer w.Cancel()
+		w.conn.Store(conn)
+		defer w.cancel()
 
 		go func() {
 			for range heartbeat {
@@ -93,12 +93,12 @@ func TestWorkerSend(t *testing.T) {
 		heartbeat := make(chan struct{})
 
 		w := &DefaultWorker{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
+			ctx:       ctx,
+			cancel:    cancel,
+			id:        "wss://test",
+			heartbeat: heartbeat,
 		}
-		defer w.Cancel()
+		defer w.cancel()
 
 		go func() {
 			for range heartbeat {

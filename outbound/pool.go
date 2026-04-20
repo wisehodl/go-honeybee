@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -10,26 +10,6 @@ import (
 )
 
 // Types
-
-type Peer struct {
-	id     string
-	worker Worker
-}
-
-type PoolPlugin struct {
-	Inbox            chan<- InboxMessage
-	Events           chan<- PoolEvent
-	Errors           chan<- error
-	Logger           *slog.Logger
-	Dialer           types.Dialer
-	ConnectionConfig *transport.ConnectionConfig
-}
-
-type InboxMessage struct {
-	ID         string
-	Data       []byte
-	ReceivedAt time.Time
-}
 
 type PoolEventKind string
 
@@ -43,7 +23,27 @@ type PoolEvent struct {
 	Kind PoolEventKind
 }
 
+type InboxMessage struct {
+	ID         string
+	Data       []byte
+	ReceivedAt time.Time
+}
+
+type PoolPlugin struct {
+	Inbox            chan<- InboxMessage
+	Events           chan<- PoolEvent
+	Errors           chan<- error
+	Logger           *slog.Logger
+	Dialer           types.Dialer
+	ConnectionConfig *transport.ConnectionConfig
+}
+
 // Pool
+
+type Peer struct {
+	id     string
+	worker Worker
+}
 
 type Pool struct {
 	ctx    context.Context
@@ -85,7 +85,7 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger,
 
 	pctx, cancel := context.WithCancel(ctx)
 
-	p := &Pool{
+	return &Pool{
 		ctx:    pctx,
 		cancel: cancel,
 		peers:  make(map[string]*Peer),
@@ -95,9 +95,7 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger,
 		dialer: transport.NewDialer(),
 		config: config,
 		logger: logger,
-	}
-
-	return p, nil
+	}, nil
 }
 
 func (p *Pool) Peers() []string {
@@ -111,15 +109,15 @@ func (p *Pool) Peers() []string {
 	return ids
 }
 
-func (p *Pool) Inbox() chan InboxMessage {
+func (p *Pool) Inbox() <-chan InboxMessage {
 	return p.inbox
 }
 
-func (p *Pool) Events() chan PoolEvent {
+func (p *Pool) Events() <-chan PoolEvent {
 	return p.events
 }
 
-func (p *Pool) Errors() chan error {
+func (p *Pool) Errors() <-chan error {
 	return p.errors
 }
 
@@ -165,9 +163,8 @@ func (p *Pool) Connect(id string) error {
 	if p.closed {
 		return NewPoolError(ErrPoolClosed)
 	}
-	_, exists := p.peers[id]
 
-	if exists {
+	if _, exists := p.peers[id]; exists {
 		return NewPoolError(ErrPeerExists)
 	}
 
@@ -181,7 +178,8 @@ func (p *Pool) Connect(id string) error {
 	if p.logger != nil {
 		logger = p.logger.With("id", id)
 	}
-	ctx := PoolPlugin{
+
+	pool := PoolPlugin{
 		Inbox:            p.inbox,
 		Events:           p.events,
 		Errors:           p.errors,
@@ -191,7 +189,7 @@ func (p *Pool) Connect(id string) error {
 	}
 
 	p.wg.Add(1)
-	go worker.Start(ctx, &p.wg)
+	go worker.Start(pool, &p.wg)
 
 	p.peers[id] = &Peer{id: id, worker: worker}
 
@@ -205,18 +203,17 @@ func (p *Pool) Remove(id string) error {
 	}
 
 	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.closed {
-		p.mu.Unlock()
 		return NewPoolError(ErrPoolClosed)
 	}
 
 	peer, exists := p.peers[id]
 	if !exists {
-		p.mu.Unlock()
 		return NewPoolError(ErrPeerNotFound)
 	}
 	delete(p.peers, id)
-	p.mu.Unlock()
 
 	peer.worker.Stop()
 

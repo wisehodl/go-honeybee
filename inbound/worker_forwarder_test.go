@@ -1,4 +1,4 @@
-package initiatorpool
+package inbound
 
 import (
 	"context"

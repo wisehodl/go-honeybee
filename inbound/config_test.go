@@ -1,5 +1,5 @@
 // responderpool/config_test.go
-package responderpool
+package inbound
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"

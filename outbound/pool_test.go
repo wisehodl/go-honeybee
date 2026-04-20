@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"testing"
 )
+
+// Helpers
 
 func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 	t.Helper()
@@ -23,6 +25,25 @@ func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 	pool.dialer = dialer
 	return pool, dialer
 }
+
+func expectEvent(
+	t *testing.T,
+	events chan PoolEvent,
+	expectedURL string,
+	expectedKind PoolEventKind,
+) {
+	t.Helper()
+	honeybeetest.Eventually(t, func() bool {
+		select {
+		case e := <-events:
+			return e.ID == expectedURL && e.Kind == expectedKind
+		default:
+			return false
+		}
+	}, fmt.Sprintf("expected event: URL=%q, Kind=%q", expectedURL, expectedKind))
+}
+
+// Tests
 
 func TestPoolConnect(t *testing.T) {
 	t.Run("successfully adds connection", func(t *testing.T) {
@@ -147,21 +168,4 @@ func TestPoolSend(t *testing.T) {
 	honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, []byte("hello"))
 
 	pool.Close()
-}
-
-func expectEvent(
-	t *testing.T,
-	events chan PoolEvent,
-	expectedURL string,
-	expectedKind PoolEventKind,
-) {
-	t.Helper()
-	honeybeetest.Eventually(t, func() bool {
-		select {
-		case e := <-events:
-			return e.ID == expectedURL && e.Kind == expectedKind
-		default:
-			return false
-		}
-	}, fmt.Sprintf("expected event: URL=%q, Kind=%q", expectedURL, expectedKind))
 }

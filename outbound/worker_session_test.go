@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -45,7 +45,7 @@ func setup(t *testing.T) (
 ) {
 	t.Helper()
 	ctx, cancel = context.WithCancel(context.Background())
-	conn, mockSocket, incomingData, outgoingData := setupWorkerTestConnection(t)
+	conn, mockSocket, incomingData, outgoingData := setupTestConnection(t)
 	vars = testVars{
 		id:           "wss://test",
 		dial:         make(chan struct{}, 1),
@@ -319,7 +319,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		close(v.incomingData)
 		drainEvent(t, events, EventDisconnected)
 
-		conn2, _, _, _ := setupWorkerTestConnection(t)
+		conn2, _, _, _ := setupTestConnection(t)
 		v.newConn <- conn2
 		drainEvent(t, events, EventConnected)
 	})

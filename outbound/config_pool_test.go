@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"

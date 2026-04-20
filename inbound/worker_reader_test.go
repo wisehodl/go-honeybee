@@ -1,8 +1,9 @@
-package responderpool
+package inbound
 
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -13,7 +14,7 @@ import (
 
 func TestRunReader(t *testing.T) {
 	t.Run("message forwarded with correct data and non-zero receivedAt", func(t *testing.T) {
-		conn, _, incoming, _ := setupReaderTestConnection(t)
+		conn, _, incoming, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := make(chan ReceivedMessage, 1)
@@ -21,7 +22,7 @@ func TestRunReader(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunReader(ctx, func(PoolEventKind) {}, conn, messages, heartbeat)
+		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat)
 
 		before := time.Now()
 		incoming <- honeybeetest.MockIncomingData{MsgType: websocket.TextMessage, Data: []byte("hello")}
@@ -37,7 +38,7 @@ func TestRunReader(t *testing.T) {
 	})
 
 	t.Run("heartbeat sent per forwarded message", func(t *testing.T) {
-		conn, _, incoming, _ := setupReaderTestConnection(t)
+		conn, _, incoming, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := make(chan ReceivedMessage, 10)
@@ -55,7 +56,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go RunReader(ctx, func(PoolEventKind) {}, conn, messages, heartbeat)
+		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat)
 
 		const n = 3
 		for i := 0; i < n; i++ {
@@ -67,20 +68,27 @@ func TestRunReader(t *testing.T) {
 		}, "expected heartbeats")
 	})
 
-	t.Run("clean close calls onPeerClose with EventPeerDisconnected", func(t *testing.T) {
-		conn, mock, _, _ := setupReaderTestConnection(t)
+	t.Run("clean close calls onPeerClose with ExitCleanDisconnect", func(t *testing.T) {
+		mock := honeybeetest.NewMockSocket()
+		mock.CloseFunc = func() error {
+			mock.Once.Do(func() { close(mock.Closed) })
+			return nil
+		}
 		mock.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, &websocket.CloseError{Code: websocket.CloseNormalClosure}
 		}
 
+		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
+		assert.NoError(t, err)
+
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		var gotKind PoolEventKind
+		var gotKind WorkerExitKind
 		done := make(chan struct{})
-		go RunReader(ctx, func(kind PoolEventKind) {
+		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
 		}, conn, messages, heartbeat)
@@ -94,23 +102,30 @@ func TestRunReader(t *testing.T) {
 			}
 		}, "expected onPeerClose")
 
-		assert.Equal(t, EventPeerDisconnected, gotKind)
+		assert.Equal(t, ExitCleanDisconnect, gotKind)
 	})
 
-	t.Run("unexpected close calls onPeerClose with EventPeerDropped", func(t *testing.T) {
-		conn, mock, _, _ := setupReaderTestConnection(t)
+	t.Run("unexpected close calls onPeerClose with ExitUnexpectedDrop", func(t *testing.T) {
+		mock := honeybeetest.NewMockSocket()
+		mock.CloseFunc = func() error {
+			mock.Once.Do(func() { close(mock.Closed) })
+			return nil
+		}
 		mock.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, &websocket.CloseError{Code: websocket.CloseProtocolError}
 		}
 
+		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
+		assert.NoError(t, err)
+
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		var gotKind PoolEventKind
+		var gotKind WorkerExitKind
 		done := make(chan struct{})
-		go RunReader(ctx, func(kind PoolEventKind) {
+		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
 		}, conn, messages, heartbeat)
@@ -124,23 +139,30 @@ func TestRunReader(t *testing.T) {
 			}
 		}, "expected onPeerClose")
 
-		assert.Equal(t, EventPeerDropped, gotKind)
+		assert.Equal(t, ExitUnexpectedDrop, gotKind)
 	})
 
-	t.Run("read error calls onPeerClose with EventPeerDropped", func(t *testing.T) {
-		conn, mock, _, _ := setupReaderTestConnection(t)
+	t.Run("read error calls onPeerClose with ExitUnexpectedDrop", func(t *testing.T) {
+		mock := honeybeetest.NewMockSocket()
+		mock.CloseFunc = func() error {
+			mock.Once.Do(func() { close(mock.Closed) })
+			return nil
+		}
 		mock.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, io.EOF
 		}
 
+		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
+		assert.NoError(t, err)
+
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		var gotKind PoolEventKind
+		var gotKind WorkerExitKind
 		done := make(chan struct{})
-		go RunReader(ctx, func(kind PoolEventKind) {
+		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
 		}, conn, messages, heartbeat)
@@ -154,11 +176,11 @@ func TestRunReader(t *testing.T) {
 			}
 		}, "expected onPeerClose")
 
-		assert.Equal(t, EventPeerDropped, gotKind)
+		assert.Equal(t, ExitUnexpectedDrop, gotKind)
 	})
 
 	t.Run("ctx.Done exits without calling onPeerClose", func(t *testing.T) {
-		conn, _, _, _ := setupReaderTestConnection(t)
+		conn, _, _, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := make(chan ReceivedMessage, 1)
@@ -168,7 +190,7 @@ func TestRunReader(t *testing.T) {
 		called := atomic.Bool{}
 		done := make(chan struct{})
 		go func() {
-			RunReader(ctx, func(PoolEventKind) {
+			RunReader(ctx, func(WorkerExitKind) {
 				called.Store(true)
 			}, conn, messages, heartbeat)
 			close(done)
