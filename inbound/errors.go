@@ -10,6 +10,6 @@ var (
 	ErrPeerExists   = errors.New("peer already exists")
 
 	// Config errors
-	InvalidMaxQueueSize = errors.New("maximum queue size cannot be negative")
-	InvalidDeadTimeout  = errors.New("dead timeout cannot be negative")
+	InvalidMaxQueueSize      = errors.New("maximum queue size cannot be negative")
+	InvalidInactivityTimeout = errors.New("inactivity timeout cannot be negative")
 )

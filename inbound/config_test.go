@@ -33,11 +33,11 @@ func TestValidateWorkerConfig(t *testing.T) {
 			conf: *GetDefaultWorkerConfig(),
 		},
 		{
-			name: "zero dead timeout disabled",
+			name: "zero inactivity timeout disabled",
 			conf: WorkerConfig{InactivityTimeout: 0},
 		},
 		{
-			name: "positive dead timeout",
+			name: "positive inactivity timeout",
 			conf: WorkerConfig{InactivityTimeout: 30 * time.Second},
 		},
 		{
@@ -46,9 +46,9 @@ func TestValidateWorkerConfig(t *testing.T) {
 			wantErr: InvalidMaxQueueSize,
 		},
 		{
-			name:    "negative dead timeout",
+			name:    "negative inactivity timeout",
 			conf:    WorkerConfig{InactivityTimeout: -1 * time.Second},
-			wantErr: InvalidDeadTimeout,
+			wantErr: InvalidInactivityTimeout,
 		},
 	}
 
@@ -78,18 +78,18 @@ func TestWithMaxQueueSize(t *testing.T) {
 	assert.ErrorIs(t, err, InvalidMaxQueueSize)
 }
 
-func TestWithDeadTimeout(t *testing.T) {
+func TestWithInactivityTimeout(t *testing.T) {
 	conf := &WorkerConfig{}
 
-	err := applyWorkerOptions(conf, WithDeadTimeout(30*time.Second))
+	err := applyWorkerOptions(conf, WithInactivityTimeout(30*time.Second))
 	assert.NoError(t, err)
 	assert.Equal(t, 30*time.Second, conf.InactivityTimeout)
 
-	err = applyWorkerOptions(conf, WithDeadTimeout(0))
+	err = applyWorkerOptions(conf, WithInactivityTimeout(0))
 	assert.NoError(t, err)
 
-	err = applyWorkerOptions(conf, WithDeadTimeout(-1*time.Second))
-	assert.ErrorIs(t, err, InvalidDeadTimeout)
+	err = applyWorkerOptions(conf, WithInactivityTimeout(-1*time.Second))
+	assert.ErrorIs(t, err, InvalidInactivityTimeout)
 }
 
 func TestNewPoolConfig(t *testing.T) {

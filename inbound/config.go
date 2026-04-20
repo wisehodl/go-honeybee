@@ -47,7 +47,7 @@ func ValidateWorkerConfig(config *WorkerConfig) error {
 	if err := validateMaxQueueSize(config.MaxQueueSize); err != nil {
 		return err
 	}
-	if err := validateDeadTimeout(config.InactivityTimeout); err != nil {
+	if err := validateInactivityTimeout(config.InactivityTimeout); err != nil {
 		return err
 	}
 	return nil
@@ -60,9 +60,9 @@ func validateMaxQueueSize(value int) error {
 	return nil
 }
 
-func validateDeadTimeout(value time.Duration) error {
+func validateInactivityTimeout(value time.Duration) error {
 	if value < 0 {
-		return InvalidDeadTimeout
+		return InvalidInactivityTimeout
 	}
 	return nil
 }
@@ -78,10 +78,10 @@ func WithMaxQueueSize(value int) WorkerOption {
 	}
 }
 
-// When DeadTimeout is zero, the watchdog is disabled.
-func WithDeadTimeout(value time.Duration) WorkerOption {
+// When InactivityTimeout is zero, the watchdog is disabled.
+func WithInactivityTimeout(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
-		if err := validateDeadTimeout(value); err != nil {
+		if err := validateInactivityTimeout(value); err != nil {
 			return err
 		}
 		c.InactivityTimeout = value
