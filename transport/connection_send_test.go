@@ -13,7 +13,7 @@ import (
 
 func TestConnectionSend(t *testing.T) {
 	t.Run("writes message to socket", func(t *testing.T) {
-		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()
 
 		testData := []byte("test message")
@@ -24,7 +24,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("writes multiple message to socket", func(t *testing.T) {
-		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}
@@ -39,7 +39,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("concurrent sends write messages to socket", func(t *testing.T) {
-		conn, _, _, outgoingData := setupTestConnection(t, nil)
+		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()
 
 		mu := sync.Mutex{}
@@ -92,7 +92,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("send fails when connection is closed", func(t *testing.T) {
-		conn, _, _, _ := setupTestConnection(t, nil)
+		conn, _, _, _ := setupTestConnection(t)
 		conn.Close()
 
 		testData := []byte("test message")

@@ -44,7 +44,7 @@ func TestPoolAdd(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.NoError(t, err)
 	})
@@ -53,7 +53,7 @@ func TestPoolAdd(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.NoError(t, err)
 
@@ -64,8 +64,8 @@ func TestPoolAdd(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket1, _, _ := setupTestSocket(t)
-		socket2, _, _ := setupTestSocket(t)
+		socket1, _, _ := honeybeetest.SetupTestSocket(t)
+		socket2, _, _ := honeybeetest.SetupTestSocket(t)
 
 		err := pool.Add("peer-1", socket1)
 		assert.NoError(t, err)
@@ -78,7 +78,7 @@ func TestPoolAdd(t *testing.T) {
 		pool := setupPool(t)
 		pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.ErrorIs(t, err, ErrPoolClosed)
 	})
@@ -89,8 +89,8 @@ func TestPoolReplace(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket1, _, _ := setupTestSocket(t)
-		socket2, _, _ := setupTestSocket(t)
+		socket1, _, _ := honeybeetest.SetupTestSocket(t)
+		socket2, _, _ := honeybeetest.SetupTestSocket(t)
 
 		err := pool.Add("peer-1", socket1)
 		assert.NoError(t, err)
@@ -105,7 +105,7 @@ func TestPoolReplace(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Replace("unknown", socket)
 		assert.ErrorIs(t, err, ErrPeerNotFound)
 	})
@@ -114,7 +114,7 @@ func TestPoolReplace(t *testing.T) {
 		pool := setupPool(t)
 		pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Replace("peer-1", socket)
 		assert.ErrorIs(t, err, ErrPoolClosed)
 	})
@@ -123,8 +123,8 @@ func TestPoolReplace(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket1, _, _ := setupTestSocket(t)
-		socket2, _, _ := setupTestSocket(t)
+		socket1, _, _ := honeybeetest.SetupTestSocket(t)
+		socket2, _, _ := honeybeetest.SetupTestSocket(t)
 
 		err := pool.Add("peer-1", socket1)
 		assert.NoError(t, err)
@@ -148,7 +148,7 @@ func TestPoolRemove(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.NoError(t, err)
 
@@ -178,7 +178,7 @@ func TestPoolRemove(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.NoError(t, err)
 
@@ -202,7 +202,7 @@ func TestPoolSend(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, outgoing := setupTestSocket(t)
+		socket, _, outgoing := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.NoError(t, err)
 
@@ -244,7 +244,7 @@ func TestPoolClose(t *testing.T) {
 		pool := setupPool(t)
 		pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		err := pool.Add("peer-1", socket)
 		assert.ErrorIs(t, err, ErrPoolClosed)
 	})
@@ -261,8 +261,8 @@ func TestPoolPeers(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket1, _, _ := setupTestSocket(t)
-		socket2, _, _ := setupTestSocket(t)
+		socket1, _, _ := honeybeetest.SetupTestSocket(t)
+		socket2, _, _ := honeybeetest.SetupTestSocket(t)
 
 		pool.Add("peer-1", socket1)
 		pool.Add("peer-2", socket2)
@@ -276,7 +276,7 @@ func TestPoolPeers(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 		pool.Remove("peer-1")
 
@@ -287,7 +287,7 @@ func TestPoolPeers(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, incoming, _ := setupTestSocket(t)
+		socket, incoming, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
 		close(incoming)
@@ -303,7 +303,7 @@ func TestPoolEvents(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, incoming, _ := setupTestSocket(t)
+		socket, incoming, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
 		incoming <- honeybeetest.MockIncomingData{
@@ -321,7 +321,7 @@ func TestPoolEvents(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, incoming, _ := setupTestSocket(t)
+		socket, incoming, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
 		incoming <- honeybeetest.MockIncomingData{
@@ -345,7 +345,7 @@ func TestPoolEvents(t *testing.T) {
 		assert.NoError(t, err)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
 		expectEvent(t, pool.Events(), "peer-1", EventPeerEvicted)
@@ -359,7 +359,7 @@ func TestPoolEvents(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket, _, _ := setupTestSocket(t)
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 		pool.Remove("peer-1")
 
@@ -377,8 +377,8 @@ func TestPoolEvents(t *testing.T) {
 		pool := setupPool(t)
 		defer pool.Close()
 
-		socket1, _, _ := setupTestSocket(t)
-		socket2, _, _ := setupTestSocket(t)
+		socket1, _, _ := honeybeetest.SetupTestSocket(t)
+		socket2, _, _ := honeybeetest.SetupTestSocket(t)
 
 		pool.Add("peer-1", socket1)
 		pool.Replace("peer-1", socket2)
