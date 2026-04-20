@@ -33,6 +33,9 @@ func RunReader(
 				// by default, the peer dropped unexpectedly
 				kind := EventPeerDropped
 				select {
+				// the peer-side error is sent before the connection is closed,
+				// so a non-blocking call here is correct
+				// if an error is not sent, then assume the default event kind
 				case err := <-conn.Errors():
 					if errors.Is(err, transport.ErrPeerClosedClean) {
 						kind = EventPeerDisconnected
@@ -101,7 +104,7 @@ func RunForwarder(
 
 func RunWatchdog(
 	ctx context.Context,
-	onTimeout onEventFunc,
+	onInactive func(),
 	heartbeat <-chan struct{},
 	timeout time.Duration,
 ) {
@@ -133,7 +136,7 @@ func RunWatchdog(
 		// timer completed
 		case <-timer.C:
 			// signal peer is inactive
-			onTimeout(EventPeerInactive)
+			onInactive()
 			return
 		}
 	}
