@@ -9,6 +9,7 @@ type PoolEventKind string
 const (
 	EventPeerDisconnected PoolEventKind = "disconnected"
 	EventPeerDropped      PoolEventKind = "dropped"
+	EventPeerInactive     PoolEventKind = "inactive"
 	EventPeerEvicted      PoolEventKind = "evicted"
 )
 

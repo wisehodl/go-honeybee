@@ -20,22 +20,14 @@ func TestRunReader(t *testing.T) {
 
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStop := func() {}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := &DefaultWorker{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
-		}
 		go func() {
 			for range heartbeat {
 			}
 		}()
-		go w.RunReader(conn, messages, sessionDone, onStop)
+		go RunReader(ctx, cancel, conn, messages, heartbeat)
 
 		before := time.Now()
 		incomingData <- honeybeetest.MockIncomingData{
@@ -59,17 +51,8 @@ func TestRunReader(t *testing.T) {
 
 		messages := make(chan ReceivedMessage, 10)
 		heartbeat := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStop := func() {}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-
-		w := &DefaultWorker{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
-		}
 
 		received := atomic.Int32{}
 		go func() {
@@ -81,7 +64,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go w.RunReader(conn, messages, sessionDone, onStop)
+		go RunReader(ctx, cancel, conn, messages, heartbeat)
 
 		const count = 3
 		for i := 0; i < count; i++ {
@@ -101,16 +84,9 @@ func TestRunReader(t *testing.T) {
 
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-		w := &DefaultWorker{
-			Ctx:       ctx,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
-		}
 		go func() {
 			for range heartbeat {
 			}
@@ -119,7 +95,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go w.RunReader(conn, messages, sessionDone, onStop)
+		go RunReader(ctx, cancel, conn, messages, heartbeat)
 
 		// induce connection closure via reader
 		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
@@ -132,8 +108,13 @@ func TestRunReader(t *testing.T) {
 		}, "expected closed state")
 
 		honeybeetest.Eventually(t, func() bool {
-			return onStopCalled.Load()
-		}, "expected onStop to be called")
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		}, "expected context to cancel")
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
@@ -141,66 +122,9 @@ func TestRunReader(t *testing.T) {
 
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-		ctx := context.Background()
-
-		w := &DefaultWorker{
-			Ctx:       ctx,
-			Id:        "wss://test",
-			Heartbeat: heartbeat,
-		}
-		go w.RunReader(conn, messages, sessionDone, onStop)
-
-		close(sessionDone)
-
-		honeybeetest.Eventually(t, func() bool {
-			return conn.State() == transport.StateClosed
-		}, "expected closed state")
-
-		honeybeetest.Eventually(t, func() bool {
-			return onStopCalled.Load()
-		}, "expected onStop to be called")
-	})
-}
-
-func TestRunStopMonitor(t *testing.T) {
-	t.Run("keepalive signal calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		keepalive := make(chan struct{}, 1)
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-
-		w := &DefaultWorker{Id: "wss://test"}
-		go w.RunStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
-
-		keepalive <- struct{}{}
-
-		honeybeetest.Eventually(t, func() bool {
-			return conn.State() == transport.StateClosed
-		}, "expected closed state")
-
-		honeybeetest.Eventually(t, func() bool {
-			return onStopCalled.Load()
-		}, "expected onStop to be called")
-	})
-
-	t.Run("ctx.Done calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		keepalive := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
-
-		w := &DefaultWorker{Id: "wss://test"}
-		go w.RunStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+		go RunReader(ctx, cancel, conn, messages, heartbeat)
 
 		cancel()
 
@@ -209,31 +133,64 @@ func TestRunStopMonitor(t *testing.T) {
 		}, "expected closed state")
 
 		honeybeetest.Eventually(t, func() bool {
-			return onStopCalled.Load()
-		}, "expected onStop to be called")
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		}, "expected context to cancel")
 	})
+}
 
-	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
+func TestRunStopMonitor(t *testing.T) {
+	t.Run("keepalive signal calls conn.Close and cancel", func(t *testing.T) {
 		conn, _, _, _ := setupWorkerTestConnection(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		keepalive := make(chan struct{})
-		sessionDone := make(chan struct{})
-		onStopCalled := atomic.Bool{}
-		onStop := func() { onStopCalled.Store(true) }
+		keepalive := make(chan struct{}, 1)
 
-		w := &DefaultWorker{Id: "wss://test"}
-		go w.RunStopMonitor(ctx, conn, keepalive, sessionDone, onStop)
+		go RunStopMonitor(ctx, cancel, conn, keepalive)
 
-		close(sessionDone)
+		keepalive <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
 			return conn.State() == transport.StateClosed
 		}, "expected closed state")
 
 		honeybeetest.Eventually(t, func() bool {
-			return onStopCalled.Load()
-		}, "expected onStop to be called")
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		}, "expected context to cancel")
+	})
+
+	t.Run("ctx.Done calls conn.Close and cancel", func(t *testing.T) {
+		conn, _, _, _ := setupWorkerTestConnection(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		keepalive := make(chan struct{})
+
+		go RunStopMonitor(ctx, cancel, conn, keepalive)
+
+		cancel()
+
+		honeybeetest.Eventually(t, func() bool {
+			return conn.State() == transport.StateClosed
+		}, "expected closed state")
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-ctx.Done():
+				return true
+			default:
+				return false
+			}
+		}, "expected context to cancel")
 	})
 }

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type onExitFunc func(id string, kind PoolEventKind)
+type onEventFunc func(kind PoolEventKind)
 
 type ReceivedMessage struct {
 	data       []byte
@@ -17,11 +17,11 @@ type ReceivedMessage struct {
 
 func RunReader(
 	ctx context.Context,
-	id string,
+	onPeerClose onEventFunc,
+
 	conn *transport.Connection,
 	messages chan<- ReceivedMessage,
 	heartbeat chan<- struct{},
-	onPeerClose onExitFunc,
 ) {
 	for {
 		select {
@@ -40,7 +40,7 @@ func RunReader(
 				default:
 				}
 
-				onPeerClose(id, kind)
+				onPeerClose(kind)
 				return
 			}
 
@@ -56,8 +56,8 @@ func RunReader(
 }
 
 func RunForwarder(
-	ctx context.Context,
 	id string,
+	ctx context.Context,
 	messages <-chan ReceivedMessage,
 	inbox chan<- InboxMessage,
 	maxQueueSize int,
@@ -101,10 +101,9 @@ func RunForwarder(
 
 func RunWatchdog(
 	ctx context.Context,
-	id string,
-	timeout time.Duration,
+	onTimeout onEventFunc,
 	heartbeat <-chan struct{},
-	onTimeout onExitFunc,
+	timeout time.Duration,
 ) {
 	// disable watchdog timeout if not configured
 	if timeout <= 0 {
@@ -133,8 +132,8 @@ func RunWatchdog(
 			timer.Reset(timeout)
 		// timer completed
 		case <-timer.C:
-			// evict inactive peer
-			onTimeout(id, EventPeerEvicted)
+			// signal peer is inactive
+			onTimeout(EventPeerInactive)
 			return
 		}
 	}
