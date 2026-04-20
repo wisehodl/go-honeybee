@@ -62,7 +62,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -85,7 +88,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -135,7 +141,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -172,7 +181,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -215,7 +227,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -260,7 +275,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -302,7 +320,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go w.Start(pool, &wg)
+		go func() {
+			w.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			select {

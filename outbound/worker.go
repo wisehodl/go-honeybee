@@ -12,7 +12,7 @@ import (
 // Worker
 
 type Worker interface {
-	Start(pool PoolPlugin, wg *sync.WaitGroup)
+	Start(pool PoolPlugin)
 	Stop()
 	Send(data []byte) error
 }
@@ -56,35 +56,32 @@ func NewWorker(
 	return w, nil
 }
 
-func (w *DefaultWorker) Start(
-	pool PoolPlugin,
-	wg *sync.WaitGroup,
-) {
+func (w *DefaultWorker) Start(pool PoolPlugin) {
 	dial := make(chan struct{}, 1)
 	newConn := make(chan *transport.Connection, 1)
 	messages := make(chan ReceivedMessage, 256)
 	keepalive := make(chan struct{}, 1)
 
-	var owg sync.WaitGroup
-	owg.Add(4)
+	var wg sync.WaitGroup
+	wg.Add(4)
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunDialer(w.id, w.ctx, pool, dial, newConn)
 	}()
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunKeepalive(w.ctx, w.heartbeat, keepalive, w.config.KeepaliveTimeout)
 	}()
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunForwarder(w.id, w.ctx, messages, pool.Inbox, w.config.MaxQueueSize)
 	}()
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		session := &Session{
 			id:        w.id,
 			connPtr:   &w.conn,
@@ -97,8 +94,7 @@ func (w *DefaultWorker) Start(
 		session.Start(w.ctx, pool)
 	}()
 
-	owg.Wait()
-	wg.Done()
+	wg.Wait()
 }
 
 func (w *DefaultWorker) Stop() {

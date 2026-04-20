@@ -70,7 +70,7 @@ func TestWorkerStart(t *testing.T) {
 		v := setupWorkerTest(t)
 		defer v.worker.Stop()
 
-		go v.worker.Start(v.pool, v.wg)
+		go v.worker.Start(v.pool)
 
 		v.incoming <- honeybeetest.MockIncomingData{
 			MsgType: websocket.TextMessage,
@@ -91,7 +91,7 @@ func TestWorkerStart(t *testing.T) {
 		v := setupWorkerTest(t)
 		defer v.worker.Stop()
 
-		go v.worker.Start(v.pool, v.wg)
+		go v.worker.Start(v.pool)
 
 		v.incoming <- honeybeetest.MockIncomingData{
 			Err: &websocket.CloseError{Code: websocket.CloseNormalClosure},
@@ -107,7 +107,7 @@ func TestWorkerStart(t *testing.T) {
 		v := setupWorkerTest(t)
 		defer v.worker.Stop()
 
-		go v.worker.Start(v.pool, v.wg)
+		go v.worker.Start(v.pool)
 
 		v.incoming <- honeybeetest.MockIncomingData{
 			Err: &websocket.CloseError{Code: websocket.CloseProtocolError},
@@ -142,7 +142,10 @@ func TestWorkerStart(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go worker.Start(pool, &wg)
+		go func() {
+			worker.Start(pool)
+			wg.Done()
+		}()
 
 		honeybeetest.Eventually(t, func() bool {
 			val := exitKind.Load()
@@ -154,7 +157,7 @@ func TestWorkerStart(t *testing.T) {
 func TestWorkerStop(t *testing.T) {
 	v := setupWorkerTest(t)
 
-	go v.worker.Start(v.pool, v.wg)
+	go func() { v.worker.Start(v.pool); v.wg.Done() }()
 
 	v.worker.Stop()
 
@@ -179,7 +182,7 @@ func TestWorkerSend(t *testing.T) {
 		v := setupWorkerTest(t)
 		defer v.worker.Stop()
 
-		go v.worker.Start(v.pool, v.wg)
+		go v.worker.Start(v.pool)
 
 		err := v.worker.Send([]byte("hello"))
 		assert.NoError(t, err)
@@ -214,7 +217,7 @@ func TestWorkerSend(t *testing.T) {
 		v := setupWorkerTest(t)
 		defer v.worker.Stop()
 
-		go v.worker.Start(v.pool, v.wg)
+		go v.worker.Start(v.pool)
 
 		v.conn.Close()
 

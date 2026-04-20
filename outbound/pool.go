@@ -189,7 +189,10 @@ func (p *Pool) Connect(id string) error {
 	}
 
 	p.wg.Add(1)
-	go worker.Start(pool, &p.wg)
+	go func() {
+		worker.Start(pool)
+		p.wg.Done()
+	}()
 
 	p.peers[id] = &Peer{id: id, worker: worker}
 

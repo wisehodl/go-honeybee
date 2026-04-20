@@ -278,7 +278,8 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 	go func() {
 		defer cancel()
 		defer close(peer.done)
-		worker.Start(pool, &p.wg)
+		worker.Start(pool)
+		p.wg.Done()
 	}()
 
 	p.peers[id] = peer
