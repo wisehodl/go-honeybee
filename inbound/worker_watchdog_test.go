@@ -52,7 +52,7 @@ func TestRunWatchdog(t *testing.T) {
 		}, "expected onInactive")
 
 		assert.Equal(t, int32(1), count.Load())
-		assert.Equal(t, ExitInactive, gotKind)
+		assert.Equal(t, ExitPolicy, gotKind)
 	})
 
 	t.Run("ctx.Done exits without calling onInactive", func(t *testing.T) {

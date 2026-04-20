@@ -10,8 +10,8 @@ import (
 // Worker Config
 
 type WorkerConfig struct {
-	MaxQueueSize int
-	DeadTimeout  time.Duration
+	MaxQueueSize      int
+	InactivityTimeout time.Duration
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -29,8 +29,8 @@ func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 
 func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
-		MaxQueueSize: 0, // queue can grow indefinitely by default
-		DeadTimeout:  0, // eviction disabled by default
+		MaxQueueSize:      0, // queue can grow indefinitely by default
+		InactivityTimeout: 0, // eviction disabled by default
 	}
 }
 
@@ -47,7 +47,7 @@ func ValidateWorkerConfig(config *WorkerConfig) error {
 	if err := validateMaxQueueSize(config.MaxQueueSize); err != nil {
 		return err
 	}
-	if err := validateDeadTimeout(config.DeadTimeout); err != nil {
+	if err := validateDeadTimeout(config.InactivityTimeout); err != nil {
 		return err
 	}
 	return nil
@@ -84,7 +84,7 @@ func WithDeadTimeout(value time.Duration) WorkerOption {
 		if err := validateDeadTimeout(value); err != nil {
 			return err
 		}
-		c.DeadTimeout = value
+		c.InactivityTimeout = value
 		return nil
 	}
 }
