@@ -10,7 +10,7 @@ import (
 )
 
 type Worker interface {
-	Start(pool PoolPlugin, wg *sync.WaitGroup)
+	Start(pool PoolPlugin)
 	Stop()
 	Send(data []byte) error
 }
@@ -61,29 +61,28 @@ func NewWorker(
 	}, nil
 }
 
-func (w *DefaultWorker) Start(pool PoolPlugin, wg *sync.WaitGroup) {
+func (w *DefaultWorker) Start(pool PoolPlugin) {
 	messages := make(chan ReceivedMessage, 256)
 
-	var owg sync.WaitGroup
-	owg.Add(3)
+	var wg sync.WaitGroup
+	wg.Add(3)
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunReader(w.ctx, pool.OnExit, w.conn, messages, w.heartbeat)
 	}()
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunForwarder(w.id, w.ctx, messages, pool.Inbox, w.config.MaxQueueSize)
 	}()
 
 	go func() {
-		defer owg.Done()
+		defer wg.Done()
 		RunWatchdog(w.ctx, pool.OnExit, w.heartbeat, w.config.InactivityTimeout)
 	}()
 
-	owg.Wait()
-	wg.Done()
+	wg.Wait()
 }
 
 func (w *DefaultWorker) Stop() {

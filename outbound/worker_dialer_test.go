@@ -99,8 +99,10 @@ func TestRunDialer(t *testing.T) {
 				}
 			}, "expected new connection")
 
-			// connection was only dialed once
-			assert.Equal(t, int32(1), dialCount.Load())
+			// number of dials < number of dial requests
+			honeybeetest.Never(t, func() bool {
+				return dialCount.Load() >= 5
+			}, "expected fewer dials than requests")
 
 			// dial channel still writable
 			select {

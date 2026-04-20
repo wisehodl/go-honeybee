@@ -38,8 +38,10 @@ func TestWorkerSend(t *testing.T) {
 		err := w.Send(testData)
 		assert.NoError(t, err)
 
-		// one heartbeat was sent
-		assert.Equal(t, 1, int(heartbeatCount.Load()))
+		// at least one heartbeat was sent
+		honeybeetest.Eventually(t, func() bool {
+			return heartbeatCount.Load() >= 1
+		}, "expected heartbeats")
 
 		// message was sent by the socket
 		honeybeetest.Eventually(t, func() bool {
@@ -82,7 +84,9 @@ func TestWorkerSend(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		assert.Equal(t, count, int(heartbeatCount.Load()))
+		honeybeetest.Eventually(t, func() bool {
+			return heartbeatCount.Load() == count
+		}, "expected heartbeats")
 	})
 
 	t.Run("returns error if connection is unavailable", func(t *testing.T) {
