@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"container/list"
@@ -23,14 +23,12 @@ type ReceivedMessage struct {
 }
 
 type DefaultWorker struct {
-	Ctx    context.Context
-	Cancel context.CancelFunc
-
-	Id     string
-	Config *WorkerConfig
-
-	Conn      atomic.Pointer[transport.Connection]
-	Heartbeat chan struct{}
+	id        string
+	conn      atomic.Pointer[transport.Connection]
+	heartbeat chan struct{}
+	config    *WorkerConfig
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewWorker(
@@ -42,19 +40,17 @@ func NewWorker(
 	if config == nil {
 		config = GetDefaultWorkerConfig()
 	}
-
-	err := ValidateWorkerConfig(config)
-	if err != nil {
+	if err := ValidateWorkerConfig(config); err != nil {
 		return nil, err
 	}
 
-	pool, cancel := context.WithCancel(ctx)
+	wctx, wcancel := context.WithCancel(ctx)
 	w := &DefaultWorker{
-		Ctx:       pool,
-		Cancel:    cancel,
-		Id:        id,
-		Config:    config,
-		Heartbeat: make(chan struct{}),
+		id:        id,
+		config:    config,
+		heartbeat: make(chan struct{}),
+		ctx:       wctx,
+		cancel:    wcancel,
 	}
 
 	return w, nil
@@ -74,31 +70,31 @@ func (w *DefaultWorker) Start(
 
 	go func() {
 		defer owg.Done()
-		RunDialer(w.Id, w.Ctx, pool, dial, newConn)
+		RunDialer(w.id, w.ctx, pool, dial, newConn)
 	}()
 
 	go func() {
 		defer owg.Done()
-		RunKeepalive(w.Ctx, w.Heartbeat, keepalive, w.Config.KeepaliveTimeout)
+		RunKeepalive(w.ctx, w.heartbeat, keepalive, w.config.KeepaliveTimeout)
 	}()
 
 	go func() {
 		defer owg.Done()
-		RunForwarder(w.Id, w.Ctx, messages, pool.Inbox, w.Config.MaxQueueSize)
+		RunForwarder(w.id, w.ctx, messages, pool.Inbox, w.config.MaxQueueSize)
 	}()
 
 	go func() {
 		defer owg.Done()
 		session := &Session{
-			id:        w.Id,
-			connPtr:   &w.Conn,
+			id:        w.id,
+			connPtr:   &w.conn,
 			messages:  messages,
-			heartbeat: w.Heartbeat,
+			heartbeat: w.heartbeat,
 			dial:      dial,
 			keepalive: keepalive,
 			newConn:   newConn,
 		}
-		session.Start(w.Ctx, pool)
+		session.Start(w.ctx, pool)
 	}()
 
 	owg.Wait()
@@ -106,25 +102,23 @@ func (w *DefaultWorker) Start(
 }
 
 func (w *DefaultWorker) Stop() {
-	w.Cancel()
+	w.cancel()
 }
 
 func (w *DefaultWorker) Send(data []byte) error {
-	conn := w.Conn.Load()
+	conn := w.conn.Load()
 	if conn == nil {
 		// connection not established by session
-		return NewWorkerError(w.Id, ErrConnectionUnavailable)
+		return NewWorkerError(w.id, ErrConnectionUnavailable)
 	}
 
-	err := conn.Send(data)
-
-	if err != nil {
-		return NewWorkerError(w.Id, err)
+	if err := conn.Send(data); err != nil {
+		return NewWorkerError(w.id, err)
 	}
 
 	select {
-	case w.Heartbeat <- struct{}{}:
-	case <-w.Ctx.Done():
+	case w.heartbeat <- struct{}{}:
+	case <-w.ctx.Done():
 	}
 
 	return nil
@@ -313,11 +307,15 @@ func RunKeepalive(
 ) {
 	// disable keepalive timeout if not configured
 	if timeout <= 0 {
+		// drain heartbeats
 		// wait for cancel and exit
-		select {
-		case <-ctx.Done():
+		for {
+			select {
+			case <-heartbeat:
+			case <-ctx.Done():
+				return
+			}
 		}
-		return
 	}
 
 	timer := time.NewTimer(timeout)

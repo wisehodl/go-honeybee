@@ -1,7 +1,6 @@
-package responderpool
+package inbound
 
 import (
-	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"github.com/stretchr/testify/assert"
@@ -9,9 +8,8 @@ import (
 	"testing"
 )
 
-func setupReaderTestConnection(t *testing.T) (
-	conn *transport.Connection,
-	mock *honeybeetest.MockSocket,
+func setupTestSocket(t *testing.T) (
+	socket *honeybeetest.MockSocket,
 	incoming chan honeybeetest.MockIncomingData,
 	outgoing chan honeybeetest.MockOutgoingData,
 ) {
@@ -19,38 +17,51 @@ func setupReaderTestConnection(t *testing.T) (
 
 	incoming = make(chan honeybeetest.MockIncomingData, 10)
 	outgoing = make(chan honeybeetest.MockOutgoingData, 10)
-	mock = honeybeetest.NewMockSocket()
+	socket = honeybeetest.NewMockSocket()
 
-	mock.CloseFunc = func() error {
-		mock.Once.Do(func() { close(mock.Closed) })
+	socket.CloseFunc = func() error {
+		socket.Once.Do(func() { close(socket.Closed) })
 		return nil
 	}
 
-	mock.ReadMessageFunc = func() (int, []byte, error) {
+	socket.ReadMessageFunc = func() (int, []byte, error) {
 		select {
 		case data, ok := <-incoming:
 			if !ok {
 				return 0, nil, io.EOF
 			}
 			return data.MsgType, data.Data, data.Err
-		case <-mock.Closed:
+		case <-socket.Closed:
 			return 0, nil, io.EOF
 		}
 	}
 
-	mock.WriteMessageFunc = func(msgType int, data []byte) error {
+	socket.WriteMessageFunc = func(msgType int, data []byte) error {
 		select {
 		case outgoing <- honeybeetest.MockOutgoingData{MsgType: msgType, Data: data}:
 			return nil
-		case <-mock.Closed:
+		case <-socket.Closed:
 			return io.EOF
 		default:
-			return fmt.Errorf("mock outgoing channel unavailable")
+			return io.EOF
 		}
 	}
 
+	return
+}
+
+func setupTestConnection(t *testing.T) (
+	conn *transport.Connection,
+	socket *honeybeetest.MockSocket,
+	incoming chan honeybeetest.MockIncomingData,
+	outgoing chan honeybeetest.MockOutgoingData,
+) {
+	t.Helper()
+
+	socket, incoming, outgoing = setupTestSocket(t)
+
 	var err error
-	conn, err = transport.NewConnectionFromSocket(mock, nil, nil)
+	conn, err = transport.NewConnectionFromSocket(socket, nil, nil)
 	assert.NoError(t, err)
 	return
 }

@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 func TestRunReader(t *testing.T) {
 	t.Run("message arrives with correct data and non-zero receivedAt", func(t *testing.T) {
-		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := make(chan ReceivedMessage, 1)
@@ -46,7 +46,7 @@ func TestRunReader(t *testing.T) {
 	})
 
 	t.Run("heartbeat receives one signal per message", func(t *testing.T) {
-		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
 		messages := make(chan ReceivedMessage, 10)
@@ -80,7 +80,7 @@ func TestRunReader(t *testing.T) {
 	})
 
 	t.Run("incoming channel close calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, incomingData, _ := setupWorkerTestConnection(t)
+		conn, _, incomingData, _ := setupTestConnection(t)
 
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{})
@@ -118,7 +118,7 @@ func TestRunReader(t *testing.T) {
 	})
 
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
+		conn, _, _, _ := setupTestConnection(t)
 
 		messages := make(chan ReceivedMessage, 1)
 		heartbeat := make(chan struct{})
@@ -145,7 +145,7 @@ func TestRunReader(t *testing.T) {
 
 func TestRunStopMonitor(t *testing.T) {
 	t.Run("keepalive signal calls conn.Close and cancel", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
+		conn, _, _, _ := setupTestConnection(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -170,7 +170,7 @@ func TestRunStopMonitor(t *testing.T) {
 	})
 
 	t.Run("ctx.Done calls conn.Close and cancel", func(t *testing.T) {
-		conn, _, _, _ := setupWorkerTestConnection(t)
+		conn, _, _, _ := setupTestConnection(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 

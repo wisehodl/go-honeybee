@@ -1,4 +1,4 @@
-package responderpool
+package outbound
 
 import (
 	"context"

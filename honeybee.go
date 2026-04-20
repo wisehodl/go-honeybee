@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 
-	"git.wisehodl.dev/jay/go-honeybee/initiatorpool"
+	"git.wisehodl.dev/jay/go-honeybee/inbound"
+	"git.wisehodl.dev/jay/go-honeybee/outbound"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 )
 
 // Connection types
@@ -15,22 +17,52 @@ type ConnectionConfig = transport.ConnectionConfig
 type RetryConfig = transport.RetryConfig
 type ConnectionOption = transport.ConnectionOption
 
-// Initator Pool types
+// Outbound Pool types
 
-type InitiatorPool = initiatorpool.Pool
-type InitiatorPoolConfig = initiatorpool.PoolConfig
-type InitiatorPoolOption = initiatorpool.PoolOption
-type InitiatorWorkerConfig = initiatorpool.WorkerConfig
-type InitiatorWorkerOption = initiatorpool.WorkerOption
-type InitiatorInboxMessage = initiatorpool.InboxMessage
-type InitiatorPoolEvent = initiatorpool.PoolEvent
-type InitiatorPoolEventKind = initiatorpool.PoolEventKind
+type OutboundPool = outbound.Pool
+type OutboundPoolConfig = outbound.PoolConfig
+type OutboundPoolOption = outbound.PoolOption
+type OutboundWorkerConfig = outbound.WorkerConfig
+type OutboundWorkerOption = outbound.WorkerOption
+type OutboundInboxMessage = outbound.InboxMessage
+type OutboundPoolEvent = outbound.PoolEvent
+type OutboundPoolEventKind = outbound.PoolEventKind
 
 // Pool event constants
 
 const (
-	EventConnected    = initiatorpool.EventConnected
-	EventDisconnected = initiatorpool.EventDisconnected
+	EventConnected    = outbound.EventConnected
+	EventDisconnected = outbound.EventDisconnected
+)
+
+// Inbound Pool types
+
+type InboundPool = inbound.Pool
+type InboundPoolConfig = inbound.PoolConfig
+type InboundPoolOption = inbound.PoolOption
+type InboundWorkerConfig = inbound.WorkerConfig
+type InboundWorkerOption = inbound.WorkerOption
+type InboundWorkerFactory = inbound.WorkerFactory
+type InboundWorker = inbound.Worker
+type InboundWorkerExitKind = inbound.WorkerExitKind
+type InboundInboxMessage = inbound.InboxMessage
+type InboundPoolEvent = inbound.PoolEvent
+type InboundPoolEventKind = inbound.PoolEventKind
+
+// Inbound Pool event constants
+
+const (
+	EventPeerDisconnected = inbound.EventPeerDisconnected
+	EventPeerDropped      = inbound.EventPeerDropped
+	EventPeerEvicted      = inbound.EventPeerEvicted
+)
+
+// Inbound Worker exit kinds
+
+const (
+	ExitCleanDisconnect = inbound.ExitCleanDisconnect
+	ExitUnexpectedDrop  = inbound.ExitUnexpectedDrop
+	ExitInactive        = inbound.ExitInactive
 )
 
 // Connection constructors
@@ -55,31 +87,64 @@ var (
 	WithCloseHandler      = transport.WithCloseHandler
 )
 
-// Initiator Pool constructors
+// Outbound Pool constructors
 
-func NewInitiatorPool(ctx context.Context, config *InitiatorPoolConfig, logger *slog.Logger) (*InitiatorPool, error) {
-	return initiatorpool.NewPool(ctx, config, logger)
+func NewOutboundPool(ctx context.Context, config *OutboundPoolConfig, logger *slog.Logger) (*OutboundPool, error) {
+	return outbound.NewPool(ctx, config, logger)
 }
 
-func NewInitiatorPoolConfig(opts ...InitiatorPoolOption) (*InitiatorPoolConfig, error) {
-	return initiatorpool.NewPoolConfig(opts...)
+func NewOutboundPoolConfig(opts ...OutboundPoolOption) (*OutboundPoolConfig, error) {
+	return outbound.NewPoolConfig(opts...)
 }
 
-func NewInitiatorWorkerConfig(opts ...InitiatorWorkerOption) (*InitiatorWorkerConfig, error) {
-	return initiatorpool.NewWorkerConfig(opts...)
+func NewOutboundWorkerConfig(opts ...OutboundWorkerOption) (*OutboundWorkerConfig, error) {
+	return outbound.NewWorkerConfig(opts...)
 }
 
-// Initiator Pool options
+// Outbound Pool options
 
 var (
-	WithConnectionConfig = initiatorpool.WithConnectionConfig
-	WithWorkerConfig     = initiatorpool.WithWorkerConfig
-	WithWorkerFactory    = initiatorpool.WithWorkerFactory
+	WithOutboundConnectionConfig = outbound.WithConnectionConfig
+	WithOutboundWorkerConfig     = outbound.WithWorkerConfig
+	WithOutboundWorkerFactory    = outbound.WithWorkerFactory
 )
 
-// Initiator Worker options
+// Outbound Worker options
 
 var (
-	WithKeepaliveTimeout = initiatorpool.WithKeepaliveTimeout
-	WithMaxQueueSize     = initiatorpool.WithMaxQueueSize
+	WithOutboundKeepaliveTimeout = outbound.WithKeepaliveTimeout
+	WithOutboundMaxQueueSize     = outbound.WithMaxQueueSize
 )
+
+// Inbound Pool constructors
+
+func NewInboundPool(ctx context.Context, config *InboundPoolConfig, logger *slog.Logger) (*InboundPool, error) {
+	return inbound.NewPool(ctx, config, logger)
+}
+
+func NewInboundPoolConfig(opts ...InboundPoolOption) (*InboundPoolConfig, error) {
+	return inbound.NewPoolConfig(opts...)
+}
+
+func NewInboundWorkerConfig(opts ...InboundWorkerOption) (*InboundWorkerConfig, error) {
+	return inbound.NewWorkerConfig(opts...)
+}
+
+// Inbound Pool options
+
+var (
+	WithInboundConnectionConfig = inbound.WithConnectionConfig
+	WithInboundWorkerConfig     = inbound.WithWorkerConfig
+	WithInboundWorkerFactory    = inbound.WithWorkerFactory
+)
+
+// Inbound Worker options
+
+var (
+	WithInboundDeadTimeout  = inbound.WithDeadTimeout
+	WithInboundMaxQueueSize = inbound.WithMaxQueueSize
+)
+
+// Socket type — needed for inbound pool.Add and pool.Replace
+
+type Socket = types.Socket

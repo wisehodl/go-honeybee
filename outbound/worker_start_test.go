@@ -1,4 +1,4 @@
-package initiatorpool
+package outbound
 
 import (
 	"context"
@@ -34,11 +34,11 @@ func makeWorkerContext(t *testing.T) (
 func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *DefaultWorker {
 	t.Helper()
 	return &DefaultWorker{
-		Ctx:       ctx,
-		Cancel:    cancel,
-		Id:        "wss://test",
-		Config:    GetDefaultWorkerConfig(),
-		Heartbeat: make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
+		id:        "wss://test",
+		config:    GetDefaultWorkerConfig(),
+		heartbeat: make(chan struct{}),
 	}
 }
 
@@ -67,7 +67,7 @@ func TestWorkerStart(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-events:
-				return e.ID == w.Id && e.Kind == EventConnected
+				return e.ID == w.id && e.Kind == EventConnected
 			default:
 				return false
 			}
@@ -80,7 +80,7 @@ func TestWorkerStart(t *testing.T) {
 
 		w := makeWorker(t, ctx, cancel)
 		_, events, _, pool := makeWorkerContext(t)
-		_, mockSocket, _, outgoingData := setupWorkerTestConnection(t)
+		_, mockSocket, _, outgoingData := setupTestConnection(t)
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
@@ -154,7 +154,7 @@ func TestWorkerStart(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-inbox:
-				return msg.ID == w.Id && string(msg.Data) == "hello"
+				return msg.ID == w.id && string(msg.Data) == "hello"
 			default:
 				return false
 			}
@@ -167,7 +167,7 @@ func TestWorkerStart(t *testing.T) {
 
 		w := makeWorker(t, ctx, cancel)
 		_, events, _, pool := makeWorkerContext(t)
-		_, mockSocket, incomingData, _ := setupWorkerTestConnection(t)
+		_, mockSocket, incomingData, _ := setupTestConnection(t)
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
