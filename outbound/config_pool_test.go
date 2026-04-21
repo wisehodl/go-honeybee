@@ -12,6 +12,9 @@ func TestNewPoolConfig(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, conf, &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		ErrorsBufferSize: 10,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -22,6 +25,9 @@ func TestDefaultPoolConfig(t *testing.T) {
 	conf := GetDefaultPoolConfig()
 
 	assert.Equal(t, conf, &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		ErrorsBufferSize: 10,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -37,6 +43,19 @@ func TestApplyPoolOptions(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0*time.Second, conf.ConnectionConfig.WriteTimeout)
+}
+
+func TestWithBufferSizes(t *testing.T) {
+	conf := &PoolConfig{}
+
+	err := applyPoolOptions(conf,
+		WithInboxBufferSize(100),
+		WithEventsBufferSize(20),
+		WithErrorsBufferSize(20),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, conf.InboxBufferSize)
+	assert.Equal(t, 20, conf.EventsBufferSize)
 }
 
 func TestWithConnectionConfig(t *testing.T) {

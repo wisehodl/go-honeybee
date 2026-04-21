@@ -4,6 +4,7 @@ import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -17,7 +18,7 @@ func TestRunReader(t *testing.T) {
 		conn, _, incoming, _ := setupTestConnection(t)
 		defer conn.Close()
 
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -30,7 +31,7 @@ func TestRunReader(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case msg := <-messages:
-				return string(msg.data) == "hello" && msg.receivedAt.After(before)
+				return string(msg.Data) == "hello" && msg.ReceivedAt.After(before)
 			default:
 				return false
 			}
@@ -41,7 +42,7 @@ func TestRunReader(t *testing.T) {
 		conn, _, incoming, _ := setupTestConnection(t)
 		defer conn.Close()
 
-		messages := make(chan ReceivedMessage, 10)
+		messages := make(chan types.ReceivedMessage, 10)
 		heartbeat := make(chan struct{}, 10)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -81,7 +82,7 @@ func TestRunReader(t *testing.T) {
 		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
 		assert.NoError(t, err)
 
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -118,7 +119,7 @@ func TestRunReader(t *testing.T) {
 		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
 		assert.NoError(t, err)
 
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -155,7 +156,7 @@ func TestRunReader(t *testing.T) {
 		conn, err := transport.NewConnectionFromSocket(mock, nil, nil)
 		assert.NoError(t, err)
 
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -183,7 +184,7 @@ func TestRunReader(t *testing.T) {
 		conn, _, _, _ := setupTestConnection(t)
 		defer conn.Close()
 
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		heartbeat := make(chan struct{}, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 

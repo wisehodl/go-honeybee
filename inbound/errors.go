@@ -12,4 +12,5 @@ var (
 	// Config errors
 	InvalidMaxQueueSize      = errors.New("maximum queue size cannot be negative")
 	InvalidInactivityTimeout = errors.New("inactivity timeout cannot be negative")
+	InvalidBufferSize        = errors.New("buffer size must be greater than zero")
 )

@@ -22,3 +22,8 @@ type Socket interface {
 	SetWriteDeadline(t time.Time) error
 	SetCloseHandler(h func(code int, text string) error)
 }
+
+type ReceivedMessage struct {
+	Data       []byte
+	ReceivedAt time.Time
+}

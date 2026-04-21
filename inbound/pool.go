@@ -42,6 +42,7 @@ type InboxMessage struct {
 type PoolPlugin struct {
 	Inbox  chan<- InboxMessage
 	Events chan<- PoolEvent
+	Errors chan<- error
 	Logger *slog.Logger
 	OnExit OnExitFunction
 }
@@ -62,6 +63,7 @@ type Pool struct {
 	peers  map[string]*Peer
 	inbox  chan InboxMessage
 	events chan PoolEvent
+	errors chan error
 
 	config *PoolConfig
 	logger *slog.Logger
@@ -100,8 +102,9 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger) (*Poo
 		ctx:    pctx,
 		cancel: cancel,
 		peers:  make(map[string]*Peer),
-		inbox:  make(chan InboxMessage, 256),
-		events: make(chan PoolEvent, 10),
+		inbox:  make(chan InboxMessage, config.InboxBufferSize),
+		events: make(chan PoolEvent, config.EventsBufferSize),
+		errors: make(chan error, config.ErrorsBufferSize),
 		config: config,
 		logger: logger,
 	}, nil
@@ -127,6 +130,10 @@ func (p *Pool) Events() <-chan PoolEvent {
 	return p.events
 }
 
+func (p *Pool) Errors() <-chan error {
+	return p.errors
+}
+
 func (p *Pool) Close() {
 	p.mu.Lock()
 	if p.closed {
@@ -137,14 +144,14 @@ func (p *Pool) Close() {
 	p.closed = true
 	p.cancel()
 
-	// remove all peers
-	p.peers = make(map[string]*Peer)
-
 	// close all connections
 	for _, peer := range p.peers {
 		peer.worker.Stop()
 		peer.conn.Close()
 	}
+
+	// remove all peers
+	p.peers = make(map[string]*Peer)
 
 	p.mu.Unlock()
 
@@ -152,6 +159,7 @@ func (p *Pool) Close() {
 		p.wg.Wait()
 		close(p.inbox)
 		close(p.events)
+		close(p.errors)
 	}()
 }
 
@@ -263,6 +271,7 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 	pool := PoolPlugin{
 		Inbox:  p.inbox,
 		Events: p.events,
+		Errors: p.errors,
 		Logger: logger,
 		OnExit: onExit,
 	}

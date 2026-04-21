@@ -99,6 +99,9 @@ type WorkerFactory func(
 ) (Worker, error)
 
 type PoolConfig struct {
+	InboxBufferSize  int
+	EventsBufferSize int
+	ErrorsBufferSize int
 	ConnectionConfig *transport.ConnectionConfig
 	WorkerConfig     *WorkerConfig
 	WorkerFactory    WorkerFactory
@@ -119,6 +122,9 @@ func NewPoolConfig(options ...PoolOption) (*PoolConfig, error) {
 
 func GetDefaultPoolConfig() *PoolConfig {
 	return &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		ErrorsBufferSize: 10,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -146,6 +152,43 @@ func ValidatePoolConfig(config *PoolConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateBufferSize(value int) error {
+	if value < 1 {
+		return InvalidBufferSize
+	}
+	return nil
+}
+
+func WithInboxBufferSize(value int) PoolOption {
+	return func(c *PoolConfig) error {
+		if err := validateBufferSize(value); err != nil {
+			return err
+		}
+		c.InboxBufferSize = value
+		return nil
+	}
+}
+
+func WithEventsBufferSize(value int) PoolOption {
+	return func(c *PoolConfig) error {
+		if err := validateBufferSize(value); err != nil {
+			return err
+		}
+		c.EventsBufferSize = value
+		return nil
+	}
+}
+
+func WithErrorsBufferSize(value int) PoolOption {
+	return func(c *PoolConfig) error {
+		if err := validateBufferSize(value); err != nil {
+			return err
+		}
+		c.ErrorsBufferSize = value
+		return nil
+	}
 }
 
 func WithConnectionConfig(cc *transport.ConnectionConfig) PoolOption {

@@ -78,13 +78,15 @@ func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
 // Connection options
 
 var (
-	WithoutRetry          = transport.WithoutRetry
-	WithRetryMaxRetries   = transport.WithRetryMaxRetries
-	WithRetryInitialDelay = transport.WithRetryInitialDelay
-	WithRetryMaxDelay     = transport.WithRetryMaxDelay
-	WithRetryJitterFactor = transport.WithRetryJitterFactor
-	WithWriteTimeout      = transport.WithWriteTimeout
-	WithCloseHandler      = transport.WithCloseHandler
+	WithIncomingBufferSize = transport.WithIncomingBufferSize
+	WithErrorsBufferSize   = transport.WithErrorsBufferSize
+	WithoutRetry           = transport.WithoutRetry
+	WithRetryMaxRetries    = transport.WithRetryMaxRetries
+	WithRetryInitialDelay  = transport.WithRetryInitialDelay
+	WithRetryMaxDelay      = transport.WithRetryMaxDelay
+	WithRetryJitterFactor  = transport.WithRetryJitterFactor
+	WithWriteTimeout       = transport.WithWriteTimeout
+	WithCloseHandler       = transport.WithCloseHandler
 )
 
 // Outbound Pool constructors
@@ -104,6 +106,9 @@ func NewOutboundWorkerConfig(opts ...OutboundWorkerOption) (*OutboundWorkerConfi
 // Outbound Pool options
 
 var (
+	WithOutboundInboxBufferSize  = outbound.WithInboxBufferSize
+	WithOutboundEventsBufferSize = outbound.WithEventsBufferSize
+	WithOutboundErrorsBufferSize = outbound.WithErrorsBufferSize
 	WithOutboundConnectionConfig = outbound.WithConnectionConfig
 	WithOutboundWorkerConfig     = outbound.WithWorkerConfig
 	WithOutboundWorkerFactory    = outbound.WithWorkerFactory
@@ -133,6 +138,9 @@ func NewInboundWorkerConfig(opts ...InboundWorkerOption) (*InboundWorkerConfig, 
 // Inbound Pool options
 
 var (
+	WithInboundInboxBufferSize  = inbound.WithInboxBufferSize
+	WithInboundEventsBufferSize = inbound.WithEventsBufferSize
+	WithInboundErrorsBufferSize = inbound.WithErrorsBufferSize
 	WithInboundConnectionConfig = inbound.WithConnectionConfig
 	WithInboundWorkerConfig     = inbound.WithWorkerConfig
 	WithInboundWorkerFactory    = inbound.WithWorkerFactory

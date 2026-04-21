@@ -78,8 +78,8 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 		socket:   nil,
 		config:   config,
 		logger:   logger,
-		incoming: make(chan []byte, 100),
-		errors:   make(chan error, 10),
+		incoming: make(chan []byte, config.IncomingBufferSize),
+		errors:   make(chan error, config.ErrorsBufferSize),
 		state:    StateDisconnected,
 		done:     make(chan struct{}),
 	}
@@ -108,8 +108,8 @@ func NewConnectionFromSocket(
 		socket:   socket,
 		config:   config,
 		logger:   logger,
-		incoming: make(chan []byte, 100),
-		errors:   make(chan error, 10),
+		incoming: make(chan []byte, config.IncomingBufferSize),
+		errors:   make(chan error, config.ErrorsBufferSize),
 		state:    StateConnected,
 		done:     make(chan struct{}),
 	}
