@@ -1,6 +1,6 @@
 # go-honeybee
 
-WebSocket connection and pool primitives for Go. Zero protocol awareness.
+WebSocket connection and pool primitives in Go. Built for Nostr.
 
 ## Library Map
 
@@ -43,7 +43,7 @@ Honeybee is a pure transport layer, but it is also a deliberately simple one. Ho
 
 Honeybee does not provide:
 
-- Interpret or modify message content. It moves exactly the data it receives.
+- interpretation of message content. All messages are treated equally.
 - message queuing, prioritization, batching, or coalescing.
 - rate limiting, circuit breakers, token buckets, or adaptive throttling.
 - broadcast, fanout, or any many-to-many message routing.
