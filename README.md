@@ -272,13 +272,15 @@ Three config types cover three scopes.
 
 Connection and retry:
 
+- `WithCloseHandler(func)` installs a close handler on the socket.
+- `WithWriteTimeout(duration)` sets per-message write deadline.
+- `WithIncomingBufferSize(int)` sets the connection's incoming message channel buffer.
+- `WithErrorsBufferSize(int)` sets the connection's errors channel buffer.
 - `WithoutRetry()` disables retry entirely.
 - `WithRetryMaxRetries(int)` caps retry attempts; zero means infinite.
 - `WithRetryInitialDelay(duration)` sets the first backoff interval.
 - `WithRetryMaxDelay(duration)` caps the backoff interval.
 - `WithRetryJitterFactor(float64)` adds randomization to backoff, range 0.0 to 1.0.
-- `WithWriteTimeout(duration)` sets per-message write deadline.
-- `WithCloseHandler(func)` installs a close handler on the socket.
 
 Inbound worker:
 
@@ -292,6 +294,9 @@ Outbound worker:
 
 Pool wiring (both directions have inbound and outbound variants):
 
+- `With{Inbound,Outbound}InboxBufferSize(int)` sets the pool's inbox channel buffer.
+- `With{Inbound,Outbound}EventsBufferSize(int)` sets the pool's events channel buffer.
+- `With{Inbound,Outbound}ErrorsBufferSize(int)` sets the pool's errors channel buffer.
 - `With{Inbound,Outbound}ConnectionConfig(*ConnectionConfig)`
 - `With{Inbound,Outbound}WorkerConfig(*WorkerConfig)`
 - `With{Inbound,Outbound}WorkerFactory(WorkerFactory)`
@@ -300,20 +305,25 @@ All option functions validate their inputs. Invalid values return errors at appl
 
 ### Defaults
 
-| Setting                      | Default | Disabled Value   | Notes                           |
-| ---------------------------- | ------- | ---------------- | ------------------------------- |
-| `WriteTimeout`               | 30s     | `0`              | Per-message write deadline      |
-| `Retry` enabled              | yes     | `WithoutRetry()` | Applies to `Connect()` only     |
-| `Retry.MaxRetries`           | `0`     | —                | `0` means infinite              |
-| `Retry.InitialDelay`         | 1s      | —                | Must be positive                |
-| `Retry.MaxDelay`             | 5s      | —                | Must be at least `InitialDelay` |
-| `Retry.JitterFactor`         | 0.5     | `0.0`            | Range [0.0, 1.0]                |
-| Inbound `MaxQueueSize`       | `0`     | `0`              | `0` means unbounded             |
-| Inbound `InactivityTimeout`  | `0`     | `0`              | `0` disables watchdog           |
-| Outbound `KeepaliveTimeout`  | 20s     | `0`              | `0` disables keepalive          |
-| Outbound `MaxQueueSize`      | `0`     | `0`              | `0` means unbounded             |
-| Connection inbox buffer      | 100     | —                | Not configurable                |
-| Connection errors buffer     | 10      | —                | Not configurable                |
+| Setting                          | Default | Disabled Value   | Notes                           |
+|----------------------------------|---------|------------------|---------------------------------|
+| `WriteTimeout`                   | 30s     | `0`              | Per-message write deadline      |
+| `Retry` enabled                  | yes     | `WithoutRetry()` | Applies to `Connect()` only     |
+| `Retry.MaxRetries`               | `0`     | —                | `0` means infinite              |
+| `Retry.InitialDelay`             | 1s      | —                | Must be positive                |
+| `Retry.MaxDelay`                 | 5s      | —                | Must be at least `InitialDelay` |
+| `Retry.JitterFactor`             | 0.5     | `0.0`            | Range [0.0, 1.0]                |
+| Inbound `MaxQueueSize`           | `0`     | `0`              | `0` means unbounded             |
+| Inbound `InactivityTimeout`      | `0`     | `0`              | `0` disables watchdog           |
+| Outbound `KeepaliveTimeout`      | 20s     | `0`              | `0` disables keepalive          |
+| Outbound `MaxQueueSize`          | `0`     | `0`              | `0` means unbounded             |
+| Connection `IncomingBufferSize`  | 100     | —                | Must be positive                |
+| Connection `ErrorsBufferSize`    | 10      | —                | Must be positive                |
+| Inbound pool `InboxBufferSize`   | 256     | —                | Must be positive                |
+| Inbound pool `EventsBufferSize`  | 10      | —                | Must be positive                |
+| Outbound pool `InboxBufferSize`  | 256     | —                | Must be positive                |
+| Outbound pool `EventsBufferSize` | 10      | —                | Must be positive                |
+| Outbound pool `ErrorsBufferSize` | 10      | —                | Must be positive                |
 
 ## Testing
 

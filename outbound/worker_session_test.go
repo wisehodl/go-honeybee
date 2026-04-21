@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"sync/atomic"
 	"testing"
 )
@@ -28,7 +29,7 @@ type testVars struct {
 	keepalive chan struct{}
 	heartbeat chan struct{}
 	newConn   chan *transport.Connection
-	messages  chan ReceivedMessage
+	messages  chan types.ReceivedMessage
 
 	conn         *transport.Connection
 	mockSocket   *honeybeetest.MockSocket
@@ -52,7 +53,7 @@ func setup(t *testing.T) (
 		keepalive:    make(chan struct{}, 1),
 		heartbeat:    make(chan struct{}, 1),
 		newConn:      make(chan *transport.Connection, 1),
-		messages:     make(chan ReceivedMessage, 256),
+		messages:     make(chan types.ReceivedMessage, 256),
 		conn:         conn,
 		mockSocket:   mockSocket,
 		incomingData: incomingData,

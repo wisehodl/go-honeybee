@@ -3,7 +3,7 @@ package inbound
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
-	"github.com/stretchr/testify/assert"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"testing"
 	"time"
 )
@@ -11,14 +11,14 @@ import (
 func TestRunForwarder(t *testing.T) {
 	t.Run("message passes through to inbox", func(t *testing.T) {
 		id := "wss://test"
-		messages := make(chan ReceivedMessage, 1)
+		messages := make(chan types.ReceivedMessage, 1)
 		inbox := make(chan InboxMessage, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunForwarder(id, ctx, messages, inbox, 0)
+		go RunForwarder(id, ctx, messages, inbox)
 
-		messages <- ReceivedMessage{data: []byte("hello"), receivedAt: time.Now()}
+		messages <- types.ReceivedMessage{Data: []byte("hello"), ReceivedAt: time.Now()}
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -28,76 +28,5 @@ func TestRunForwarder(t *testing.T) {
 				return false
 			}
 		}, "expected message")
-	})
-
-	t.Run("oldest message dropped when queue is full", func(t *testing.T) {
-		id := "wss://test"
-		messages := make(chan ReceivedMessage, 1)
-		inbox := make(chan InboxMessage, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		gate := make(chan struct{})
-		gatedInbox := make(chan InboxMessage)
-
-		// gate the inbox from receiving messages until the gate is opened
-		go func() {
-			<-gate
-			for msg := range gatedInbox {
-				inbox <- msg
-			}
-		}()
-
-		go RunForwarder(id, ctx, messages, gatedInbox, 2)
-
-		// send three messages while the gated inbox is blocked
-		messages <- ReceivedMessage{data: []byte("first"), receivedAt: time.Now()}
-		messages <- ReceivedMessage{data: []byte("second"), receivedAt: time.Now()}
-		messages <- ReceivedMessage{data: []byte("third"), receivedAt: time.Now()}
-
-		// allow time for the first message to be dropped
-		time.Sleep(20 * time.Millisecond)
-
-		// close the gate, draining messages into the inbox
-		close(gate)
-
-		// receive messages from the inbox
-		var received []string
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case msg := <-inbox:
-				received = append(received, string(msg.Data))
-			default:
-			}
-			return len(received) == 2
-		}, "expected messages")
-
-		// first message was dropped
-		assert.Equal(t, []string{"second", "third"}, received)
-
-	})
-
-	t.Run("exits on context cancellation", func(t *testing.T) {
-		id := "wss://test"
-		messages := make(chan ReceivedMessage, 1)
-		inbox := make(chan InboxMessage, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		done := make(chan struct{})
-		go func() {
-			RunForwarder(id, ctx, messages, inbox, 0)
-			close(done)
-		}()
-
-		cancel()
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case <-done:
-				return true
-			default:
-				return false
-			}
-		}, "expected done signal")
 	})
 }

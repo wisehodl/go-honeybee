@@ -7,9 +7,11 @@ import (
 type CloseHandler func(code int, text string) error
 
 type ConnectionConfig struct {
-	CloseHandler CloseHandler
-	WriteTimeout time.Duration
-	Retry        *RetryConfig
+	CloseHandler       CloseHandler
+	WriteTimeout       time.Duration
+	IncomingBufferSize int
+	ErrorsBufferSize   int
+	Retry              *RetryConfig
 }
 
 type RetryConfig struct {
@@ -34,9 +36,11 @@ func NewConnectionConfig(options ...ConnectionOption) (*ConnectionConfig, error)
 
 func GetDefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		CloseHandler: nil,
-		WriteTimeout: 30 * time.Second,
-		Retry:        GetDefaultRetryConfig(),
+		CloseHandler:       nil,
+		WriteTimeout:       30 * time.Second,
+		IncomingBufferSize: 100,
+		ErrorsBufferSize:   10,
+		Retry:              GetDefaultRetryConfig(),
 	}
 }
 
@@ -100,6 +104,13 @@ func validateWriteTimeout(value time.Duration) error {
 	return nil
 }
 
+func validateBufferSize(value int) error {
+	if value < 1 {
+		return InvalidBufferSize
+	}
+	return nil
+}
+
 func validateMaxRetries(value int) error {
 	if value < 0 {
 		return InvalidRetryMaxRetries
@@ -143,6 +154,26 @@ func WithWriteTimeout(value time.Duration) ConnectionOption {
 			return err
 		}
 		c.WriteTimeout = value
+		return nil
+	}
+}
+
+func WithIncomingBufferSize(value int) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		if err := validateBufferSize(value); err != nil {
+			return err
+		}
+		c.IncomingBufferSize = value
+		return nil
+	}
+}
+
+func WithErrorsBufferSize(value int) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		if err := validateBufferSize(value); err != nil {
+			return err
+		}
+		c.ErrorsBufferSize = value
 		return nil
 	}
 }

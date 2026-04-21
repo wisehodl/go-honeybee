@@ -13,9 +13,11 @@ func TestNewConnectionConfig(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, conf, &ConnectionConfig{
-		CloseHandler: nil,
-		WriteTimeout: 30 * time.Second,
-		Retry:        GetDefaultRetryConfig(),
+		CloseHandler:       nil,
+		WriteTimeout:       30 * time.Second,
+		IncomingBufferSize: 100,
+		ErrorsBufferSize:   10,
+		Retry:              GetDefaultRetryConfig(),
 	})
 
 	// errors propagate
@@ -32,9 +34,11 @@ func TestDefaultConnectionConfig(t *testing.T) {
 	conf := GetDefaultConnectionConfig()
 
 	assert.Equal(t, conf, &ConnectionConfig{
-		CloseHandler: nil,
-		WriteTimeout: 30 * time.Second,
-		Retry:        GetDefaultRetryConfig(),
+		CloseHandler:       nil,
+		WriteTimeout:       30 * time.Second,
+		IncomingBufferSize: 100,
+		ErrorsBufferSize:   10,
+		Retry:              GetDefaultRetryConfig(),
 	})
 }
 
@@ -55,12 +59,16 @@ func TestApplyConnectionOptions(t *testing.T) {
 	conf := &ConnectionConfig{}
 	err := applyConnectionOptions(
 		conf,
+		WithIncomingBufferSize(256),
+		WithErrorsBufferSize(100),
 		WithRetryMaxRetries(0),
 		WithRetryInitialDelay(3*time.Second),
 		WithRetryJitterFactor(0.5),
 	)
 
 	assert.NoError(t, err)
+	assert.Equal(t, 256, conf.IncomingBufferSize)
+	assert.Equal(t, 100, conf.ErrorsBufferSize)
 	assert.Equal(t, 0, conf.Retry.MaxRetries)
 	assert.Equal(t, 3*time.Second, conf.Retry.InitialDelay)
 	assert.Equal(t, 0.5, conf.Retry.JitterFactor)

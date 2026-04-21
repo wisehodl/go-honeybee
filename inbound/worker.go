@@ -1,10 +1,11 @@
 package inbound
 
 import (
-	"container/list"
 	"context"
 	"errors"
+	"git.wisehodl.dev/jay/go-honeybee/queue"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"sync"
 	"time"
 )
@@ -22,11 +23,6 @@ const (
 	ExitError
 	ExitPolicy
 )
-
-type ReceivedMessage struct {
-	data       []byte
-	receivedAt time.Time
-}
 
 type DefaultWorker struct {
 	id        string
@@ -62,19 +58,25 @@ func NewWorker(
 }
 
 func (w *DefaultWorker) Start(pool PoolPlugin) {
-	messages := make(chan ReceivedMessage, 256)
+	toQueue := make(chan types.ReceivedMessage, 256)
+	toForwarder := make(chan types.ReceivedMessage, 256)
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	go func() {
 		defer wg.Done()
-		RunReader(w.ctx, pool.OnExit, w.conn, messages, w.heartbeat)
+		RunReader(w.ctx, pool.OnExit, w.conn, toQueue, w.heartbeat)
 	}()
 
 	go func() {
 		defer wg.Done()
-		RunForwarder(w.id, w.ctx, messages, pool.Inbox, w.config.MaxQueueSize)
+		queue.RunQueue(w.id, w.ctx, toQueue, toForwarder, w.config.MaxQueueSize)
+	}()
+
+	go func() {
+		defer wg.Done()
+		RunForwarder(w.id, w.ctx, toForwarder, pool.Inbox)
 	}()
 
 	go func() {
@@ -107,7 +109,7 @@ func RunReader(
 	onPeerClose OnExitFunction,
 
 	conn *transport.Connection,
-	messages chan<- ReceivedMessage,
+	messages chan<- types.ReceivedMessage,
 	heartbeat chan<- struct{},
 ) {
 	for {
@@ -134,7 +136,7 @@ func RunReader(
 				return
 			}
 
-			messages <- ReceivedMessage{data: data, receivedAt: time.Now()}
+			messages <- types.ReceivedMessage{Data: data, ReceivedAt: time.Now()}
 
 			select {
 			case heartbeat <- struct{}{}:
@@ -148,43 +150,27 @@ func RunReader(
 func RunForwarder(
 	id string,
 	ctx context.Context,
-	messages <-chan ReceivedMessage,
+	messages <-chan types.ReceivedMessage,
 	inbox chan<- InboxMessage,
-	maxQueueSize int,
 ) {
-	queue := list.New()
-
 	for {
-		var out chan<- InboxMessage
-		var next ReceivedMessage
-
-		// enable inbox if it is populated
-		if queue.Len() > 0 {
-			out = inbox
-
-			// read the first message in the queue
-			next = queue.Front().Value.(ReceivedMessage)
-		}
-
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-messages:
-			// limit queue size if maximum is configured
-			if maxQueueSize > 0 && queue.Len() >= maxQueueSize {
-				// drop oldest message
-				queue.Remove(queue.Front())
+		case msg, ok := <-messages:
+			if !ok {
+				return
 			}
-			// add new message
-			queue.PushBack(msg)
-		// send next message to inbox
-		case out <- InboxMessage{
-			ID:         id,
-			Data:       next.data,
-			ReceivedAt: next.receivedAt,
-		}:
-			// drop message from queue
-			queue.Remove(queue.Front())
+			select {
+			case <-ctx.Done():
+				return
+
+			case inbox <- InboxMessage{
+				ID:         id,
+				Data:       msg.Data,
+				ReceivedAt: msg.ReceivedAt,
+			}:
+			}
 		}
 	}
 }
