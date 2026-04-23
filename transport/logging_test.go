@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,121 +17,8 @@ import (
 
 // Helpers
 
-type expectedLog struct {
-	level slog.Level
-	msg   string
-	attrs map[string]any
-}
-
-func assertLogSequence(t *testing.T, records []slog.Record, expected []expectedLog) {
-	t.Helper()
-
-	recIndex := 0
-	for expIndex, exp := range expected {
-		found := false
-
-		// Search forward through records
-		for recIndex < len(records) {
-			rec := records[recIndex]
-
-			if rec.Level == exp.level && strings.Contains(rec.Message, exp.msg) {
-				allAttrsMatch := true
-				for key, expectedValue := range exp.attrs {
-					if !assertAttributePresent(t, rec, key, expectedValue) {
-						allAttrsMatch = false
-						break
-					}
-				}
-
-				if allAttrsMatch {
-					found = true
-					recIndex++ // Consume this record
-					break
-				}
-			}
-
-			recIndex++ // Move to next record
-		}
-
-		if !found {
-			t.Fatalf(
-				"expected log not found: index=%d level=%v msg=%q attrs=%v",
-				expIndex, exp.level, exp.msg, exp.attrs)
-		}
-	}
-}
-
-func findLogRecord(
-	records []slog.Record, level slog.Level, msgSnippet string,
-) *slog.Record {
-	for i := range records {
-		if records[i].Level == level && strings.Contains(records[i].Message, msgSnippet) {
-			return &records[i]
-		}
-	}
-	return nil
-}
-
-func assertAttributePresent(
-	t *testing.T, record slog.Record, key string, expectedValue any,
-) bool {
-	t.Helper()
-
-	var found bool
-	var actualValue any
-
-	record.Attrs(func(attr slog.Attr) bool {
-		if attr.Key == key {
-			found = true
-			actualValue = attr.Value.Any()
-			return false
-		}
-		return true
-	})
-
-	if !found {
-		t.Fatalf("attribute %q not found in log record", key)
-	}
-
-	if !valuesEqual(actualValue, expectedValue) {
-		t.Errorf("attribute %q mismatch: expected=%v actual=%v", key, expectedValue, actualValue)
-		return false
-	}
-
-	return true
-}
-
-func valuesEqual(a, b any) bool {
-	// Direct equality
-	if a == b {
-		return true
-	}
-
-	// Handle int/int64 conversions
-	aInt, aIsInt := toInt64(a)
-	bInt, bIsInt := toInt64(b)
-	if aIsInt && bIsInt {
-		return aInt == bInt
-	}
-
-	return false
-}
-
-func toInt64(v any) (int64, bool) {
-	switch val := v.(type) {
-	case int:
-		return int64(val), true
-	case int64:
-		return val, true
-	case int32:
-		return int64(val), true
-	case int16:
-		return int64(val), true
-	case int8:
-		return int64(val), true
-	default:
-		return 0, false
-	}
+func log(level slog.Level, msg string, attrs map[string]any) honeybeetest.ExpectedLog {
+	return honeybeetest.ExpectedLog{Level: level, Msg: msg, Attrs: attrs}
 }
 
 // Tests
@@ -159,14 +45,14 @@ func TestConnectLogging(t *testing.T) {
 
 		records := mockHandler.GetRecords()
 
-		expected := []expectedLog{
-			{slog.LevelInfo, "connecting", map[string]any{}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 1}},
-			{slog.LevelInfo, "dial successful", map[string]any{"attempt": 1}},
-			{slog.LevelInfo, "connected", map[string]any{}},
+		expected := []honeybeetest.ExpectedLog{
+			log(slog.LevelInfo, "connecting", map[string]any{}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelInfo, "dial successful", map[string]any{"attempt": 1}),
+			log(slog.LevelInfo, "connected", map[string]any{}),
 		}
 
-		assertLogSequence(t, records, expected)
+		honeybeetest.AssertLogSequence(t, records, expected)
 	})
 
 	t.Run("max retries failure", func(t *testing.T) {
@@ -198,18 +84,18 @@ func TestConnectLogging(t *testing.T) {
 
 		records := mockHandler.GetRecords()
 
-		expected := []expectedLog{
-			{slog.LevelInfo, "connecting", map[string]any{}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 1}},
-			{slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 2}},
-			{slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 3}},
-			{slog.LevelError, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}},
-			{slog.LevelError, "connection failed", map[string]any{"error": dialErr}},
+		expected := []honeybeetest.ExpectedLog{
+			log(slog.LevelInfo, "connecting", map[string]any{}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 2}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 3}),
+			log(slog.LevelError, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}),
+			log(slog.LevelError, "connection failed", map[string]any{"error": dialErr}),
 		}
 
-		assertLogSequence(t, records, expected)
+		honeybeetest.AssertLogSequence(t, records, expected)
 	})
 
 	t.Run("success after retry", func(t *testing.T) {
@@ -247,18 +133,18 @@ func TestConnectLogging(t *testing.T) {
 
 		records := mockHandler.GetRecords()
 
-		expected := []expectedLog{
-			{slog.LevelInfo, "connecting", map[string]any{}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 1}},
-			{slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 2}},
-			{slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}},
-			{slog.LevelInfo, "dialing", map[string]any{"attempt": 3}},
-			{slog.LevelInfo, "dial successful", map[string]any{"attempt": 3}},
-			{slog.LevelInfo, "connected", map[string]any{}},
+		expected := []honeybeetest.ExpectedLog{
+			log(slog.LevelInfo, "connecting", map[string]any{}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 2}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 3}),
+			log(slog.LevelInfo, "dial successful", map[string]any{"attempt": 3}),
+			log(slog.LevelInfo, "connected", map[string]any{}),
 		}
 
-		assertLogSequence(t, records, expected)
+		honeybeetest.AssertLogSequence(t, records, expected)
 	})
 }
 
@@ -274,18 +160,18 @@ func TestCloseLogging(t *testing.T) {
 		conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
-		expected := []expectedLog{
-			{slog.LevelInfo, "shutting down", map[string]any{}},
-			{slog.LevelInfo, "closed", map[string]any{}},
+		expected := []honeybeetest.ExpectedLog{
+			log(slog.LevelInfo, "shutting down", map[string]any{}),
+			log(slog.LevelInfo, "closed", map[string]any{}),
 		}
 
-		assertLogSequence(t, records, expected)
+		honeybeetest.AssertLogSequence(t, records, expected)
 	})
 
 	t.Run("close with socket error", func(t *testing.T) {
@@ -304,18 +190,18 @@ func TestCloseLogging(t *testing.T) {
 		conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "socket close failed") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
-		expected := []expectedLog{
-			{slog.LevelInfo, "shutting down", map[string]any{}},
-			{slog.LevelError, "socket close failed", map[string]any{"error": closeErr}},
+		expected := []honeybeetest.ExpectedLog{
+			log(slog.LevelInfo, "shutting down", map[string]any{}),
+			log(slog.LevelError, "socket close failed", map[string]any{"error": closeErr}),
 		}
 
-		assertLogSequence(t, records, expected)
+		honeybeetest.AssertLogSequence(t, records, expected)
 	})
 }
 
@@ -337,14 +223,14 @@ func TestReaderLogging(t *testing.T) {
 		defer conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer") != nil
 		}, "expected log")
 
-		record := findLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
+		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
 		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "code", websocket.CloseNormalClosure)
-		assertAttributePresent(t, *record, "text", "goodbye")
+		honeybeetest.AssertAttributePresent(t, *record, "code", websocket.CloseNormalClosure)
+		honeybeetest.AssertAttributePresent(t, *record, "text", "goodbye")
 
 	})
 
@@ -365,14 +251,14 @@ func TestReaderLogging(t *testing.T) {
 		defer conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "unexpected close") != nil
 		}, "expected log")
 
-		record := findLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
+		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
 		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "code", websocket.CloseProtocolError)
-		assertAttributePresent(t, *record, "text", "bad protocol")
+		honeybeetest.AssertAttributePresent(t, *record, "code", websocket.CloseProtocolError)
+		honeybeetest.AssertAttributePresent(t, *record, "text", "bad protocol")
 
 	})
 
@@ -390,7 +276,7 @@ func TestReaderLogging(t *testing.T) {
 		defer conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "read error") != nil
 		}, "expected log")
 	})
@@ -416,15 +302,15 @@ func TestWriterLogging(t *testing.T) {
 		assert.ErrorContains(t, err, "failed to set write deadline: deadline error")
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write deadline error") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
-		record := findLogRecord(records, slog.LevelError, "write deadline error")
+		record := honeybeetest.FindLogRecord(records, slog.LevelError, "write deadline error")
 		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "error", deadlineErr)
+		honeybeetest.AssertAttributePresent(t, *record, "error", deadlineErr)
 
 		conn.Close()
 	})
@@ -446,15 +332,15 @@ func TestWriterLogging(t *testing.T) {
 		assert.ErrorContains(t, err, "write error")
 
 		honeybeetest.Eventually(t, func() bool {
-			return findLogRecord(
+			return honeybeetest.FindLogRecord(
 				mockHandler.GetRecords(), slog.LevelError, "write error") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
-		record := findLogRecord(records, slog.LevelError, "write error")
+		record := honeybeetest.FindLogRecord(records, slog.LevelError, "write error")
 		assert.NotNil(t, record)
-		assertAttributePresent(t, *record, "error", writeErr)
+		honeybeetest.AssertAttributePresent(t, *record, "error", writeErr)
 
 		conn.Close()
 	})

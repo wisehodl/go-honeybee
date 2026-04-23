@@ -32,7 +32,7 @@ func setupWorkerTest(t *testing.T) workerTestVars {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var err error
-	worker, err := NewWorker(ctx, "peer-1", conn, nil)
+	worker, err := NewWorker(ctx, "peer-1", conn, nil, nil)
 	assert.NoError(t, err)
 	worker.cancel = cancel
 
@@ -125,7 +125,7 @@ func TestWorkerStart(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		worker, err := NewWorker(ctx, "peer-1", conn, &WorkerConfig{
 			InactivityTimeout: 20 * time.Millisecond,
-		})
+		}, nil)
 		assert.NoError(t, err)
 		worker.cancel = cancel
 		defer worker.Stop()

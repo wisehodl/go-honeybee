@@ -79,20 +79,24 @@ func (m *MockSocket) SetCloseHandler(h func(code int, text string) error) {
 // Logging mocks
 
 type MockSlogHandler struct {
-	records []slog.Record
+	records *[]slog.Record
+	attrs   []slog.Attr
 	mu      sync.RWMutex
 }
 
 func NewMockSlogHandler() *MockSlogHandler {
+	records := make([]slog.Record, 0)
 	return &MockSlogHandler{
-		records: make([]slog.Record, 0),
+		records: &records,
+		attrs:   make([]slog.Attr, 0),
 	}
 }
 
 func (m *MockSlogHandler) Handle(ctx context.Context, record slog.Record) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.records = append(m.records, record)
+	record.AddAttrs(m.attrs...)
+	*m.records = append(*m.records, record)
 	return nil
 }
 
@@ -101,7 +105,12 @@ func (m *MockSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (m *MockSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return m
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return &MockSlogHandler{
+		records: m.records, // shared records slice
+		attrs:   append(m.attrs, attrs...),
+	}
 }
 
 func (m *MockSlogHandler) WithGroup(name string) slog.Handler {
@@ -111,13 +120,13 @@ func (m *MockSlogHandler) WithGroup(name string) slog.Handler {
 func (m *MockSlogHandler) GetRecords() []slog.Record {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	result := make([]slog.Record, len(m.records))
-	copy(result, m.records)
+	result := make([]slog.Record, len(*m.records))
+	copy(result, *m.records)
 	return result
 }
 
 func (m *MockSlogHandler) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.records = make([]slog.Record, 0)
+	*m.records = make([]slog.Record, 0)
 }

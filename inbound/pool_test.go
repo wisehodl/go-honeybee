@@ -15,7 +15,7 @@ import (
 
 func setupPool(t *testing.T) *Pool {
 	t.Helper()
-	pool, err := NewPool(context.Background(), nil, nil)
+	pool, err := NewPool(context.Background(), "pool-1", nil, nil)
 	assert.NoError(t, err)
 	return pool
 }
@@ -38,6 +38,11 @@ func expectEvent(
 }
 
 // Tests
+
+func TestPoolID(t *testing.T) {
+	_, err := NewPool(context.Background(), "", nil, nil)
+	assert.ErrorIs(t, err, ErrInvalidPoolID)
+}
 
 func TestPoolAdd(t *testing.T) {
 	t.Run("successfully adds peer", func(t *testing.T) {
@@ -341,7 +346,7 @@ func TestPoolEvents(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		pool, err := NewPool(context.Background(), config, nil)
+		pool, err := NewPool(context.Background(), "pool-1", config, nil)
 		assert.NoError(t, err)
 		defer pool.Close()
 

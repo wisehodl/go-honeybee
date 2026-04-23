@@ -97,8 +97,8 @@ var (
 
 // Outbound Pool constructors
 
-func NewOutboundPool(ctx context.Context, config *OutboundPoolConfig, logger *slog.Logger) (*OutboundPool, error) {
-	return outbound.NewPool(ctx, config, logger)
+func NewOutboundPool(ctx context.Context, id string, config *OutboundPoolConfig, handler slog.Handler) (*OutboundPool, error) {
+	return outbound.NewPool(ctx, id, config, handler)
 }
 
 func NewOutboundPoolConfig(opts ...OutboundPoolOption) (*OutboundPoolConfig, error) {
@@ -129,8 +129,8 @@ var (
 
 // Inbound Pool constructors
 
-func NewInboundPool(ctx context.Context, config *InboundPoolConfig, logger *slog.Logger) (*InboundPool, error) {
-	return inbound.NewPool(ctx, config, logger)
+func NewInboundPool(ctx context.Context, id string, config *InboundPoolConfig, handler slog.Handler) (*InboundPool, error) {
+	return inbound.NewPool(ctx, id, config, handler)
 }
 
 func NewInboundPoolConfig(opts ...InboundPoolOption) (*InboundPoolConfig, error) {

@@ -4,6 +4,7 @@ package inbound
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"log/slog"
 	"time"
 )
 
@@ -96,6 +97,7 @@ type WorkerFactory func(
 	id string,
 	conn *transport.Connection,
 	config *WorkerConfig,
+	logger *slog.Logger,
 ) (Worker, error)
 
 type PoolConfig struct {

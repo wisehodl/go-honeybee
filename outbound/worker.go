@@ -2,9 +2,11 @@ package outbound
 
 import (
 	"context"
+	"git.wisehodl.dev/jay/go-honeybee/logging"
 	"git.wisehodl.dev/jay/go-honeybee/queue"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,13 +27,14 @@ type DefaultWorker struct {
 	config    *WorkerConfig
 	ctx       context.Context
 	cancel    context.CancelFunc
+	logger    *slog.Logger
 }
 
 func NewWorker(
 	ctx context.Context,
 	id string,
 	config *WorkerConfig,
-
+	logger *slog.Logger,
 ) (*DefaultWorker, error) {
 	if config == nil {
 		config = GetDefaultWorkerConfig()
@@ -47,6 +50,7 @@ func NewWorker(
 		heartbeat: make(chan struct{}),
 		ctx:       wctx,
 		cancel:    wcancel,
+		logger:    logger,
 	}
 
 	return w, nil
@@ -333,7 +337,12 @@ func connect(
 	ctx context.Context,
 	pool PoolPlugin,
 ) (*transport.Connection, error) {
-	conn, err := transport.NewConnection(id, pool.ConnectionConfig, pool.Logger)
+	var logger *slog.Logger
+	if pool.Handler != nil {
+		logger = logging.NewConnectionLogger(pool.Handler, pool.ID, id)
+	}
+
+	conn, err := transport.NewConnection(id, pool.ConnectionConfig, logger)
 	if err != nil {
 		return nil, err
 	}

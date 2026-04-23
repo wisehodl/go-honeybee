@@ -3,6 +3,7 @@ package inbound
 import (
 	"context"
 	"fmt"
+	"git.wisehodl.dev/jay/go-honeybee/logging"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
@@ -40,11 +41,11 @@ type InboxMessage struct {
 }
 
 type PoolPlugin struct {
-	Inbox  chan<- InboxMessage
-	Events chan<- PoolEvent
-	Errors chan<- error
-	Logger *slog.Logger
-	OnExit OnExitFunction
+	Inbox   chan<- InboxMessage
+	Events  chan<- PoolEvent
+	Errors  chan<- error
+	OnExit  OnExitFunction
+	Handler slog.Handler
 }
 
 // Pool
@@ -60,20 +61,27 @@ type Pool struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	id string
+
 	peers  map[string]*Peer
 	inbox  chan InboxMessage
 	events chan PoolEvent
 	errors chan error
 
-	config *PoolConfig
-	logger *slog.Logger
+	config  *PoolConfig
+	handler slog.Handler
+	logger  *slog.Logger
 
 	mu     sync.RWMutex
 	wg     sync.WaitGroup
 	closed bool
 }
 
-func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger) (*Pool, error) {
+func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Handler) (*Pool, error) {
+	if id == "" {
+		return nil, ErrInvalidPoolID
+	}
+
 	if config == nil {
 		config = GetDefaultPoolConfig()
 	}
@@ -82,13 +90,15 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger) (*Poo
 	// The factory function should be non-blocking or else Connect() may cause
 	// deadlocks.
 	if config.WorkerFactory == nil {
+		// TODO: Construct worker logger
 		config.WorkerFactory = func(
 			ctx context.Context,
 			id string,
 			conn *transport.Connection,
 			config *WorkerConfig,
+			logger *slog.Logger,
 		) (Worker, error) {
-			return NewWorker(ctx, id, conn, config)
+			return NewWorker(ctx, id, conn, config, logger)
 		}
 	}
 
@@ -98,15 +108,22 @@ func NewPool(ctx context.Context, config *PoolConfig, logger *slog.Logger) (*Poo
 
 	pctx, cancel := context.WithCancel(ctx)
 
+	var logger *slog.Logger
+	if handler != nil {
+		logger = logging.NewInboundPoolLogger(handler, id)
+	}
+
 	return &Pool{
-		ctx:    pctx,
-		cancel: cancel,
-		peers:  make(map[string]*Peer),
-		inbox:  make(chan InboxMessage, config.InboxBufferSize),
-		events: make(chan PoolEvent, config.EventsBufferSize),
-		errors: make(chan error, config.ErrorsBufferSize),
-		config: config,
-		logger: logger,
+		ctx:     pctx,
+		cancel:  cancel,
+		id:      id,
+		peers:   make(map[string]*Peer),
+		inbox:   make(chan InboxMessage, config.InboxBufferSize),
+		events:  make(chan PoolEvent, config.EventsBufferSize),
+		errors:  make(chan error, config.ErrorsBufferSize),
+		config:  config,
+		handler: handler,
+		logger:  logger,
 	}, nil
 }
 
@@ -231,15 +248,24 @@ func (p *Pool) Send(id string, data []byte) error {
 
 // addLocked constructs and registers a peer. Caller must hold p.mu write lock.
 func (p *Pool) addLocked(id string, socket types.Socket) error {
+	var logger *slog.Logger
+	if p.handler != nil {
+		logger = logging.NewConnectionLogger(p.handler, p.id, id)
+	}
+
 	conn, err := transport.NewConnectionFromSocket(
-		socket, p.config.ConnectionConfig, p.logger)
+		socket, p.config.ConnectionConfig, logger)
 	if err != nil {
 		return err
 	}
 
 	// The worker factory must be non-blocking to avoid deadlocks
 	wctx, cancel := context.WithCancel(p.ctx)
-	worker, err := p.config.WorkerFactory(wctx, id, conn, p.config.WorkerConfig)
+	if p.handler != nil {
+		logger = logging.NewInboundWorkerLogger(p.handler, p.id, id)
+	}
+
+	worker, err := p.config.WorkerFactory(wctx, id, conn, p.config.WorkerConfig, logger)
 	if err != nil {
 		cancel()
 		conn.Close()
@@ -263,17 +289,12 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 		})
 	}
 
-	var logger *slog.Logger
-	if p.logger != nil {
-		logger = p.logger.With("id", id)
-	}
-
 	pool := PoolPlugin{
-		Inbox:  p.inbox,
-		Events: p.events,
-		Errors: p.errors,
-		Logger: logger,
-		OnExit: onExit,
+		Inbox:   p.inbox,
+		Events:  p.events,
+		Errors:  p.errors,
+		OnExit:  onExit,
+		Handler: p.handler,
 	}
 
 	peer := &Peer{

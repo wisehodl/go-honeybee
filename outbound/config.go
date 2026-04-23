@@ -3,12 +3,17 @@ package outbound
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"log/slog"
 	"time"
 )
 
 // Types
 
-type WorkerFactory func(ctx context.Context, id string) (Worker, error)
+type WorkerFactory func(
+	ctx context.Context,
+	id string,
+	logger *slog.Logger,
+) (Worker, error)
 
 // Pool Config
 
