@@ -6,6 +6,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/queue"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -31,6 +32,7 @@ type DefaultWorker struct {
 	config    *WorkerConfig
 	ctx       context.Context
 	cancel    context.CancelFunc
+	logger    *slog.Logger
 }
 
 func NewWorker(
@@ -38,6 +40,7 @@ func NewWorker(
 	id string,
 	conn *transport.Connection,
 	config *WorkerConfig,
+	logger *slog.Logger,
 ) (*DefaultWorker, error) {
 	if config == nil {
 		config = GetDefaultWorkerConfig()
@@ -54,6 +57,7 @@ func NewWorker(
 		config:    config,
 		ctx:       wctx,
 		cancel:    cancel,
+		logger:    logger,
 	}, nil
 }
 
