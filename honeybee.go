@@ -10,6 +10,12 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 )
 
+// Functions
+
+func NormalizeURL(input string) (string, error) {
+	return transport.NormalizeURL(input)
+}
+
 // Connection types
 
 type Connection = transport.Connection
