@@ -124,7 +124,8 @@ func WithPoolLoggingEnabled(value bool) PoolOption {
 
 func WithPoolLogLevel(level slog.Level) PoolOption {
 	return func(c *PoolConfig) error {
-		c.LogLevel = &level
+		l := level
+		c.LogLevel = &l
 		return nil
 	}
 }
@@ -251,7 +252,8 @@ func WithWorkerLoggingEnabled(value bool) WorkerOption {
 
 func WithWorkerLogLevel(level slog.Level) WorkerOption {
 	return func(c *WorkerConfig) error {
-		c.LogLevel = &level
+		l := level
+		c.LogLevel = &l
 		return nil
 	}
 }

@@ -96,11 +96,11 @@ func (h *ForcedLevelHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func (h *ForcedLevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &ForcedLevelHandler{next: h.next.WithAttrs(attrs)}
+	return &ForcedLevelHandler{level: h.level, next: h.next.WithAttrs(attrs)}
 }
 
 func (h *ForcedLevelHandler) WithGroup(name string) slog.Handler {
-	return &ForcedLevelHandler{next: h.next.WithGroup(name)}
+	return &ForcedLevelHandler{level: h.level, next: h.next.WithGroup(name)}
 }
 
 func WrapOrDefault(level *slog.Level, handler slog.Handler) slog.Handler {

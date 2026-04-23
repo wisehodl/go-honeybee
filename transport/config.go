@@ -192,7 +192,8 @@ func WithLoggingEnabled(value bool) ConnectionOption {
 
 func WithLogLevel(level slog.Level) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		c.LogLevel = &level
+		l := level
+		c.LogLevel = &l
 		return nil
 	}
 }
