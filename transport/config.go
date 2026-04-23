@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"log/slog"
 	"time"
 )
 
@@ -11,6 +12,8 @@ type ConnectionConfig struct {
 	WriteTimeout       time.Duration
 	IncomingBufferSize int
 	ErrorsBufferSize   int
+	LoggingEnabled     bool
+	LogLevel           *slog.Level
 	Retry              *RetryConfig
 }
 
@@ -40,6 +43,8 @@ func GetDefaultConnectionConfig() *ConnectionConfig {
 		WriteTimeout:       30 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
+		LoggingEnabled:     true,
+		LogLevel:           nil,
 		Retry:              GetDefaultRetryConfig(),
 	}
 }
@@ -174,6 +179,20 @@ func WithErrorsBufferSize(value int) ConnectionOption {
 			return err
 		}
 		c.ErrorsBufferSize = value
+		return nil
+	}
+}
+
+func WithLoggingEnabled(value bool) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		c.LoggingEnabled = value
+		return nil
+	}
+}
+
+func WithLogLevel(level slog.Level) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		c.LogLevel = &level
 		return nil
 	}
 }

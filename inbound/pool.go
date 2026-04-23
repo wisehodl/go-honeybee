@@ -90,7 +90,6 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 	// The factory function should be non-blocking or else Connect() may cause
 	// deadlocks.
 	if config.WorkerFactory == nil {
-		// TODO: Construct worker logger
 		config.WorkerFactory = func(
 			ctx context.Context,
 			id string,
@@ -109,8 +108,9 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 	pctx, cancel := context.WithCancel(ctx)
 
 	var logger *slog.Logger
-	if handler != nil {
-		logger = logging.NewInboundPoolLogger(handler, id)
+	if handler != nil && config.LoggingEnabled {
+		logger = logging.NewInboundPoolLogger(
+			logging.WrapOrDefault(config.LogLevel, handler), id)
 	}
 
 	return &Pool{
@@ -249,8 +249,9 @@ func (p *Pool) Send(id string, data []byte) error {
 // addLocked constructs and registers a peer. Caller must hold p.mu write lock.
 func (p *Pool) addLocked(id string, socket types.Socket) error {
 	var logger *slog.Logger
-	if p.handler != nil {
-		logger = logging.NewConnectionLogger(p.handler, p.id, id)
+	if p.handler != nil && p.config.ConnectionConfig.LoggingEnabled {
+		logger = logging.NewConnectionLogger(
+			logging.WrapOrDefault(p.config.ConnectionConfig.LogLevel, p.handler), p.id, id)
 	}
 
 	conn, err := transport.NewConnectionFromSocket(
@@ -259,12 +260,13 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 		return err
 	}
 
-	// The worker factory must be non-blocking to avoid deadlocks
 	wctx, cancel := context.WithCancel(p.ctx)
-	if p.handler != nil {
-		logger = logging.NewInboundWorkerLogger(p.handler, p.id, id)
+	if p.handler != nil && p.config.WorkerConfig.LoggingEnabled {
+		logger = logging.NewInboundWorkerLogger(
+			logging.WrapOrDefault(p.config.WorkerConfig.LogLevel, p.handler), p.id, id)
 	}
 
+	// The worker factory must be non-blocking to avoid deadlocks
 	worker, err := p.config.WorkerFactory(wctx, id, conn, p.config.WorkerConfig, logger)
 	if err != nil {
 		cancel()

@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log/slog"
 )
 
@@ -21,7 +22,7 @@ const COMPONENT_INBOUND_WORKER = "inbound_worker"
 
 const COMPONENT_CONNECTION = "connection"
 
-// Outbound loggers
+// Constructors
 
 func NewOutboundPoolLogger(handler slog.Handler, poolID string) *slog.Logger {
 	return newLogger(handler,
@@ -40,8 +41,6 @@ func NewOutboundWorkerLogger(handler slog.Handler, poolID string, peerID string)
 	)
 }
 
-// Inbound loggers
-
 func NewInboundPoolLogger(handler slog.Handler, poolID string) *slog.Logger {
 	return newLogger(handler,
 		KEY_MODULE, MODULE_NAME,
@@ -59,8 +58,6 @@ func NewInboundWorkerLogger(handler slog.Handler, poolID string, peerID string) 
 	)
 }
 
-// Connection logger
-
 func NewConnectionLogger(handler slog.Handler, poolID string, peerID string) *slog.Logger {
 	return newLogger(handler,
 		KEY_MODULE, MODULE_NAME,
@@ -74,4 +71,41 @@ func NewConnectionLogger(handler slog.Handler, poolID string, peerID string) *sl
 
 func newLogger(handler slog.Handler, attrs ...any) *slog.Logger {
 	return slog.New(handler).With(attrs...)
+}
+
+// Handlers
+
+type ForcedLevelHandler struct {
+	level slog.Level
+	next  slog.Handler
+}
+
+func NewForcedLevelHandler(level slog.Level, next slog.Handler) slog.Handler {
+	return &ForcedLevelHandler{
+		level: level,
+		next:  next,
+	}
+}
+
+func (h *ForcedLevelHandler) Enabled(_ context.Context, l slog.Level) bool {
+	return l >= h.level
+}
+
+func (h *ForcedLevelHandler) Handle(ctx context.Context, r slog.Record) error {
+	return h.next.Handle(ctx, r)
+}
+
+func (h *ForcedLevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &ForcedLevelHandler{next: h.next.WithAttrs(attrs)}
+}
+
+func (h *ForcedLevelHandler) WithGroup(name string) slog.Handler {
+	return &ForcedLevelHandler{next: h.next.WithGroup(name)}
+}
+
+func WrapOrDefault(level *slog.Level, handler slog.Handler) slog.Handler {
+	if level != nil {
+		return NewForcedLevelHandler(*level, handler)
+	}
+	return handler
 }

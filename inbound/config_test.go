@@ -19,6 +19,8 @@ func TestDefaultWorkerConfig(t *testing.T) {
 	assert.Equal(t, &WorkerConfig{
 		MaxQueueSize:      0,
 		InactivityTimeout: 0,
+		LoggingEnabled:    true,
+		LogLevel:          nil,
 	}, conf)
 }
 
@@ -104,6 +106,8 @@ func TestDefaultPoolConfig(t *testing.T) {
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
 		ErrorsBufferSize: 10,
+		LoggingEnabled:   true,
+		LogLevel:         nil,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,

@@ -95,8 +95,9 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 	pctx, cancel := context.WithCancel(ctx)
 
 	var logger *slog.Logger
-	if handler != nil {
-		logger = logging.NewOutboundPoolLogger(handler, id)
+	if handler != nil && config.LoggingEnabled {
+		logger = logging.NewOutboundPoolLogger(
+			logging.WrapOrDefault(config.LogLevel, handler), id)
 	}
 
 	return &Pool{
@@ -185,8 +186,9 @@ func (p *Pool) Connect(id string) error {
 	}
 
 	var logger *slog.Logger
-	if p.handler != nil {
-		logger = logging.NewOutboundWorkerLogger(p.handler, p.id, id)
+	if p.handler != nil && p.config.WorkerConfig.LoggingEnabled {
+		logger = logging.NewOutboundWorkerLogger(
+			logging.WrapOrDefault(p.config.WorkerConfig.LogLevel, p.handler), p.id, id)
 	}
 
 	// The worker factory must be non-blocking to avoid deadlocks
