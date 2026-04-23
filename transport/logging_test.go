@@ -46,9 +46,9 @@ func TestConnectLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "connecting", map[string]any{}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
-			log(slog.LevelInfo, "dial successful", map[string]any{"attempt": 1}),
+			log(slog.LevelDebug, "connecting", map[string]any{}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelDebug, "dial successful", map[string]any{"attempt": 1}),
 			log(slog.LevelInfo, "connected", map[string]any{}),
 		}
 
@@ -85,12 +85,12 @@ func TestConnectLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "connecting", map[string]any{}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
-			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 2}),
-			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 3}),
+			log(slog.LevelDebug, "connecting", map[string]any{}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 2}),
+			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
 			log(slog.LevelError, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}),
 			log(slog.LevelError, "connection failed", map[string]any{"error": dialErr}),
 		}
@@ -134,13 +134,13 @@ func TestConnectLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "connecting", map[string]any{}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 1}),
-			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 2}),
-			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
-			log(slog.LevelInfo, "dialing", map[string]any{"attempt": 3}),
-			log(slog.LevelInfo, "dial successful", map[string]any{"attempt": 3}),
+			log(slog.LevelDebug, "connecting", map[string]any{}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
+			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 2}),
+			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
+			log(slog.LevelDebug, "dial successful", map[string]any{"attempt": 3}),
 			log(slog.LevelInfo, "connected", map[string]any{}),
 		}
 
@@ -161,14 +161,14 @@ func TestCloseLogging(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			return honeybeetest.FindLogRecord(
-				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
+				mockHandler.GetRecords(), slog.LevelInfo, "connection closed") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
 			log(slog.LevelInfo, "shutting down", map[string]any{}),
-			log(slog.LevelInfo, "closed", map[string]any{}),
+			log(slog.LevelInfo, "connection closed", map[string]any{}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)

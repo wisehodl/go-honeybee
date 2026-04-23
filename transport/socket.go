@@ -65,13 +65,13 @@ func AcquireSocket(
 
 	for {
 		if logger != nil {
-			logger.Info("dialing", "attempt", retryMgr.RetryCount()+1)
+			logger.Debug("dialing", "attempt", retryMgr.RetryCount()+1)
 		}
 
 		socket, resp, err := dialer.DialContext(ctx, url, nil)
 		if err == nil {
 			if logger != nil {
-				logger.Info("dial successful", "attempt", retryMgr.RetryCount()+1)
+				logger.Debug("dial successful", "attempt", retryMgr.RetryCount()+1)
 			}
 			return socket, resp, nil
 		}
@@ -88,7 +88,7 @@ func AcquireSocket(
 		delay := retryMgr.CalculateDelay()
 
 		if logger != nil {
-			logger.Warn("dial failed, retrying",
+			logger.Debug("dial failed, retrying",
 				"error", err,
 				"attempt", retryMgr.RetryCount()+1,
 				"next_delay", delay)

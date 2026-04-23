@@ -136,7 +136,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	}
 
 	if c.logger != nil {
-		c.logger.Info("connecting")
+		c.logger.Debug("connecting")
 	}
 
 	c.state = StateConnecting
