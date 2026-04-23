@@ -84,15 +84,17 @@ func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
 // Connection options
 
 var (
-	WithIncomingBufferSize = transport.WithIncomingBufferSize
-	WithErrorsBufferSize   = transport.WithErrorsBufferSize
-	WithoutRetry           = transport.WithoutRetry
-	WithRetryMaxRetries    = transport.WithRetryMaxRetries
-	WithRetryInitialDelay  = transport.WithRetryInitialDelay
-	WithRetryMaxDelay      = transport.WithRetryMaxDelay
-	WithRetryJitterFactor  = transport.WithRetryJitterFactor
-	WithWriteTimeout       = transport.WithWriteTimeout
-	WithCloseHandler       = transport.WithCloseHandler
+	WithIncomingBufferSize       = transport.WithIncomingBufferSize
+	WithErrorsBufferSize         = transport.WithErrorsBufferSize
+	WithoutRetry                 = transport.WithoutRetry
+	WithRetryMaxRetries          = transport.WithRetryMaxRetries
+	WithRetryInitialDelay        = transport.WithRetryInitialDelay
+	WithRetryMaxDelay            = transport.WithRetryMaxDelay
+	WithRetryJitterFactor        = transport.WithRetryJitterFactor
+	WithWriteTimeout             = transport.WithWriteTimeout
+	WithCloseHandler             = transport.WithCloseHandler
+	WithConnectionLoggingEnabled = transport.WithLoggingEnabled
+	WithConnectionLogLevel       = transport.WithLogLevel
 )
 
 // Outbound Pool constructors
@@ -112,19 +114,23 @@ func NewOutboundWorkerConfig(opts ...OutboundWorkerOption) (*OutboundWorkerConfi
 // Outbound Pool options
 
 var (
-	WithOutboundInboxBufferSize  = outbound.WithInboxBufferSize
-	WithOutboundEventsBufferSize = outbound.WithEventsBufferSize
-	WithOutboundErrorsBufferSize = outbound.WithErrorsBufferSize
-	WithOutboundConnectionConfig = outbound.WithConnectionConfig
-	WithOutboundWorkerConfig     = outbound.WithWorkerConfig
-	WithOutboundWorkerFactory    = outbound.WithWorkerFactory
+	WithOutboundInboxBufferSize    = outbound.WithInboxBufferSize
+	WithOutboundEventsBufferSize   = outbound.WithEventsBufferSize
+	WithOutboundErrorsBufferSize   = outbound.WithErrorsBufferSize
+	WithOutboundPoolLoggingEnabled = outbound.WithPoolLoggingEnabled
+	WithOutboundPoolLogLevel       = outbound.WithPoolLogLevel
+	WithOutboundConnectionConfig   = outbound.WithConnectionConfig
+	WithOutboundWorkerConfig       = outbound.WithWorkerConfig
+	WithOutboundWorkerFactory      = outbound.WithWorkerFactory
 )
 
 // Outbound Worker options
 
 var (
-	WithOutboundKeepaliveTimeout = outbound.WithKeepaliveTimeout
-	WithOutboundMaxQueueSize     = outbound.WithMaxQueueSize
+	WithOutboundKeepaliveTimeout     = outbound.WithKeepaliveTimeout
+	WithOutboundMaxQueueSize         = outbound.WithMaxQueueSize
+	WithOutboundWorkerLoggingEnabled = outbound.WithWorkerLoggingEnabled
+	WithOutboundWorkerLogLevel       = outbound.WithWorkerLogLevel
 )
 
 // Inbound Pool constructors
@@ -144,19 +150,23 @@ func NewInboundWorkerConfig(opts ...InboundWorkerOption) (*InboundWorkerConfig, 
 // Inbound Pool options
 
 var (
-	WithInboundInboxBufferSize  = inbound.WithInboxBufferSize
-	WithInboundEventsBufferSize = inbound.WithEventsBufferSize
-	WithInboundErrorsBufferSize = inbound.WithErrorsBufferSize
-	WithInboundConnectionConfig = inbound.WithConnectionConfig
-	WithInboundWorkerConfig     = inbound.WithWorkerConfig
-	WithInboundWorkerFactory    = inbound.WithWorkerFactory
+	WithInboundInboxBufferSize    = inbound.WithInboxBufferSize
+	WithInboundEventsBufferSize   = inbound.WithEventsBufferSize
+	WithInboundErrorsBufferSize   = inbound.WithErrorsBufferSize
+	WithInboundPoolLoggingEnabled = inbound.WithPoolLoggingEnabled
+	WithInboundPoolLogLevel       = inbound.WithPoolLogLevel
+	WithInboundConnectionConfig   = inbound.WithConnectionConfig
+	WithInboundWorkerConfig       = inbound.WithWorkerConfig
+	WithInboundWorkerFactory      = inbound.WithWorkerFactory
 )
 
 // Inbound Worker options
 
 var (
-	WithInboundInactivityTimeout = inbound.WithInactivityTimeout
-	WithInboundMaxQueueSize      = inbound.WithMaxQueueSize
+	WithInboundInactivityTimeout    = inbound.WithInactivityTimeout
+	WithInboundMaxQueueSize         = inbound.WithMaxQueueSize
+	WithInboundWorkerLoggingEnabled = inbound.WithWorkerLoggingEnabled
+	WithInboundWorkerLogLevel       = inbound.WithWorkerLogLevel
 )
 
 // Socket type — needed for inbound pool.Add and pool.Replace
