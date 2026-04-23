@@ -338,8 +338,9 @@ func connect(
 	pool PoolPlugin,
 ) (*transport.Connection, error) {
 	var logger *slog.Logger
-	if pool.Handler != nil {
-		logger = logging.NewConnectionLogger(pool.Handler, pool.ID, id)
+	if pool.Handler != nil && pool.ConnectionConfig.LoggingEnabled {
+		logger = logging.NewConnectionLogger(
+			logging.WrapOrDefault(pool.ConnectionConfig.LogLevel, pool.Handler), pool.ID, id)
 	}
 
 	conn, err := transport.NewConnection(id, pool.ConnectionConfig, logger)

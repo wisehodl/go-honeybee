@@ -21,6 +21,8 @@ type PoolConfig struct {
 	InboxBufferSize  int
 	EventsBufferSize int
 	ErrorsBufferSize int
+	LoggingEnabled   bool
+	LogLevel         *slog.Level
 	ConnectionConfig *transport.ConnectionConfig
 	WorkerFactory    WorkerFactory
 	WorkerConfig     *WorkerConfig
@@ -44,6 +46,8 @@ func GetDefaultPoolConfig() *PoolConfig {
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
 		ErrorsBufferSize: 10,
+		LoggingEnabled:   true,
+		LogLevel:         nil,
 		ConnectionConfig: nil,
 		WorkerFactory:    nil,
 		WorkerConfig:     nil,
@@ -116,6 +120,20 @@ func WithErrorsBufferSize(value int) PoolOption {
 	}
 }
 
+func WithPoolLoggingEnabled(value bool) PoolOption {
+	return func(c *PoolConfig) error {
+		c.LoggingEnabled = value
+		return nil
+	}
+}
+
+func WithPoolLogLevel(level slog.Level) PoolOption {
+	return func(c *PoolConfig) error {
+		c.LogLevel = &level
+		return nil
+	}
+}
+
 func WithConnectionConfig(cc *transport.ConnectionConfig) PoolOption {
 	return func(c *PoolConfig) error {
 		err := transport.ValidateConnectionConfig(cc)
@@ -150,6 +168,8 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 type WorkerConfig struct {
 	KeepaliveTimeout time.Duration
 	MaxQueueSize     int
+	LoggingEnabled   bool
+	LogLevel         *slog.Level
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -169,6 +189,8 @@ func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
 		KeepaliveTimeout: 20 * time.Second,
 		MaxQueueSize:     0, // disabled by default
+		LoggingEnabled:   true,
+		LogLevel:         nil,
 	}
 }
 
@@ -229,6 +251,20 @@ func WithMaxQueueSize(value int) WorkerOption {
 			return err
 		}
 		c.MaxQueueSize = value
+		return nil
+	}
+}
+
+func WithWorkerLoggingEnabled(value bool) WorkerOption {
+	return func(c *WorkerConfig) error {
+		c.LoggingEnabled = value
+		return nil
+	}
+}
+
+func WithWorkerLogLevel(level slog.Level) WorkerOption {
+	return func(c *WorkerConfig) error {
+		c.LogLevel = &level
 		return nil
 	}
 }

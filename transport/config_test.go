@@ -2,6 +2,7 @@ package transport
 
 import (
 	"github.com/stretchr/testify/assert"
+	"log/slog"
 	"testing"
 	"time"
 )
@@ -17,6 +18,8 @@ func TestNewConnectionConfig(t *testing.T) {
 		WriteTimeout:       30 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
+		LoggingEnabled:     true,
+		LogLevel:           nil,
 		Retry:              GetDefaultRetryConfig(),
 	})
 
@@ -38,6 +41,8 @@ func TestDefaultConnectionConfig(t *testing.T) {
 		WriteTimeout:       30 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
+		LoggingEnabled:     true,
+		LogLevel:           nil,
 		Retry:              GetDefaultRetryConfig(),
 	})
 }
@@ -61,6 +66,8 @@ func TestApplyConnectionOptions(t *testing.T) {
 		conf,
 		WithIncomingBufferSize(256),
 		WithErrorsBufferSize(100),
+		WithLoggingEnabled(false),
+		WithLogLevel(slog.LevelError),
 		WithRetryMaxRetries(0),
 		WithRetryInitialDelay(3*time.Second),
 		WithRetryJitterFactor(0.5),
@@ -69,6 +76,8 @@ func TestApplyConnectionOptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 256, conf.IncomingBufferSize)
 	assert.Equal(t, 100, conf.ErrorsBufferSize)
+	assert.False(t, conf.LoggingEnabled)
+	assert.Equal(t, slog.LevelError, *conf.LogLevel)
 	assert.Equal(t, 0, conf.Retry.MaxRetries)
 	assert.Equal(t, 3*time.Second, conf.Retry.InitialDelay)
 	assert.Equal(t, 0.5, conf.Retry.JitterFactor)
