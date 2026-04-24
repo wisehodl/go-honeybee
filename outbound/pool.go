@@ -7,6 +7,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,6 +25,23 @@ type PoolEvent struct {
 	Kind PoolEventKind
 }
 
+type PoolStats struct {
+	ChanInbox  int
+	ChanEvents int
+	ChanErrors int
+
+	TotalReceived uint64
+	TotalSent     uint64
+
+	PeerCount int
+	PeerStats []PeerStats
+}
+
+type PeerStats struct {
+	ID     string
+	Worker WorkerStats
+}
+
 type InboxMessage struct {
 	ID         string
 	Data       []byte
@@ -35,6 +53,7 @@ type PoolPlugin struct {
 	Inbox            chan<- InboxMessage
 	Events           chan<- PoolEvent
 	Errors           chan<- error
+	InboxCounter     *atomic.Uint64
 	Dialer           types.Dialer
 	ConnectionConfig *transport.ConnectionConfig
 	Handler          slog.Handler
@@ -57,6 +76,9 @@ type Pool struct {
 	inbox  chan InboxMessage
 	events chan PoolEvent
 	errors chan error
+
+	inboxCounter  *atomic.Uint64
+	outgoingCount *atomic.Uint64
 
 	dialer  types.Dialer
 	config  *PoolConfig
@@ -101,17 +123,19 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 	}
 
 	return &Pool{
-		ctx:     pctx,
-		cancel:  cancel,
-		id:      id,
-		peers:   make(map[string]*Peer),
-		inbox:   make(chan InboxMessage, config.InboxBufferSize),
-		events:  make(chan PoolEvent, config.EventsBufferSize),
-		errors:  make(chan error, config.ErrorsBufferSize),
-		dialer:  transport.NewDialer(),
-		config:  config,
-		handler: handler,
-		logger:  logger,
+		ctx:           pctx,
+		cancel:        cancel,
+		id:            id,
+		peers:         make(map[string]*Peer),
+		inbox:         make(chan InboxMessage, config.InboxBufferSize),
+		events:        make(chan PoolEvent, config.EventsBufferSize),
+		errors:        make(chan error, config.ErrorsBufferSize),
+		inboxCounter:  &atomic.Uint64{},
+		outgoingCount: &atomic.Uint64{},
+		dialer:        transport.NewDialer(),
+		config:        config,
+		handler:       handler,
+		logger:        logger,
 	}, nil
 }
 
@@ -136,6 +160,47 @@ func (p *Pool) Events() <-chan PoolEvent {
 
 func (p *Pool) Errors() <-chan error {
 	return p.errors
+}
+
+func (p *Pool) Stats() PoolStats {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	count := len(p.peers)
+	peerStats := make([]PeerStats, 0, count)
+	for id, peer := range p.peers {
+		peerStats = append(peerStats, PeerStats{
+			ID:     id,
+			Worker: peer.worker.Stats(),
+		})
+	}
+
+	return PoolStats{
+		ChanInbox:  len(p.inbox),
+		ChanEvents: len(p.events),
+		ChanErrors: len(p.errors),
+
+		TotalReceived: p.inboxCounter.Load(),
+		TotalSent:     p.outgoingCount.Load(),
+
+		PeerCount: len(p.peers),
+		PeerStats: peerStats,
+	}
+}
+
+func (p *Pool) PeerStats(id string) (PeerStats, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	peer, exists := p.peers[id]
+	if !exists {
+		return PeerStats{}, ErrPeerNotFound
+	}
+
+	return PeerStats{
+		ID:     id,
+		Worker: peer.worker.Stats(),
+	}, nil
 }
 
 func (p *Pool) SetDialer(d types.Dialer) {
@@ -214,6 +279,7 @@ func (p *Pool) Connect(id string) error {
 		Inbox:            p.inbox,
 		Events:           p.events,
 		Errors:           p.errors,
+		InboxCounter:     p.inboxCounter,
 		Dialer:           p.dialer,
 		ConnectionConfig: p.config.ConnectionConfig,
 		Handler:          p.handler,
@@ -284,5 +350,11 @@ func (p *Pool) Send(id string, data []byte) error {
 		return NewPoolError(ErrPeerNotFound)
 	}
 
-	return peer.worker.Send(data)
+	err = peer.worker.Send(data)
+	if err != nil {
+		return err
+	}
+
+	p.outgoingCount.Add(1)
+	return nil
 }

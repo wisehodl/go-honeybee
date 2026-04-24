@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"sync/atomic"
 )
 
 func RunQueue(
@@ -11,6 +12,7 @@ func RunQueue(
 	in <-chan types.ReceivedMessage,
 	out chan<- types.ReceivedMessage,
 	maxQueueSize int,
+	droppedCount *atomic.Uint64,
 ) {
 	var next types.ReceivedMessage
 	var queue messageQueue
@@ -37,6 +39,7 @@ func RunQueue(
 			if maxQueueSize > 0 && queue.len() >= maxQueueSize {
 				// drop oldest message
 				_ = queue.pop()
+				droppedCount.Add(1)
 			}
 			// add new message
 			queue.push(msg)

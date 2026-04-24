@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"git.wisehodl.dev/jay/go-honeybee/types"
@@ -38,6 +39,15 @@ func (s ConnectionState) String() string {
 	}
 }
 
+type ConnectionStats struct {
+	ChanIncoming int
+	ChanErrors   int
+
+	TotalReceived   uint64
+	TotalSent       uint64
+	TotalHeartbeats uint64
+}
+
 type Connection struct {
 	url    *url.URL
 	dialer types.Dialer
@@ -49,6 +59,10 @@ type Connection struct {
 	heartbeat chan struct{}
 	errors    chan error
 	done      chan struct{}
+
+	incomingCount  *atomic.Uint64
+	outgoingCount  *atomic.Uint64
+	heartbeatCount *atomic.Uint64
 
 	state ConnectionState
 
@@ -75,16 +89,19 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 	}
 
 	conn := &Connection{
-		url:       url,
-		dialer:    NewDialer(),
-		socket:    nil,
-		config:    config,
-		logger:    logger,
-		incoming:  make(chan []byte, config.IncomingBufferSize),
-		heartbeat: make(chan struct{}, 1),
-		errors:    make(chan error, config.ErrorsBufferSize),
-		state:     StateDisconnected,
-		done:      make(chan struct{}),
+		url:            url,
+		dialer:         NewDialer(),
+		socket:         nil,
+		config:         config,
+		logger:         logger,
+		incoming:       make(chan []byte, config.IncomingBufferSize),
+		heartbeat:      make(chan struct{}, 1),
+		errors:         make(chan error, config.ErrorsBufferSize),
+		incomingCount:  &atomic.Uint64{},
+		outgoingCount:  &atomic.Uint64{},
+		heartbeatCount: &atomic.Uint64{},
+		state:          StateDisconnected,
+		done:           make(chan struct{}),
 	}
 
 	return conn, nil
@@ -106,16 +123,19 @@ func NewConnectionFromSocket(
 	}
 
 	conn := &Connection{
-		url:       nil,
-		dialer:    nil,
-		socket:    socket,
-		config:    config,
-		logger:    logger,
-		incoming:  make(chan []byte, config.IncomingBufferSize),
-		heartbeat: make(chan struct{}, 1),
-		errors:    make(chan error, config.ErrorsBufferSize),
-		state:     StateConnected,
-		done:      make(chan struct{}),
+		url:            nil,
+		dialer:         nil,
+		socket:         socket,
+		config:         config,
+		logger:         logger,
+		incoming:       make(chan []byte, config.IncomingBufferSize),
+		heartbeat:      make(chan struct{}, 1),
+		errors:         make(chan error, config.ErrorsBufferSize),
+		incomingCount:  &atomic.Uint64{},
+		outgoingCount:  &atomic.Uint64{},
+		heartbeatCount: &atomic.Uint64{},
+		state:          StateConnected,
+		done:           make(chan struct{}),
 	}
 
 	if config.CloseHandler != nil {
@@ -336,6 +356,7 @@ func (c *Connection) startReader() {
 					case <-c.done:
 						return
 					case c.incoming <- data:
+						c.incomingCount.Add(1)
 					}
 				}
 
@@ -348,6 +369,7 @@ func (c *Connection) setupPongHandler() {
 	c.socket.SetPongHandler(func(appData string) error {
 		select {
 		case c.heartbeat <- struct{}{}:
+			c.heartbeatCount.Add(1)
 		default:
 		}
 		return nil
@@ -410,6 +432,8 @@ func (c *Connection) Send(data []byte) error {
 		return NewConnectionError(fmt.Errorf("%w: %w", ErrWriteFailed, err))
 	}
 
+	c.outgoingCount.Add(1)
+
 	return nil
 }
 
@@ -429,6 +453,16 @@ func (c *Connection) State() ConnectionState {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.state
+}
+
+func (c *Connection) Stats() ConnectionStats {
+	return ConnectionStats{
+		ChanIncoming:    len(c.incoming),
+		ChanErrors:      len(c.errors),
+		TotalReceived:   c.incomingCount.Load(),
+		TotalSent:       c.outgoingCount.Load(),
+		TotalHeartbeats: c.heartbeatCount.Load(),
+	}
 }
 
 func (c *Connection) SetDialer(d types.Dialer) {

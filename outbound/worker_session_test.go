@@ -211,13 +211,14 @@ func TestRunSessionDisconnect(t *testing.T) {
 		events := make(chan PoolEvent, 10)
 		pool := PoolPlugin{Events: events}
 		session := &Session{
-			id:        v.id,
-			connPtr:   v.connPtr,
-			messages:  v.messages,
-			heartbeat: v.heartbeat,
-			dial:      v.dial,
-			keepalive: v.keepalive,
-			newConn:   v.newConn,
+			id:           v.id,
+			connPtr:      v.connPtr,
+			messages:     v.messages,
+			heartbeat:    v.heartbeat,
+			dial:         v.dial,
+			keepalive:    v.keepalive,
+			newConn:      v.newConn,
+			restartCount: &atomic.Uint64{},
 		}
 
 		go session.Start(ctx, pool)
@@ -237,13 +238,14 @@ func TestRunSessionDisconnect(t *testing.T) {
 		events := make(chan PoolEvent, 10)
 		pool := PoolPlugin{Events: events}
 		session := &Session{
-			id:        v.id,
-			connPtr:   v.connPtr,
-			messages:  v.messages,
-			heartbeat: v.heartbeat,
-			dial:      v.dial,
-			keepalive: v.keepalive,
-			newConn:   v.newConn,
+			id:           v.id,
+			connPtr:      v.connPtr,
+			messages:     v.messages,
+			heartbeat:    v.heartbeat,
+			dial:         v.dial,
+			keepalive:    v.keepalive,
+			newConn:      v.newConn,
+			restartCount: &atomic.Uint64{},
 		}
 
 		go session.Start(ctx, pool)
@@ -266,13 +268,14 @@ func TestRunSessionDisconnect(t *testing.T) {
 		events := make(chan PoolEvent, 10)
 		pool := PoolPlugin{Events: events}
 		session := &Session{
-			id:        v.id,
-			connPtr:   v.connPtr,
-			messages:  v.messages,
-			heartbeat: v.heartbeat,
-			dial:      v.dial,
-			keepalive: v.keepalive,
-			newConn:   v.newConn,
+			id:           v.id,
+			connPtr:      v.connPtr,
+			messages:     v.messages,
+			heartbeat:    v.heartbeat,
+			dial:         v.dial,
+			keepalive:    v.keepalive,
+			newConn:      v.newConn,
+			restartCount: &atomic.Uint64{},
 		}
 
 		go session.Start(ctx, pool)
@@ -303,13 +306,14 @@ func TestRunSessionDisconnect(t *testing.T) {
 		events := make(chan PoolEvent, 10)
 		pool := PoolPlugin{Events: events}
 		session := &Session{
-			id:        v.id,
-			connPtr:   v.connPtr,
-			messages:  v.messages,
-			heartbeat: v.heartbeat,
-			dial:      v.dial,
-			keepalive: v.keepalive,
-			newConn:   v.newConn,
+			id:           v.id,
+			connPtr:      v.connPtr,
+			messages:     v.messages,
+			heartbeat:    v.heartbeat,
+			dial:         v.dial,
+			keepalive:    v.keepalive,
+			newConn:      v.newConn,
+			restartCount: &atomic.Uint64{},
 		}
 
 		go session.Start(ctx, pool)

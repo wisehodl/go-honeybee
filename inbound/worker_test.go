@@ -47,6 +47,7 @@ func setupWorkerTest(t *testing.T) workerTestVars {
 		OnExit: func(kind WorkerExitKind) {
 			once.Do(func() { exitKind.Store(kind) })
 		},
+		InboxCounter: &atomic.Uint64{},
 	}
 
 	wg := &sync.WaitGroup{}

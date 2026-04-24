@@ -4,6 +4,7 @@ import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -16,7 +17,7 @@ func TestRunForwarder(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunForwarder(id, ctx, messages, inbox)
+		go RunForwarder(id, ctx, messages, inbox, &atomic.Uint64{}, &atomic.Uint64{})
 
 		messages <- types.ReceivedMessage{Data: []byte("hello"), ReceivedAt: time.Now()}
 
