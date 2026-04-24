@@ -208,10 +208,14 @@ func (s *Session) Start(
 
 		// start session
 		var wg sync.WaitGroup
-		wg.Add(2)
+		wg.Add(3)
 		go func() {
 			defer wg.Done()
 			RunReader(sctx, onStop, conn, s.messages, s.heartbeat, s.logger)
+		}()
+		go func() {
+			defer wg.Done()
+			RunHeartbeatForwarder(sctx, conn, s.heartbeat, s.logger)
 		}()
 		go func() {
 			defer wg.Done()
@@ -282,6 +286,29 @@ func RunReader(
 			// send heartbeat
 			select {
 			case heartbeat <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func RunHeartbeatForwarder(
+	ctx context.Context,
+	conn *transport.Connection,
+	heartbeat chan<- struct{},
+	logger *slog.Logger,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-conn.Heartbeat():
+			select {
+			case heartbeat <- struct{}{}:
+				if logger != nil {
+					logger.Debug("ping-pong heartbeat")
+				}
 			case <-ctx.Done():
 				return
 			}

@@ -229,3 +229,36 @@ func TestWorkerSend(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestHeartbeatForwarder(t *testing.T) {
+	t.Run("connection level heartbeat propagates", func(t *testing.T) {
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
+		var pongHandler func(string) error
+		socket.SetPongHandlerFunc = func(h func(string) error) { pongHandler = h }
+
+		conn, err := transport.NewConnectionFromSocket(socket, nil, nil)
+		assert.NoError(t, err)
+
+		heartbeat := make(chan struct{}, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go RunHeartbeatForwarder(ctx, conn, heartbeat, nil)
+
+		honeybeetest.Eventually(t, func() bool {
+			return pongHandler != nil
+		}, "expected Connection to register PongHandler")
+
+		if pongHandler == nil {
+			t.Fatal("pong handler was never set")
+		}
+
+		pongHandler("") // Trigger pong
+
+		select {
+		case <-heartbeat:
+		case <-time.After(time.Second):
+			t.Fatal("pong did not propagate to worker heartbeat")
+		}
+	})
+}

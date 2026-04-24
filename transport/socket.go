@@ -88,7 +88,7 @@ func AcquireSocket(
 		delay := retryMgr.CalculateDelay()
 
 		if logger != nil {
-			logger.Debug("dial failed, retrying",
+			logger.Warn("dial failed, retrying",
 				"error", err,
 				"attempt", retryMgr.RetryCount()+1,
 				"next_delay", delay)

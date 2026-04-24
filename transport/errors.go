@@ -9,6 +9,7 @@ var (
 
 	// Configuration Errors
 	InvalidWriteTimeout      = errors.New("write timeout cannot be negative")
+	InvalidPingInterval      = errors.New("ping interval cannot be negative")
 	InvalidBufferSize        = errors.New("buffer size must be greater than zero")
 	InvalidRetryMaxRetries   = errors.New("max retry count cannot be negative")
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
