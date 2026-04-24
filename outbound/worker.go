@@ -93,14 +93,15 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 	go func() {
 		defer wg.Done()
 		session := &Session{
-			id:        w.id,
-			connPtr:   &w.conn,
-			messages:  toQueue,
-			heartbeat: w.heartbeat,
-			dial:      dial,
-			keepalive: keepalive,
-			newConn:   newConn,
-			logger:    w.logger,
+			id:             w.id,
+			connPtr:        &w.conn,
+			messages:       toQueue,
+			heartbeat:      w.heartbeat,
+			dial:           dial,
+			keepalive:      keepalive,
+			newConn:        newConn,
+			reconnectDelay: w.config.ReconnectDelay,
+			logger:         w.logger,
 		}
 		session.Start(w.ctx, pool)
 	}()
@@ -152,6 +153,8 @@ type Session struct {
 
 	keepalive <-chan struct{}
 	newConn   <-chan *transport.Connection
+
+	reconnectDelay time.Duration
 
 	logger *slog.Logger
 }
@@ -238,6 +241,7 @@ func (s *Session) Start(
 		}
 
 		// refresh session
+		time.Sleep(s.reconnectDelay)
 	}
 
 }

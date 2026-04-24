@@ -168,6 +168,7 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 
 type WorkerConfig struct {
 	KeepaliveTimeout time.Duration
+	ReconnectDelay   time.Duration
 	MaxQueueSize     int
 	LoggingEnabled   bool
 	LogLevel         *slog.Level
@@ -188,7 +189,8 @@ func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 
 func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
-		KeepaliveTimeout: 20 * time.Second,
+		KeepaliveTimeout: 60 * time.Second,
+		ReconnectDelay:   2 * time.Second,
 		MaxQueueSize:     0, // disabled by default
 		LoggingEnabled:   true,
 		LogLevel:         nil,
@@ -232,6 +234,13 @@ func validateKeepaliveTimeout(value time.Duration) error {
 	return nil
 }
 
+func validateReconnectDelay(value time.Duration) error {
+	if value < 0 {
+		return InvalidReconnectDelay
+	}
+	return nil
+}
+
 // When KeepaliveTimeout is set to zero, keepalive timeouts are disabled.
 func WithKeepaliveTimeout(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
@@ -240,6 +249,17 @@ func WithKeepaliveTimeout(value time.Duration) WorkerOption {
 			return err
 		}
 		c.KeepaliveTimeout = value
+		return nil
+	}
+}
+
+func WithReconnectDelay(value time.Duration) WorkerOption {
+	return func(c *WorkerConfig) error {
+		err := validateReconnectDelay(value)
+		if err != nil {
+			return err
+		}
+		c.ReconnectDelay = value
 		return nil
 	}
 }
