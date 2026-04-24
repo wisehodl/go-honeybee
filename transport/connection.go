@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/url"
 	"sync"
 	"time"
@@ -44,9 +45,10 @@ type Connection struct {
 	config *ConnectionConfig
 	logger *slog.Logger
 
-	incoming chan []byte
-	errors   chan error
-	done     chan struct{}
+	incoming  chan []byte
+	heartbeat chan struct{}
+	errors    chan error
+	done      chan struct{}
 
 	state ConnectionState
 
@@ -73,15 +75,16 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 	}
 
 	conn := &Connection{
-		url:      url,
-		dialer:   NewDialer(),
-		socket:   nil,
-		config:   config,
-		logger:   logger,
-		incoming: make(chan []byte, config.IncomingBufferSize),
-		errors:   make(chan error, config.ErrorsBufferSize),
-		state:    StateDisconnected,
-		done:     make(chan struct{}),
+		url:       url,
+		dialer:    NewDialer(),
+		socket:    nil,
+		config:    config,
+		logger:    logger,
+		incoming:  make(chan []byte, config.IncomingBufferSize),
+		heartbeat: make(chan struct{}, 1),
+		errors:    make(chan error, config.ErrorsBufferSize),
+		state:     StateDisconnected,
+		done:      make(chan struct{}),
 	}
 
 	return conn, nil
@@ -103,21 +106,24 @@ func NewConnectionFromSocket(
 	}
 
 	conn := &Connection{
-		url:      nil,
-		dialer:   nil,
-		socket:   socket,
-		config:   config,
-		logger:   logger,
-		incoming: make(chan []byte, config.IncomingBufferSize),
-		errors:   make(chan error, config.ErrorsBufferSize),
-		state:    StateConnected,
-		done:     make(chan struct{}),
+		url:       nil,
+		dialer:    nil,
+		socket:    socket,
+		config:    config,
+		logger:    logger,
+		incoming:  make(chan []byte, config.IncomingBufferSize),
+		heartbeat: make(chan struct{}, 1),
+		errors:    make(chan error, config.ErrorsBufferSize),
+		state:     StateConnected,
+		done:      make(chan struct{}),
 	}
 
 	if config.CloseHandler != nil {
 		socket.SetCloseHandler(config.CloseHandler)
 	}
 
+	conn.setupPongHandler()
+	conn.startPinger()
 	conn.startReader()
 
 	return conn, nil
@@ -164,6 +170,8 @@ func (c *Connection) Connect(ctx context.Context) error {
 		c.logger.Info("connected")
 	}
 
+	c.setupPongHandler()
+	c.startPinger()
 	c.startReader()
 
 	return nil
@@ -336,6 +344,48 @@ func (c *Connection) startReader() {
 	}()
 }
 
+func (c *Connection) setupPongHandler() {
+	c.socket.SetPongHandler(func(appData string) error {
+		select {
+		case c.heartbeat <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+}
+
+func (c *Connection) startPinger() {
+	if c.config.PingInterval <= 0 {
+		return
+	}
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer c.shutdownInternal()
+
+		// Calculate 10% jitter window
+		jitter := c.config.PingInterval / 10
+
+		for {
+			offset := time.Duration(rand.Int63n(int64(jitter*2))) - jitter
+			next := c.config.PingInterval + offset
+			timer := time.NewTimer(next)
+			select {
+			case <-c.done:
+				timer.Stop()
+				return
+			case <-timer.C:
+				deadline := time.Now().Add(c.config.WriteTimeout)
+				if err := c.socket.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+}
+
 func (c *Connection) Send(data []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
@@ -366,6 +416,10 @@ func (c *Connection) Send(data []byte) error {
 
 func (c *Connection) Incoming() <-chan []byte {
 	return c.incoming
+}
+
+func (c *Connection) Heartbeat() <-chan struct{} {
+	return c.heartbeat
 }
 
 func (c *Connection) Errors() <-chan error {

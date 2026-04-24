@@ -87,9 +87,9 @@ func TestConnectLogging(t *testing.T) {
 		expected := []honeybeetest.ExpectedLog{
 			log(slog.LevelDebug, "connecting", map[string]any{}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
-			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 2}),
-			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
 			log(slog.LevelError, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}),
 			log(slog.LevelError, "connection failed", map[string]any{"error": dialErr}),
@@ -136,9 +136,9 @@ func TestConnectLogging(t *testing.T) {
 		expected := []honeybeetest.ExpectedLog{
 			log(slog.LevelDebug, "connecting", map[string]any{}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
-			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 1, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 2}),
-			log(slog.LevelDebug, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
+			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
 			log(slog.LevelDebug, "dial successful", map[string]any{"attempt": 3}),
 			log(slog.LevelInfo, "connected", map[string]any{}),

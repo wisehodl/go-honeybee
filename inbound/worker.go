@@ -70,11 +70,16 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 	toForwarder := make(chan types.ReceivedMessage, 256)
 
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 
 	go func() {
 		defer wg.Done()
 		RunReader(w.ctx, pool.OnExit, w.conn, toQueue, w.heartbeat, w.logger)
+	}()
+
+	go func() {
+		defer wg.Done()
+		RunHeartbeatForwarder(w.ctx, w.conn, w.heartbeat, w.logger)
 	}()
 
 	go func() {
@@ -170,6 +175,29 @@ func RunReader(
 
 			select {
 			case heartbeat <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func RunHeartbeatForwarder(
+	ctx context.Context,
+	conn *transport.Connection,
+	heartbeat chan<- struct{},
+	logger *slog.Logger,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-conn.Heartbeat():
+			select {
+			case heartbeat <- struct{}{}:
+				if logger != nil {
+					logger.Debug("ping-pong heartbeat")
+				}
 			case <-ctx.Done():
 				return
 			}

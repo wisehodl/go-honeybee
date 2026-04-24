@@ -10,6 +10,7 @@ type CloseHandler func(code int, text string) error
 type ConnectionConfig struct {
 	CloseHandler       CloseHandler
 	WriteTimeout       time.Duration
+	PingInterval       time.Duration
 	IncomingBufferSize int
 	ErrorsBufferSize   int
 	LoggingEnabled     bool
@@ -41,6 +42,7 @@ func GetDefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
 		CloseHandler:       nil,
 		WriteTimeout:       30 * time.Second,
+		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
 		LoggingEnabled:     true,
@@ -53,7 +55,7 @@ func GetDefaultRetryConfig() *RetryConfig {
 	return &RetryConfig{
 		MaxRetries:   0, // Infinite retries
 		InitialDelay: 1 * time.Second,
-		MaxDelay:     5 * time.Second,
+		MaxDelay:     60 * time.Second,
 		JitterFactor: 0.5,
 	}
 }
@@ -109,6 +111,13 @@ func validateWriteTimeout(value time.Duration) error {
 	return nil
 }
 
+func validatePingInterval(value time.Duration) error {
+	if value < 0 {
+		return InvalidPingInterval
+	}
+	return nil
+}
+
 func validateBufferSize(value int) error {
 	if value < 1 {
 		return InvalidBufferSize
@@ -159,6 +168,18 @@ func WithWriteTimeout(value time.Duration) ConnectionOption {
 			return err
 		}
 		c.WriteTimeout = value
+		return nil
+	}
+}
+
+// When PingInterval is set to zero, ping frames are disabled.
+func WithPingInterval(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		err := validatePingInterval(value)
+		if err != nil {
+			return err
+		}
+		c.PingInterval = value
 		return nil
 	}
 }

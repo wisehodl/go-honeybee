@@ -27,11 +27,13 @@ func (m *MockDialer) DialContext(
 
 type MockSocket struct {
 	WriteMessageFunc     func(int, []byte) error
+	WriteControlFunc     func(int, []byte, time.Time) error
 	SetReadDeadlineFunc  func(t time.Time) error
 	SetWriteDeadlineFunc func(t time.Time) error
 	ReadMessageFunc      func() (int, []byte, error)
 	CloseFunc            func() error
 	SetCloseHandlerFunc  func(func(int, string) error)
+	SetPongHandlerFunc   func(func(string) error)
 	Closed               chan struct{}
 	Once                 sync.Once
 	Mu                   sync.Mutex
@@ -40,12 +42,14 @@ type MockSocket struct {
 func NewMockSocket() *MockSocket {
 	return &MockSocket{
 		WriteMessageFunc: func(int, []byte) error { return nil },
+		WriteControlFunc: func(int, []byte, time.Time) error { return nil },
 		ReadMessageFunc:  func() (int, []byte, error) { return 0, []byte("message"), nil },
 		CloseFunc:        func() error { return nil },
 
 		SetReadDeadlineFunc:  func(time.Time) error { return nil },
 		SetWriteDeadlineFunc: func(time.Time) error { return nil },
 		SetCloseHandlerFunc:  func(func(int, string) error) {},
+		SetPongHandlerFunc:   func(func(string) error) {},
 
 		Closed: make(chan struct{}),
 	}
@@ -54,6 +58,10 @@ func NewMockSocket() *MockSocket {
 
 func (m *MockSocket) WriteMessage(t int, d []byte) error {
 	return m.WriteMessageFunc(t, d)
+}
+
+func (m *MockSocket) WriteControl(t int, d []byte, dl time.Time) error {
+	return m.WriteControlFunc(t, d, dl)
 }
 
 func (m *MockSocket) ReadMessage() (int, []byte, error) {
@@ -74,6 +82,10 @@ func (m *MockSocket) SetWriteDeadline(t time.Time) error {
 
 func (m *MockSocket) SetCloseHandler(h func(code int, text string) error) {
 	m.SetCloseHandlerFunc(h)
+}
+
+func (m *MockSocket) SetPongHandler(h func(s string) error) {
+	m.SetPongHandlerFunc(h)
 }
 
 // Logging mocks

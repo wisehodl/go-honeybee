@@ -16,6 +16,7 @@ func TestNewConnectionConfig(t *testing.T) {
 	assert.Equal(t, conf, &ConnectionConfig{
 		CloseHandler:       nil,
 		WriteTimeout:       30 * time.Second,
+		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
 		LoggingEnabled:     true,
@@ -39,6 +40,7 @@ func TestDefaultConnectionConfig(t *testing.T) {
 	assert.Equal(t, conf, &ConnectionConfig{
 		CloseHandler:       nil,
 		WriteTimeout:       30 * time.Second,
+		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
 		LoggingEnabled:     true,
@@ -53,7 +55,7 @@ func TestDefaultRetryConnectionConfig(t *testing.T) {
 	assert.Equal(t, conf, &RetryConfig{
 		MaxRetries:   0,
 		InitialDelay: 1 * time.Second,
-		MaxDelay:     5 * time.Second,
+		MaxDelay:     60 * time.Second,
 		JitterFactor: 0.5,
 	})
 }

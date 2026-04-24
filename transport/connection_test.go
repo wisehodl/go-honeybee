@@ -537,6 +537,56 @@ func TestConnectionErrors(t *testing.T) {
 	})
 }
 
+func TestConnectionHeartbeat(t *testing.T) {
+	t.Run("pinger sends ping frames", func(t *testing.T) {
+		pingCount := atomic.Int32{}
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
+		socket.WriteControlFunc = func(mt int, d []byte, dl time.Time) error {
+			if mt == websocket.PingMessage {
+				pingCount.Add(1)
+			}
+			return nil
+		}
+
+		conf, err := NewConnectionConfig(
+			WithPingInterval(10 * time.Millisecond),
+		)
+		assert.NoError(t, err)
+
+		conn, _ := NewConnectionFromSocket(socket, conf, nil)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t,
+			func() bool { return pingCount.Load() >= 2 },
+			"expected pinger to fire")
+	})
+
+	t.Run("pong handler triggers heartbeat channel", func(t *testing.T) {
+		var handler func(string) error
+		socket, _, _ := honeybeetest.SetupTestSocket(t)
+		socket.SetPongHandlerFunc = func(h func(string) error) { handler = h }
+
+		conn, _ := NewConnectionFromSocket(socket, nil, nil)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t, func() bool {
+			return handler != nil
+		}, "expected Connection to register PongHandler")
+
+		if handler == nil {
+			t.Fatal("pong handler was never set")
+		}
+
+		handler("") // Simulate inbound pong
+
+		select {
+		case <-conn.Heartbeat():
+		case <-time.After(time.Second):
+			t.Fatal("heartbeat not signaled on pong")
+		}
+	})
+}
+
 // Test helpers
 
 func setupTestConnection(t *testing.T) (
