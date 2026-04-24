@@ -115,7 +115,7 @@ func TestWorkerStart(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			val := v.exitKind.Load()
-			return val != nil && val.(WorkerExitKind) == ExitError
+			return val != nil && val.(WorkerExitKind) == ExitUnexpectedClose
 		}, "expected ExitUnexpectedDrop")
 	})
 

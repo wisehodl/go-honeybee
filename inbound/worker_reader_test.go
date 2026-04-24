@@ -140,7 +140,7 @@ func TestRunReader(t *testing.T) {
 			}
 		}, "expected onPeerClose")
 
-		assert.Equal(t, ExitError, gotKind)
+		assert.Equal(t, ExitUnexpectedClose, gotKind)
 	})
 
 	t.Run("read error calls onPeerClose with ExitUnexpectedDrop", func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestRunReader(t *testing.T) {
 			}
 		}, "expected onPeerClose")
 
-		assert.Equal(t, ExitError, gotKind)
+		assert.Equal(t, ExitReadError, gotKind)
 	})
 
 	t.Run("ctx.Done exits without calling onPeerClose", func(t *testing.T) {

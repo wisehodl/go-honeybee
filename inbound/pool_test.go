@@ -333,7 +333,7 @@ func TestPoolEvents(t *testing.T) {
 			Err: &websocket.CloseError{Code: websocket.CloseProtocolError},
 		}
 
-		expectEvent(t, pool.Events(), "peer-1", EventDropped)
+		expectEvent(t, pool.Events(), "peer-1", EventDroppedClose)
 
 		honeybeetest.Eventually(t, func() bool {
 			return !slices.Contains(pool.Peers(), "peer-1")
@@ -353,7 +353,7 @@ func TestPoolEvents(t *testing.T) {
 		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		pool.Add("peer-1", socket)
 
-		expectEvent(t, pool.Events(), "peer-1", EventEvicted)
+		expectEvent(t, pool.Events(), "peer-1", EventEvictedPolicy)
 
 		honeybeetest.Eventually(t, func() bool {
 			return !slices.Contains(pool.Peers(), "peer-1")

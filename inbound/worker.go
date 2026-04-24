@@ -20,9 +20,10 @@ type Worker interface {
 type WorkerExitKind string
 
 const (
-	ExitDisconnected WorkerExitKind = "disconnected"
-	ExitError        WorkerExitKind = "error"
-	ExitPolicy       WorkerExitKind = "policy"
+	ExitDisconnected    WorkerExitKind = "disconnected"
+	ExitUnexpectedClose WorkerExitKind = "unexpected_close"
+	ExitReadError       WorkerExitKind = "read_error"
+	ExitPolicy          WorkerExitKind = "policy"
 )
 
 type DefaultWorker struct {
@@ -147,7 +148,7 @@ func RunReader(
 				var err error
 				// determine exit kind
 				// by default, the peer dropped unexpectedly
-				kind := ExitError
+				kind := ExitUnexpectedClose
 				select {
 				// the peer-side error is sent before the connection is closed,
 				// so a non-blocking call here is correct
@@ -156,11 +157,17 @@ func RunReader(
 					if errors.Is(err, transport.ErrPeerClosedClean) {
 						kind = ExitDisconnected
 					}
+					if errors.Is(err, transport.ErrPeerClosedUnexpected) {
+						kind = ExitUnexpectedClose
+					}
+					if errors.Is(err, transport.ErrReadError) {
+						kind = ExitReadError
+					}
 				default:
 				}
 
 				if logger != nil {
-					if kind == ExitError {
+					if kind == ExitUnexpectedClose || kind == ExitReadError {
 						logger.Error("reader: peer dropped", "event", kind, "error", err)
 					} else {
 						logger.Info("reader: peer disconnected", "event", kind)
@@ -280,7 +287,7 @@ func RunWatchdog(
 		case <-timer.C:
 			// signal peer is inactive
 			if logger != nil {
-				logger.Info("watchdog: peer is inactive")
+				logger.Info("watchdog: no activity observed")
 			}
 			onInactive(ExitPolicy)
 			return

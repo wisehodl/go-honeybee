@@ -58,17 +58,19 @@ type InboundPoolEventKind = inbound.PoolEventKind
 // Inbound Pool event constants
 
 const (
-	InboundEventDisconnected = inbound.EventDisconnected
-	InboundEventDropped      = inbound.EventDropped
-	InboundEventEvicted      = inbound.EventEvicted
+	InboundEventDisconnected  = inbound.EventDisconnected
+	InboundEventDroppedClose  = inbound.EventDroppedClose
+	InboundEventDroppedError  = inbound.EventDroppedError
+	InboundEventEvictedPolicy = inbound.EventEvictedPolicy
 )
 
 // Inbound Worker exit kinds
 
 const (
-	InboundExitDisconnected = inbound.ExitDisconnected
-	InboundExitError        = inbound.ExitError
-	InboundExitPolicy       = inbound.ExitPolicy
+	InboundExitDisconnected    = inbound.ExitDisconnected
+	InboundExitUnexpectedClose = inbound.ExitUnexpectedClose
+	InboundExitReadError       = inbound.ExitReadError
+	InboundExitPolicy          = inbound.ExitPolicy
 )
 
 // Connection constructors
