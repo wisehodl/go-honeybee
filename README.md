@@ -8,7 +8,7 @@ WebSocket connection and pool primitives in Go. Built for Nostr.
 honeybee.go            top-level re-exports and constructors
 
 transport/             single-connection primitives
-  connection.go          *Connection, state machine, reader goroutine
+  connection.go          *Connection, state machine, reader goroutine, pinger
   config.go              ConnectionConfig, RetryConfig, options
   retry.go               exponential backoff with jitter
   socket.go              Dialer interface, AcquireSocket
@@ -24,17 +24,20 @@ outbound/              pool for self-initiated connections
   worker.go              Worker interface, DefaultWorker, Session, Run* functions
   config.go              WorkerConfig, PoolConfig, options
 
+logging/               structured log construction
+  logging.go             logger constructors, ForcedLevelHandler
+
 types/                 shared interfaces (Dialer, Socket)
 honeybeetest/          test helpers and mocks for consumers
-```
+````
 
 ## What This Library Does
 
 Honeybee is a reliable and simple library for managing websocket connections and pools.
 
 - Handles websocket connections and pools cleanly and safely.
-- When connecting, robustly retries failed attempts until a connection is achieved.
 - Provides two pools: one to manage outbound peers and another to manage inbound peers.
+- Exposes statistics at the connection, worker, and pool levels.
 - Exposes a means to replace the internal pool worker to inject custom extensions.
 
 ## What This Library Does Not Do
@@ -50,13 +53,13 @@ Honeybee does not provide:
 - compression strategies, prepared message caching, or encoding optimization.
 - authentication, authorization, or session management above the transport.
 
-These are specialized features that deserve robust implementations, but not within Honeybee itself.
+These are specialized features that deserve robust implementations elsewhere as on-demand extensions rather than core features.
 
 ## Installation
 
 ```bash
 go get git.wisehodl.dev/jay/go-honeybee
-````
+```
 
 If the primary repository is unavailable, use the `replace` directive in your go.mod:
 
@@ -89,11 +92,10 @@ go func() {
     }
 }()
 
-// send a message
 conn.Send([]byte("hello"))
 ```
 
-The connection goes through four states: `StateDisconnected`, `StateConnecting`, `StateConnected`, `StateClosed`. Transitions are atomic and observable via `conn.State()`. Once closed, the connection should not be reused. Instead, construct a new one with the same `url` and reconnect.
+The connection goes through four states: `StateDisconnected`, `StateConnecting`, `StateConnected`, `StateClosed`. Transitions are atomic and observable via `conn.State()`. Once closed, the connection should not be reused. Instead, construct a new one with the same URL and reconnect.
 
 `Send` is safe for concurrent callers. `Close` is idempotent and safe to call from any goroutine.
 
@@ -101,18 +103,20 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 
 - `ErrPeerClosedClean` for normal closure
 - `ErrPeerClosedUnexpected` for abnormal close codes
-- `ErrReadError` for anything else.
+- `ErrReadError` for anything else
 
 Consumers use this to decide whether the disconnect was expected. No other errors are sent by the connection.
 
-Pass an `*slog.Logger` as the third argument to get structured logs at INFO, WARN, and ERROR levels. Pass nil to disable logging entirely.
+Pass an `*slog.Logger` as the third argument to get structured logs. Pass nil to disable logging entirely.
 
 ### Inbound Pool
 
 The inbound pool manages connections initiated by peers. The consumer accepts a WebSocket somewhere else and hands the resulting socket to the pool along with an ID.
 
+Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
+
 ```go
-pool, err := honeybee.NewInboundPool(ctx, nil, logger)
+pool, err := honeybee.NewInboundPool(ctx, "my-pool", nil, handler)
 if err != nil { /* handle error */ }
 defer pool.Close()
 
@@ -123,7 +127,7 @@ if err := pool.Add(peerID, socket); err != nil { /* handle error */ }
 go func() {
     for msg := range pool.Inbox() {
         // msg.ID            identifies the peer
-		// msg.Data          is the payload
+        // msg.Data          is the payload
         // msg.ReceivedAt    is the timestamp
     }
 }()
@@ -132,29 +136,31 @@ go func() {
 go func() {
     for ev := range pool.Events() {
         switch ev.Kind {
-        case honeybee.InboundEventDisconnected: // clean close
-        case honeybee.InboundEventDropped:      // unexpected drop or read error
-        case honeybee.InboundEventEvicted:      // inactivity timeout, if enabled
+        case honeybee.InboundEventDisconnected:  // clean close
+        case honeybee.InboundEventDroppedClose:  // peer closed with abnormal code
+        case honeybee.InboundEventDroppedError:  // read error
+        case honeybee.InboundEventEvictedPolicy: // inactivity timeout
         }
     }
 }()
 
-// send a message to a specific peer
 pool.Send(peerID, []byte("response"))
 ```
 
-`Add`, `Replace`, and `Remove` do not emit events. Events are emitted only when a worker exits on its own, either when the peer closed the socket or it was determined to be inactive (inactivity monitoring is disabled by default).
+`Add`, `Replace`, and `Remove` do not emit events. Events are emitted only when a worker exits on its own, either when the peer closed the socket or it was determined to be inactive.
 
-Use `Replace` if you need to replace a socket for a peer and maintain its ID. No events are emitted during this process.
+Use `Replace` if you need to swap the socket for a peer while keeping its ID. No events are emitted during this process.
 
-The watchdog is configured via `WithInboundInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog will observe message traffic on the wire and disconnect if no messages are seen for the configured duration. The watchdog is disabled by default, meaning that connections will persist until manually removed or remotely terminated.
+The watchdog is configured via `WithInboundInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog observes message traffic and disconnects the peer if no messages arrive within the configured duration. The watchdog is disabled by default, meaning connections persist until manually removed or remotely terminated.
 
 ### Outbound Pool
 
 The outbound pool connects to peers by their URLs and keeps them connected. It reconnects automatically when a connection drops and proactively refreshes inactive connections.
 
+Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
+
 ```go
-pool, err := honeybee.NewOutboundPool(ctx, nil, logger)
+pool, err := honeybee.NewOutboundPool(ctx, "my-pool", nil, handler)
 if err != nil { /* handle error */ }
 defer pool.Close()
 
@@ -163,14 +169,13 @@ if err := pool.Connect("wss://peer.example.com"); err != nil { /* handle error *
 go func() {
     for msg := range pool.Inbox() {
         // msg.ID            is the normalized URL
-		// msg.Data          is the payload
+        // msg.Data          is the payload
         // msg.ReceivedAt    is the timestamp
     }
 }()
 
 go func() {
     for ev := range pool.Events() {
-	    // used to determine when a connection is live
         switch ev.Kind {
         case honeybee.OutboundEventConnected:
         case honeybee.OutboundEventDisconnected:
@@ -178,152 +183,65 @@ go func() {
     }
 }()
 
-// send a message to a specific peer
 pool.Send("wss://peer.example.com", []byte("hello"))
 ```
 
-URLs are normalized by the pool. For example: `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer.
+URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `honeybee.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
 
 Every time a connection is established, `OutboundEventConnected` is emitted. Every time a connection drops for any reason, `OutboundEventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
 
-Keepalive is configured via `WithOutboundKeepaliveTimeout`. The worker records a heartbeat on every inbound message and every successful send. If no heartbeats come in before the keepalive timer runs out, the connection is proactively disconnected and reconnected. When set to zero, the keepalive mechanism is disabled.
+Keepalive is configured via `WithOutboundKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
 
-`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should try again after observing an `OutboundEventConnected` event and maintain their own write buffers.
+After a disconnect, the worker waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
 
-Dial failures surface on `pool.Errors()`. These do not stop the pool though. It will continue retrying according to the connection's retry config and the keepalive mechanism.
+`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `OutboundEventConnected` before retrying and maintain their own write buffers if needed.
 
-## Extensibility
+Dial failures surface on `pool.Errors()`. These do not stop the pool; it continues retrying according to the connection's retry config.
 
-The pool owns peer registry, event plumbing, and lifecycle. The worker owns what happens on the wire. Everything between `pool.Add` or `pool.Connect` and the `InboundEventDisconnected`/`OutboundEventDisconnected` event is the worker's responsibility, and it is fully replaceable.
+## Ping-Pong Heartbeats
 
-### The Worker Interface
+Connections send periodic WebSocket ping frames and listen for the corresponding pong replies. A received pong registers as a heartbeat signal within the worker.
 
-Both pools accept any type implementing:
+For inbound workers, pong-derived heartbeats reset the inactivity watchdog timer alongside data messages. A peer that sends no data but responds to pings will not be evicted.
 
-```go
-type Worker interface {
-    Start(pool PoolPlugin)
-    Stop()
-    Send(data []byte) error
-}
-```
+For outbound workers, pong-derived heartbeats reset the keepalive timer. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-`PoolPlugin` differs slightly between inbound and outbound, giving the worker access to the pool's inbox channel, events channel, logger, and (for inbound) an `OnExit` callback. The pool calls `Start` in a goroutine it owns and expects `Start` to return when the worker is done.
+The ping interval is configured via `WithPingInterval` on the `ConnectionConfig`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
-### The Factory Pattern
+## Statistics
 
-Workers are constructed by factories injected into the pool config:
+Pools, workers, and connections expose counters and channel depths that can be sampled at any time. All values are snapshots; counters are monotonically increasing and are not reset between reconnects on an outbound worker.
 
 ```go
-config, _ := honeybee.NewInboundPoolConfig(
-    honeybee.WithInboundWorkerFactory(myFactory),
-)
+// Pool-level snapshot
+stats := pool.Stats()
+// stats.PeerCount       — number of currently registered peers
+// stats.TotalReceived   — messages delivered to pool.Inbox() since construction
+// stats.TotalSent       — messages sent via pool.Send() since construction
+// stats.ChanInbox       — current depth of the inbox channel
+// stats.PeerStats       — one entry per connected peer
+
+// Single peer
+peerStats, err := pool.PeerStats(peerID)
+// peerStats.Worker      — queue depths, processed/dropped/sent counts
+// peerStats.Connection  — channel depths, receive/send/heartbeat counts (inbound)
+
+// Bare connection
+connStats := conn.Stats()
+// connStats.TotalReceived, connStats.TotalSent, connStats.TotalHeartbeats
 ```
 
-Factories run under the pool's write lock during `Add` or `Connect`, so they must be non-blocking. Anything requiring I/O belongs inside `Start`, not inside the factory.
+## Extending Pools
 
-### Three Levels of Customization
+The pool owns peer registration, event plumbing, and lifecycle. The worker owns what happens on the wire. The default worker can be replaced entirely or composed from the exported `Run*` building blocks that Honeybee provides.
 
-Most will want level one. A few may want level two. Level three is there when you need it.
-
-**Level 1: Use the default worker.** It handles everything described in the usage sections. No factory needed.
-
-**Level 2: Compose the exported `Run*` functions.** Honeybee exports the building blocks the default workers are built from:
-
-- Inbound: `RunReader`, `RunForwarder`, `RunWatchdog`.
-- Outbound: `RunDialer`, `RunKeepalive`, `RunForwarder`, `Session`, `RunReader`, `RunStopMonitor`.
-
-A custom worker can reuse most of these and replace one. For example, an inbound worker that wants to tag every message with a receive sequence number before forwarding can reuse `RunReader` and `RunWatchdog` verbatim and write a custom forwarder that wraps the default behavior:
-
-```go
-type SequencedWorker struct {
-    *inbound.DefaultWorker
-    seq atomic.Uint64
-}
-
-func (w *SequencedWorker) Start(pool inbound.PoolPlugin) {
-    // wrap pool.Inbox with a channel that tags messages,
-    // call w.DefaultWorker.Start with the wrapped plugin
-}
-```
-
-**Level 3: Implement `Worker` from scratch.** The contract is minimal:
-
-1. `Start` runs until the worker is done, then returns. The pool handles its
-   own waitgroup to monitor each worker.
-2. `Stop` causes `Start` to return in bounded time. Typically this cancels a context.
-3. `Send` writes data and returns an error if it cannot. It is called from arbitrary goroutines and must be safe for concurrent use.
-4. For inbound workers, call `pool.OnExit(kind)` exactly once when the worker exits on its own (not in response to `Stop`). The pool wraps this in `sync.Once` defensively, but a well-behaved worker calls it once.
-5. Forward received bytes to `pool.Inbox` as `InboxMessage` values. Emit events by letting the pool do it through `OnExit`; the worker does not touch `pool.Events` directly.
-
-The pool will not retry a failed factory call, will not rescue a worker whose `Start` blocks forever, and will not interpret the errors `Send` returns.
+See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and the available building blocks for both inbound and outbound pools.
 
 ## Configuration
 
-Three config types cover three scopes.
+All configuration is done through option functions applied at construction time. There are three config scopes: `ConnectionConfig`, `WorkerConfig`, and `PoolConfig`. Logging can be enabled and its minimum level overridden independently at the pool, worker, and connection levels.
 
-`ConnectionConfig` governs a single connection's behavior: write timeout, close handler, and retry policy. `RetryConfig` is embedded inside it and governs the `Connect()` retry loop.
-
-`WorkerConfig` governs a single worker's behavior. Inbound and outbound each have their own, with fields specific to their direction.
-
-`PoolConfig` bundles a connection config, a worker config, and an optional worker factory. It is a thin container.
-
-### Option Functions
-
-Connection and retry:
-
-- `WithCloseHandler(func)` installs a close handler on the socket.
-- `WithWriteTimeout(duration)` sets per-message write deadline.
-- `WithIncomingBufferSize(int)` sets the connection's incoming message channel buffer.
-- `WithErrorsBufferSize(int)` sets the connection's errors channel buffer.
-- `WithoutRetry()` disables retry entirely.
-- `WithRetryMaxRetries(int)` caps retry attempts; zero means infinite.
-- `WithRetryInitialDelay(duration)` sets the first backoff interval.
-- `WithRetryMaxDelay(duration)` caps the backoff interval.
-- `WithRetryJitterFactor(float64)` adds randomization to backoff, range 0.0 to 1.0.
-
-Inbound worker:
-
-- `WithInboundInactivityTimeout(duration)` enables the watchdog.
-- `WithInboundMaxQueueSize(int)` bounds the forwarder's internal queue.
-
-Outbound worker:
-
-- `WithOutboundKeepaliveTimeout(duration)` enables keepalive.
-- `WithOutboundMaxQueueSize(int)` bounds the forwarder's internal queue.
-
-Pool wiring (both directions have inbound and outbound variants):
-
-- `With{Inbound,Outbound}InboxBufferSize(int)` sets the pool's inbox channel buffer.
-- `With{Inbound,Outbound}EventsBufferSize(int)` sets the pool's events channel buffer.
-- `With{Inbound,Outbound}ErrorsBufferSize(int)` sets the pool's errors channel buffer.
-- `With{Inbound,Outbound}ConnectionConfig(*ConnectionConfig)`
-- `With{Inbound,Outbound}WorkerConfig(*WorkerConfig)`
-- `With{Inbound,Outbound}WorkerFactory(WorkerFactory)`
-
-All option functions validate their inputs. Invalid values return errors at application time. Configs constructed via `NewXConfig` are validated at construction and cannot be saved in an invalid state.
-
-### Defaults
-
-| Setting                          | Default | Disabled Value   | Notes                           |
-|----------------------------------|---------|------------------|---------------------------------|
-| `WriteTimeout`                   | 30s     | `0`              | Per-message write deadline      |
-| `Retry` enabled                  | yes     | `WithoutRetry()` | Applies to `Connect()` only     |
-| `Retry.MaxRetries`               | `0`     | —                | `0` means infinite              |
-| `Retry.InitialDelay`             | 1s      | —                | Must be positive                |
-| `Retry.MaxDelay`                 | 5s      | —                | Must be at least `InitialDelay` |
-| `Retry.JitterFactor`             | 0.5     | `0.0`            | Range [0.0, 1.0]                |
-| Inbound `MaxQueueSize`           | `0`     | `0`              | `0` means unbounded             |
-| Inbound `InactivityTimeout`      | `0`     | `0`              | `0` disables watchdog           |
-| Outbound `KeepaliveTimeout`      | 20s     | `0`              | `0` disables keepalive          |
-| Outbound `MaxQueueSize`          | `0`     | `0`              | `0` means unbounded             |
-| Connection `IncomingBufferSize`  | 100     | —                | Must be positive                |
-| Connection `ErrorsBufferSize`    | 10      | —                | Must be positive                |
-| Inbound pool `InboxBufferSize`   | 256     | —                | Must be positive                |
-| Inbound pool `EventsBufferSize`  | 10      | —                | Must be positive                |
-| Outbound pool `InboxBufferSize`  | 256     | —                | Must be positive                |
-| Outbound pool `EventsBufferSize` | 10      | —                | Must be positive                |
-| Outbound pool `ErrorsBufferSize` | 10      | —                | Must be positive                |
+See CONFIG.md for the full option reference and defaults table.
 
 ## Testing
 
@@ -341,14 +259,17 @@ go test -race ./...
 
 ### Test Helpers for Consumers
 
-The `honeybeetest` package provides mocks and assertions for code that builds on honeybee:
+The `honeybeetest` package provides mocks and assertions for code that builds on Honeybee:
 
-- `MockSocket` implements `types.Socket` with pluggable function fields for every method.
+- `MockSocket` implements `types.Socket` with pluggable function fields for every method, including `WriteControl` and `SetPongHandler`.
 - `MockDialer` implements `types.Dialer` with a pluggable `DialContextFunc`.
-- `MockSlogHandler` captures `slog` records for assertions against log output.
+- `MockSlogHandler` captures `slog` records for assertions against log output. Child handlers produced via `WithAttrs` share the same record slice as the parent, so attributes added by the logging package appear on the correct records.
 - `Eventually(t, condition, msg)` polls a condition until it holds or the test timeout expires.
 - `Never(t, condition, msg)` asserts a condition never holds over a short window.
-- `ExpectWrite(t, ch, msgType, data)` asserts the next write matches.
+- `ExpectWrite(t, ch, msgType, data)` asserts the next write on the channel matches the expected type and payload.
 - `ExpectIncoming(t, ch, data)` asserts the next received message matches.
+- `AssertLogSequence(t, records, expected)` asserts that a slice of `ExpectedLog` values appears in order within a set of records, using forward-only matching and allowing gaps.
+- `FindLogRecord(records, level, msgSnippet)` returns the first record matching the given level and message substring, or nil.
+- `AssertAttributePresent(t, record, key, value)` checks that a specific structured attribute is present on a record and equal to the expected value.
 
-Timer-driven paths use short real sleeps (tens of milliseconds). State-transition paths use `Eventually` and complete as soon as the state is observed.
+Timer-driven paths use short real sleeps (tens of milliseconds). State-transition paths use `Eventually` and complete as soon as the condition is observed.
