@@ -146,6 +146,10 @@ func (p *Pool) SetDialer(d types.Dialer) {
 }
 
 func (p *Pool) Close() {
+	if p.logger != nil {
+		p.logger.Debug("closing")
+	}
+
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
@@ -165,10 +169,18 @@ func (p *Pool) Close() {
 		close(p.inbox)
 		close(p.events)
 		close(p.errors)
+
+		if p.logger != nil {
+			p.logger.Info("closed")
+		}
 	}()
 }
 
 func (p *Pool) Connect(id string) error {
+	if p.logger != nil {
+		p.logger.Debug("connecting to peer", "peer", id)
+	}
+
 	id, err := transport.NormalizeURL(id)
 	if err != nil {
 		return err
@@ -215,10 +227,18 @@ func (p *Pool) Connect(id string) error {
 
 	p.peers[id] = &Peer{id: id, worker: worker}
 
+	if p.logger != nil {
+		p.logger.Info("connected to peer", "peer", id)
+	}
+
 	return nil
 }
 
 func (p *Pool) Remove(id string) error {
+	if p.logger != nil {
+		p.logger.Debug("disconnecting from peer", "peer", id)
+	}
+
 	id, err := transport.NormalizeURL(id)
 	if err != nil {
 		return err
@@ -238,6 +258,10 @@ func (p *Pool) Remove(id string) error {
 	delete(p.peers, id)
 
 	peer.worker.Stop()
+
+	if p.logger != nil {
+		p.logger.Info("disconnected from peer", "peer", id)
+	}
 
 	return nil
 }

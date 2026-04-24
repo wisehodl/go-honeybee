@@ -161,14 +161,14 @@ func TestCloseLogging(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			return honeybeetest.FindLogRecord(
-				mockHandler.GetRecords(), slog.LevelInfo, "connection closed") != nil
+				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "shutting down", map[string]any{}),
-			log(slog.LevelInfo, "connection closed", map[string]any{}),
+			log(slog.LevelInfo, "closing", map[string]any{}),
+			log(slog.LevelInfo, "closed", map[string]any{}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)
@@ -197,7 +197,7 @@ func TestCloseLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "shutting down", map[string]any{}),
+			log(slog.LevelInfo, "closing", map[string]any{}),
 			log(slog.LevelError, "socket close failed", map[string]any{"error": closeErr}),
 		}
 

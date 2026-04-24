@@ -233,7 +233,7 @@ func (c *Connection) shutdownSignalDone() {
 
 func (c *Connection) shutdownLogStart() {
 	if c.logger != nil {
-		c.logger.Info("shutting down")
+		c.logger.Info("closing")
 	}
 }
 
@@ -260,7 +260,7 @@ func (c *Connection) shutdownCloseChannels() {
 
 func (c *Connection) shutdownLogComplete() {
 	if c.logger != nil {
-		c.logger.Info("connection closed")
+		c.logger.Info("closed")
 	}
 }
 

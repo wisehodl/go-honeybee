@@ -13,12 +13,12 @@ import (
 
 // Types
 
-type PoolEventKind int
+type PoolEventKind string
 
 const (
-	EventDisconnected PoolEventKind = iota
-	EventDropped
-	EventEvicted
+	EventDisconnected PoolEventKind = "disconnected"
+	EventDropped      PoolEventKind = "dropped"
+	EventEvicted      PoolEventKind = "evicted"
 )
 
 var workerToPoolEvent = map[WorkerExitKind]PoolEventKind{
@@ -152,6 +152,10 @@ func (p *Pool) Errors() <-chan error {
 }
 
 func (p *Pool) Close() {
+	if p.logger != nil {
+		p.logger.Debug("closing")
+	}
+
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
@@ -177,6 +181,10 @@ func (p *Pool) Close() {
 		close(p.inbox)
 		close(p.events)
 		close(p.errors)
+
+		if p.logger != nil {
+			p.logger.Info("closed")
+		}
 	}()
 }
 
@@ -205,6 +213,11 @@ func (p *Pool) Replace(id string, socket types.Socket) error {
 
 	if peer, exists := p.peers[id]; exists {
 		p.removeLocked(peer)
+
+		if p.logger != nil {
+			p.logger.Info("removed peer", "peer", id)
+		}
+
 	} else {
 		return ErrPeerNotFound
 	}
@@ -213,6 +226,10 @@ func (p *Pool) Replace(id string, socket types.Socket) error {
 }
 
 func (p *Pool) Remove(id string) error {
+	if p.logger != nil {
+		p.logger.Debug("removing peer", "peer", id)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -226,6 +243,10 @@ func (p *Pool) Remove(id string) error {
 	}
 
 	p.removeLocked(peer)
+
+	if p.logger != nil {
+		p.logger.Info("removed peer", "peer", id)
+	}
 
 	return nil
 }
@@ -315,6 +336,10 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 	}()
 
 	p.peers[id] = peer
+
+	if p.logger != nil {
+		p.logger.Info("added peer", "peer", id)
+	}
 
 	return nil
 }

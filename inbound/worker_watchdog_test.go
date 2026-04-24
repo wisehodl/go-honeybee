@@ -16,7 +16,7 @@ func TestRunWatchdog(t *testing.T) {
 		defer cancel()
 
 		called := atomic.Bool{}
-		go RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 200*time.Millisecond)
+		go RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 200*time.Millisecond, nil)
 
 		for i := 0; i < 5; i++ {
 			time.Sleep(20 * time.Millisecond)
@@ -40,7 +40,7 @@ func TestRunWatchdog(t *testing.T) {
 			count.Add(1)
 			gotKind = kind
 			close(done)
-		}, heartbeat, 20*time.Millisecond)
+		}, heartbeat, 20*time.Millisecond, nil)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -62,7 +62,7 @@ func TestRunWatchdog(t *testing.T) {
 		called := atomic.Bool{}
 		done := make(chan struct{})
 		go func() {
-			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 20*time.Second)
+			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 20*time.Second, nil)
 			close(done)
 		}()
 
@@ -87,7 +87,7 @@ func TestRunWatchdog(t *testing.T) {
 		called := atomic.Bool{}
 		done := make(chan struct{})
 		go func() {
-			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 0)
+			RunWatchdog(ctx, func(WorkerExitKind) { called.Store(true) }, heartbeat, 0, nil)
 			close(done)
 		}()
 
@@ -112,7 +112,7 @@ func TestRunWatchdog(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunWatchdog(ctx, func(WorkerExitKind) {}, heartbeat, 0)
+			RunWatchdog(ctx, func(WorkerExitKind) {}, heartbeat, 0, nil)
 			close(done)
 		}()
 
