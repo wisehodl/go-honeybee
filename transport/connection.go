@@ -299,8 +299,18 @@ func (c *Connection) startReader() {
 							wrappedErr = fmt.Errorf("%w: %w", ErrPeerClosedUnexpected, err)
 						}
 					} else {
+						isLocalClose := false
+						select {
+						case <-c.done:
+							isLocalClose = true
+						default:
+						}
 						if c.logger != nil {
-							c.logger.Error("read error", "error", err)
+							if isLocalClose {
+								c.logger.Debug("read loop terminated", "error", err)
+							} else {
+								c.logger.Error("read error", "error", err)
+							}
 						}
 						wrappedErr = fmt.Errorf("%w: %w", ErrReadError, err)
 					}
