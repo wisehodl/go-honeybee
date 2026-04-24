@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -25,9 +26,10 @@ func makeWorkerContext(t *testing.T) (
 	events = make(chan PoolEvent, 10)
 	errors = make(chan error, 10)
 	pool = PoolPlugin{
-		Inbox:  inbox,
-		Events: events,
-		Errors: errors,
+		Inbox:        inbox,
+		Events:       events,
+		Errors:       errors,
+		InboxCounter: &atomic.Uint64{},
 	}
 	return
 }
@@ -38,11 +40,17 @@ func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *D
 		WithReconnectDelay(0 * time.Second),
 	)
 	return &DefaultWorker{
-		ctx:       ctx,
-		cancel:    cancel,
-		id:        "wss://test",
-		config:    config,
-		heartbeat: make(chan struct{}),
+		ctx:            ctx,
+		cancel:         cancel,
+		id:             "wss://test",
+		config:         config,
+		heartbeat:      make(chan struct{}),
+		toQueue:        make(chan types.ReceivedMessage, 256),
+		toForwarder:    make(chan types.ReceivedMessage, 256),
+		processedCount: &atomic.Uint64{},
+		droppedCount:   &atomic.Uint64{},
+		outgoingCount:  &atomic.Uint64{},
+		restartCount:   &atomic.Uint64{},
 	}
 }
 

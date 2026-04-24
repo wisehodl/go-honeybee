@@ -20,10 +20,11 @@ func TestWorkerSend(t *testing.T) {
 		heartbeatCount := atomic.Int32{}
 
 		w := &DefaultWorker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			heartbeat: heartbeat,
+			ctx:           ctx,
+			cancel:        cancel,
+			id:            "wss://test",
+			heartbeat:     heartbeat,
+			outgoingCount: &atomic.Uint64{},
 		}
 		w.conn.Store(conn)
 		defer w.cancel()
@@ -64,10 +65,11 @@ func TestWorkerSend(t *testing.T) {
 		heartbeatCount := atomic.Int32{}
 
 		w := &DefaultWorker{
-			ctx:       ctx,
-			cancel:    cancel,
-			id:        "wss://test",
-			heartbeat: heartbeat,
+			ctx:           ctx,
+			cancel:        cancel,
+			id:            "wss://test",
+			heartbeat:     heartbeat,
+			outgoingCount: &atomic.Uint64{},
 		}
 		w.conn.Store(conn)
 		defer w.cancel()

@@ -18,16 +18,41 @@ type Worker interface {
 	Start(pool PoolPlugin)
 	Stop()
 	Send(data []byte) error
+	Stats() WorkerStats
+}
+
+type WorkerStats struct {
+	IncomingAvailable bool
+	ChanIncoming      int
+	ChanQueue         int
+	ChanForwarder     int
+
+	ConnectionAvailable bool
+	Connection          transport.ConnectionStats
+
+	TotalProcessed uint64
+	TotalDropped   uint64
+	TotalSent      uint64
+	TotalRestarts  uint64
 }
 
 type DefaultWorker struct {
-	id        string
-	conn      atomic.Pointer[transport.Connection]
-	heartbeat chan struct{}
-	config    *WorkerConfig
-	ctx       context.Context
-	cancel    context.CancelFunc
-	logger    *slog.Logger
+	id   string
+	conn atomic.Pointer[transport.Connection]
+
+	heartbeat   chan struct{}
+	toQueue     chan types.ReceivedMessage
+	toForwarder chan types.ReceivedMessage
+
+	processedCount *atomic.Uint64
+	droppedCount   *atomic.Uint64
+	outgoingCount  *atomic.Uint64
+	restartCount   *atomic.Uint64
+
+	config *WorkerConfig
+	ctx    context.Context
+	cancel context.CancelFunc
+	logger *slog.Logger
 }
 
 func NewWorker(
@@ -45,12 +70,18 @@ func NewWorker(
 
 	wctx, wcancel := context.WithCancel(ctx)
 	w := &DefaultWorker{
-		id:        id,
-		config:    config,
-		heartbeat: make(chan struct{}),
-		ctx:       wctx,
-		cancel:    wcancel,
-		logger:    logger,
+		id:             id,
+		config:         config,
+		heartbeat:      make(chan struct{}),
+		toQueue:        make(chan types.ReceivedMessage, 256),
+		toForwarder:    make(chan types.ReceivedMessage, 256),
+		processedCount: &atomic.Uint64{},
+		droppedCount:   &atomic.Uint64{},
+		outgoingCount:  &atomic.Uint64{},
+		restartCount:   &atomic.Uint64{},
+		ctx:            wctx,
+		cancel:         wcancel,
+		logger:         logger,
 	}
 
 	return w, nil
@@ -63,8 +94,6 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	dial := make(chan struct{}, 1)
 	newConn := make(chan *transport.Connection, 1)
-	toQueue := make(chan types.ReceivedMessage, 256)
-	toForwarder := make(chan types.ReceivedMessage, 256)
 	keepalive := make(chan struct{}, 1)
 
 	var wg sync.WaitGroup
@@ -82,12 +111,12 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		queue.RunQueue(w.id, w.ctx, toQueue, toForwarder, w.config.MaxQueueSize)
+		queue.RunQueue(w.id, w.ctx, w.toQueue, w.toForwarder, w.config.MaxQueueSize, w.droppedCount)
 	}()
 
 	go func() {
 		defer wg.Done()
-		RunForwarder(w.id, w.ctx, toForwarder, pool.Inbox)
+		RunForwarder(w.id, w.ctx, w.toForwarder, pool.Inbox, w.processedCount, pool.InboxCounter)
 	}()
 
 	go func() {
@@ -95,12 +124,13 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 		session := &Session{
 			id:             w.id,
 			connPtr:        &w.conn,
-			messages:       toQueue,
+			messages:       w.toQueue,
 			heartbeat:      w.heartbeat,
 			dial:           dial,
 			keepalive:      keepalive,
 			newConn:        newConn,
 			reconnectDelay: w.config.ReconnectDelay,
+			restartCount:   w.restartCount,
 			logger:         w.logger,
 		}
 		session.Start(w.ctx, pool)
@@ -140,7 +170,37 @@ func (w *DefaultWorker) Send(data []byte) error {
 	case <-w.ctx.Done():
 	}
 
+	w.outgoingCount.Add(1)
+
 	return nil
+}
+
+func (w *DefaultWorker) Stats() WorkerStats {
+	connectionAvailable := false
+	incomingLen := 0
+	connStats := transport.ConnectionStats{}
+
+	conn := w.conn.Load()
+	if conn != nil {
+		connectionAvailable = true
+		incomingLen = len(conn.Incoming())
+		connStats = conn.Stats()
+	}
+
+	return WorkerStats{
+		IncomingAvailable: connectionAvailable,
+		ChanIncoming:      incomingLen,
+		ChanQueue:         len(w.toQueue),
+		ChanForwarder:     len(w.toForwarder),
+
+		ConnectionAvailable: connectionAvailable,
+		Connection:          connStats,
+
+		TotalProcessed: w.processedCount.Load(),
+		TotalDropped:   w.droppedCount.Load(),
+		TotalRestarts:  w.restartCount.Load(),
+		TotalSent:      w.outgoingCount.Load(),
+	}
 }
 
 type Session struct {
@@ -155,6 +215,7 @@ type Session struct {
 	newConn   <-chan *transport.Connection
 
 	reconnectDelay time.Duration
+	restartCount   *atomic.Uint64
 
 	logger *slog.Logger
 }
@@ -246,6 +307,7 @@ func (s *Session) Start(
 
 		// refresh session
 		time.Sleep(s.reconnectDelay)
+		s.restartCount.Add(1)
 	}
 
 }
@@ -346,6 +408,8 @@ func RunForwarder(
 	ctx context.Context,
 	messages <-chan types.ReceivedMessage,
 	inbox chan<- InboxMessage,
+	workerProcessedCount *atomic.Uint64,
+	poolInboxCount *atomic.Uint64,
 ) {
 	for {
 		select {
@@ -364,6 +428,8 @@ func RunForwarder(
 				Data:       msg.Data,
 				ReceivedAt: msg.ReceivedAt,
 			}:
+				workerProcessedCount.Add(1)
+				poolInboxCount.Add(1)
 			}
 		}
 	}

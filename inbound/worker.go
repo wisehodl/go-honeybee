@@ -8,6 +8,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type Worker interface {
 	Start(pool PoolPlugin)
 	Stop()
 	Send(data []byte) error
+	Stats() WorkerStats
 }
 
 type WorkerExitKind string
@@ -26,14 +28,32 @@ const (
 	ExitPolicy          WorkerExitKind = "policy"
 )
 
+type WorkerStats struct {
+	ChanIncoming  int
+	ChanQueue     int
+	ChanForwarder int
+
+	TotalProcessed uint64
+	TotalDropped   uint64
+	TotalSent      uint64
+}
+
 type DefaultWorker struct {
-	id        string
-	conn      *transport.Connection
-	heartbeat chan struct{}
-	config    *WorkerConfig
-	ctx       context.Context
-	cancel    context.CancelFunc
-	logger    *slog.Logger
+	id   string
+	conn *transport.Connection
+
+	heartbeat   chan struct{}
+	toQueue     chan types.ReceivedMessage
+	toForwarder chan types.ReceivedMessage
+
+	processedCount *atomic.Uint64
+	droppedCount   *atomic.Uint64
+	outgoingCount  *atomic.Uint64
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	config *WorkerConfig
+	logger *slog.Logger
 }
 
 func NewWorker(
@@ -52,13 +72,18 @@ func NewWorker(
 
 	wctx, cancel := context.WithCancel(ctx)
 	return &DefaultWorker{
-		id:        id,
-		conn:      conn,
-		heartbeat: make(chan struct{}),
-		config:    config,
-		ctx:       wctx,
-		cancel:    cancel,
-		logger:    logger,
+		id:             id,
+		conn:           conn,
+		heartbeat:      make(chan struct{}),
+		toQueue:        make(chan types.ReceivedMessage, 256),
+		toForwarder:    make(chan types.ReceivedMessage, 256),
+		processedCount: &atomic.Uint64{},
+		droppedCount:   &atomic.Uint64{},
+		outgoingCount:  &atomic.Uint64{},
+		config:         config,
+		ctx:            wctx,
+		cancel:         cancel,
+		logger:         logger,
 	}, nil
 }
 
@@ -67,15 +92,12 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 		w.logger.Debug("starting")
 	}
 
-	toQueue := make(chan types.ReceivedMessage, 256)
-	toForwarder := make(chan types.ReceivedMessage, 256)
-
 	var wg sync.WaitGroup
 	wg.Add(5)
 
 	go func() {
 		defer wg.Done()
-		RunReader(w.ctx, pool.OnExit, w.conn, toQueue, w.heartbeat, w.logger)
+		RunReader(w.ctx, pool.OnExit, w.conn, w.toQueue, w.heartbeat, w.logger)
 	}()
 
 	go func() {
@@ -85,12 +107,12 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		queue.RunQueue(w.id, w.ctx, toQueue, toForwarder, w.config.MaxQueueSize)
+		queue.RunQueue(w.id, w.ctx, w.toQueue, w.toForwarder, w.config.MaxQueueSize, w.droppedCount)
 	}()
 
 	go func() {
 		defer wg.Done()
-		RunForwarder(w.id, w.ctx, toForwarder, pool.Inbox)
+		RunForwarder(w.id, w.ctx, w.toForwarder, pool.Inbox, w.processedCount, pool.InboxCounter)
 	}()
 
 	go func() {
@@ -126,7 +148,21 @@ func (w *DefaultWorker) Send(data []byte) error {
 	case <-w.ctx.Done():
 	}
 
+	w.outgoingCount.Add(1)
+
 	return nil
+}
+
+func (w *DefaultWorker) Stats() WorkerStats {
+	return WorkerStats{
+		ChanIncoming:  len(w.conn.Incoming()),
+		ChanQueue:     len(w.toQueue),
+		ChanForwarder: len(w.toForwarder),
+
+		TotalProcessed: w.processedCount.Load(),
+		TotalDropped:   w.droppedCount.Load(),
+		TotalSent:      w.outgoingCount.Load(),
+	}
 }
 
 func RunReader(
@@ -217,6 +253,8 @@ func RunForwarder(
 	ctx context.Context,
 	messages <-chan types.ReceivedMessage,
 	inbox chan<- InboxMessage,
+	workerProcessedCount *atomic.Uint64,
+	poolInboxCount *atomic.Uint64,
 ) {
 	for {
 		select {
@@ -235,6 +273,8 @@ func RunForwarder(
 				Data:       msg.Data,
 				ReceivedAt: msg.ReceivedAt,
 			}:
+				workerProcessedCount.Add(1)
+				poolInboxCount.Add(1)
 			}
 		}
 	}

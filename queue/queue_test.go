@@ -5,6 +5,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -17,7 +18,7 @@ func TestRunQueue(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunQueue(id, ctx, inChan, outChan, 0)
+		go RunQueue(id, ctx, inChan, outChan, 0, &atomic.Uint64{})
 
 		inChan <- types.ReceivedMessage{Data: []byte("hello"), ReceivedAt: time.Now()}
 
@@ -49,7 +50,7 @@ func TestRunQueue(t *testing.T) {
 			}
 		}()
 
-		go RunQueue(id, ctx, inChan, gatedInbox, 2)
+		go RunQueue(id, ctx, inChan, gatedInbox, 2, &atomic.Uint64{})
 
 		// send three messages while the gated inbox is blocked
 		inChan <- types.ReceivedMessage{Data: []byte("first"), ReceivedAt: time.Now()}
@@ -87,7 +88,7 @@ func TestRunQueue(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunQueue(id, ctx, inChan, outChan, 0)
+			RunQueue(id, ctx, inChan, outChan, 0, &atomic.Uint64{})
 			close(done)
 		}()
 
