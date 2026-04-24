@@ -23,7 +23,7 @@ func TestRunReader(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat)
+		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat, nil)
 
 		before := time.Now()
 		incoming <- honeybeetest.MockIncomingData{MsgType: websocket.TextMessage, Data: []byte("hello")}
@@ -57,7 +57,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat)
+		go RunReader(ctx, func(WorkerExitKind) {}, conn, messages, heartbeat, nil)
 
 		const n = 3
 		for i := 0; i < n; i++ {
@@ -92,7 +92,7 @@ func TestRunReader(t *testing.T) {
 		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
-		}, conn, messages, heartbeat)
+		}, conn, messages, heartbeat, nil)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -129,7 +129,7 @@ func TestRunReader(t *testing.T) {
 		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
-		}, conn, messages, heartbeat)
+		}, conn, messages, heartbeat, nil)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -166,7 +166,7 @@ func TestRunReader(t *testing.T) {
 		go RunReader(ctx, func(kind WorkerExitKind) {
 			gotKind = kind
 			close(done)
-		}, conn, messages, heartbeat)
+		}, conn, messages, heartbeat, nil)
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -193,7 +193,7 @@ func TestRunReader(t *testing.T) {
 		go func() {
 			RunReader(ctx, func(WorkerExitKind) {
 				called.Store(true)
-			}, conn, messages, heartbeat)
+			}, conn, messages, heartbeat, nil)
 			close(done)
 		}()
 

@@ -28,7 +28,7 @@ func TestRunReader(t *testing.T) {
 			for range heartbeat {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat)
+		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
 
 		before := time.Now()
 		incomingData <- honeybeetest.MockIncomingData{
@@ -65,7 +65,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat)
+		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
 
 		const count = 3
 		for i := 0; i < count; i++ {
@@ -96,7 +96,7 @@ func TestRunReader(t *testing.T) {
 			for range messages {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat)
+		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
 
 		// induce connection closure via reader
 		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
@@ -125,7 +125,7 @@ func TestRunReader(t *testing.T) {
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 
-		go RunReader(ctx, cancel, conn, messages, heartbeat)
+		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
 
 		cancel()
 
@@ -152,7 +152,7 @@ func TestRunStopMonitor(t *testing.T) {
 
 		keepalive := make(chan struct{}, 1)
 
-		go RunStopMonitor(ctx, cancel, conn, keepalive)
+		go RunStopMonitor(ctx, cancel, conn, keepalive, nil)
 
 		keepalive <- struct{}{}
 
@@ -177,7 +177,7 @@ func TestRunStopMonitor(t *testing.T) {
 
 		keepalive := make(chan struct{})
 
-		go RunStopMonitor(ctx, cancel, conn, keepalive)
+		go RunStopMonitor(ctx, cancel, conn, keepalive, nil)
 
 		cancel()
 

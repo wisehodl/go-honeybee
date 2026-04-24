@@ -57,6 +57,10 @@ func NewWorker(
 }
 
 func (w *DefaultWorker) Start(pool PoolPlugin) {
+	if w.logger != nil {
+		w.logger.Debug("starting")
+	}
+
 	dial := make(chan struct{}, 1)
 	newConn := make(chan *transport.Connection, 1)
 	toQueue := make(chan types.ReceivedMessage, 256)
@@ -68,12 +72,12 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		RunDialer(w.id, w.ctx, pool, dial, newConn)
+		RunDialer(w.id, w.ctx, pool, dial, newConn, w.logger)
 	}()
 
 	go func() {
 		defer wg.Done()
-		RunKeepalive(w.ctx, w.heartbeat, keepalive, w.config.KeepaliveTimeout)
+		RunKeepalive(w.ctx, w.heartbeat, keepalive, w.config.KeepaliveTimeout, w.logger)
 	}()
 
 	go func() {
@@ -96,14 +100,26 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 			dial:      dial,
 			keepalive: keepalive,
 			newConn:   newConn,
+			logger:    w.logger,
 		}
 		session.Start(w.ctx, pool)
 	}()
 
+	if w.logger != nil {
+		w.logger.Info("started")
+	}
+
 	wg.Wait()
+
+	if w.logger != nil {
+		w.logger.Info("stopped")
+	}
 }
 
 func (w *DefaultWorker) Stop() {
+	if w.logger != nil {
+		w.logger.Debug("shutting down")
+	}
 	w.cancel()
 }
 
@@ -136,6 +152,8 @@ type Session struct {
 
 	keepalive <-chan struct{}
 	newConn   <-chan *transport.Connection
+
+	logger *slog.Logger
 }
 
 func (s *Session) Start(
@@ -143,6 +161,10 @@ func (s *Session) Start(
 	pool PoolPlugin,
 ) {
 	for {
+		if s.logger != nil {
+			s.logger.Debug("session: requesting connection")
+		}
+
 		// request new connection
 		select {
 		case s.dial <- struct{}{}:
@@ -159,9 +181,16 @@ func (s *Session) Start(
 			case <-s.keepalive:
 				select {
 				case s.dial <- struct{}{}:
+					if s.logger != nil {
+						s.logger.Debug("session: requesting connection")
+					}
+
 				default:
 				}
 			case conn = <-s.newConn:
+				if s.logger != nil {
+					s.logger.Debug("session: connected")
+				}
 				break preConn
 			}
 		}
@@ -179,15 +208,23 @@ func (s *Session) Start(
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			RunReader(sctx, onStop, conn, s.messages, s.heartbeat)
+			RunReader(sctx, onStop, conn, s.messages, s.heartbeat, s.logger)
 		}()
 		go func() {
 			defer wg.Done()
-			RunStopMonitor(sctx, onStop, conn, s.keepalive)
+			RunStopMonitor(sctx, onStop, conn, s.keepalive, s.logger)
 		}()
+
+		if s.logger != nil {
+			s.logger.Info("session: started")
+		}
 
 		// complete session
 		wg.Wait()
+
+		if s.logger != nil {
+			s.logger.Info("session: ended")
+		}
 
 		// tear down connection
 		s.connPtr.Store(nil)
@@ -211,8 +248,13 @@ func RunReader(
 	conn *transport.Connection,
 	messages chan<- types.ReceivedMessage,
 	heartbeat chan<- struct{},
+	logger *slog.Logger,
 ) {
 	defer func() {
+		if logger != nil {
+			logger.Debug("reader: stopping")
+		}
+
 		conn.Close()
 		onStop()
 	}()
@@ -224,6 +266,9 @@ func RunReader(
 		case data, ok := <-conn.Incoming():
 			if !ok {
 				// connection has closed
+				if logger != nil {
+					logger.Debug("reader: disconnected")
+				}
 				return
 			}
 
@@ -245,8 +290,13 @@ func RunStopMonitor(
 	onStop func(),
 	conn *transport.Connection,
 	keepalive <-chan struct{},
+	logger *slog.Logger,
 ) {
 	defer func() {
+		if logger != nil {
+			logger.Debug("stop monitor: stopping")
+		}
+
 		conn.Close()
 		onStop()
 	}()
@@ -254,6 +304,9 @@ func RunStopMonitor(
 	select {
 	case <-ctx.Done():
 	case <-keepalive:
+		if logger != nil {
+			logger.Debug("stop monitor: stopping: keepalive")
+		}
 	}
 }
 
@@ -290,9 +343,13 @@ func RunKeepalive(
 	heartbeat <-chan struct{},
 	keepalive chan<- struct{},
 	timeout time.Duration,
+	logger *slog.Logger,
 ) {
 	// disable keepalive timeout if not configured
 	if timeout <= 0 {
+		if logger != nil {
+			logger.Debug("keepalive: disabled")
+		}
 		// drain heartbeats
 		// wait for cancel and exit
 		for {
@@ -302,6 +359,10 @@ func RunKeepalive(
 				return
 			}
 		}
+	}
+
+	if logger != nil {
+		logger.Debug("keepalive: enabled", "timeout", timeout)
 	}
 
 	timer := time.NewTimer(timeout)
@@ -323,6 +384,9 @@ func RunKeepalive(
 		// timer completed
 		case <-timer.C:
 			// send keepalive signal, then reset the timer
+			if logger != nil {
+				logger.Info("keepalive: peer is inactive")
+			}
 			select {
 			case keepalive <- struct{}{}:
 			default:
@@ -359,6 +423,8 @@ func RunDialer(
 
 	dial <-chan struct{},
 	newConn chan<- *transport.Connection,
+
+	logger *slog.Logger,
 ) {
 	for {
 		select {
@@ -377,17 +443,27 @@ func RunDialer(
 				}
 			}()
 
+			if logger != nil {
+				logger.Debug("dialer: dialing")
+			}
 			// dial a new connection
 			conn, err := connect(id, ctx, pool)
 			close(done)
 
 			// send error if dial failed and continue
 			if err != nil {
+				if logger != nil {
+					logger.Warn("dialer: dial failed")
+				}
 				select {
 				case pool.Errors <- err:
 				case <-ctx.Done():
 				}
 				continue
+			}
+
+			if logger != nil {
+				logger.Debug("dialer: connected")
 			}
 
 			// send the new connection or close and exit

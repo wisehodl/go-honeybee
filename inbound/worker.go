@@ -17,12 +17,12 @@ type Worker interface {
 	Send(data []byte) error
 }
 
-type WorkerExitKind int
+type WorkerExitKind string
 
 const (
-	ExitDisconnected WorkerExitKind = iota
-	ExitError
-	ExitPolicy
+	ExitDisconnected WorkerExitKind = "disconnected"
+	ExitError        WorkerExitKind = "error"
+	ExitPolicy       WorkerExitKind = "policy"
 )
 
 type DefaultWorker struct {
@@ -62,6 +62,10 @@ func NewWorker(
 }
 
 func (w *DefaultWorker) Start(pool PoolPlugin) {
+	if w.logger != nil {
+		w.logger.Debug("starting")
+	}
+
 	toQueue := make(chan types.ReceivedMessage, 256)
 	toForwarder := make(chan types.ReceivedMessage, 256)
 
@@ -70,7 +74,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		RunReader(w.ctx, pool.OnExit, w.conn, toQueue, w.heartbeat)
+		RunReader(w.ctx, pool.OnExit, w.conn, toQueue, w.heartbeat, w.logger)
 	}()
 
 	go func() {
@@ -85,13 +89,24 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		RunWatchdog(w.ctx, pool.OnExit, w.heartbeat, w.config.InactivityTimeout)
+		RunWatchdog(w.ctx, pool.OnExit, w.heartbeat, w.config.InactivityTimeout, w.logger)
 	}()
 
+	if w.logger != nil {
+		w.logger.Info("started")
+	}
+
 	wg.Wait()
+
+	if w.logger != nil {
+		w.logger.Info("stopped")
+	}
 }
 
 func (w *DefaultWorker) Stop() {
+	if w.logger != nil {
+		w.logger.Debug("shutting down")
+	}
 	w.cancel()
 }
 
@@ -115,6 +130,8 @@ func RunReader(
 	conn *transport.Connection,
 	messages chan<- types.ReceivedMessage,
 	heartbeat chan<- struct{},
+
+	logger *slog.Logger,
 ) {
 	for {
 		select {
@@ -122,6 +139,7 @@ func RunReader(
 			return
 		case data, ok := <-conn.Incoming():
 			if !ok {
+				var err error
 				// determine exit kind
 				// by default, the peer dropped unexpectedly
 				kind := ExitError
@@ -129,11 +147,19 @@ func RunReader(
 				// the peer-side error is sent before the connection is closed,
 				// so a non-blocking call here is correct
 				// if an error is not sent, then assume the default event kind
-				case err := <-conn.Errors():
+				case err = <-conn.Errors():
 					if errors.Is(err, transport.ErrPeerClosedClean) {
 						kind = ExitDisconnected
 					}
 				default:
+				}
+
+				if logger != nil {
+					if kind == ExitError {
+						logger.Error("reader: peer dropped", "event", kind, "error", err)
+					} else {
+						logger.Info("reader: peer disconnected", "event", kind)
+					}
 				}
 
 				onPeerClose(kind)
@@ -184,9 +210,13 @@ func RunWatchdog(
 	onInactive OnExitFunction,
 	heartbeat <-chan struct{},
 	timeout time.Duration,
+	logger *slog.Logger,
 ) {
 	// disable watchdog timeout if not configured
 	if timeout <= 0 {
+		if logger != nil {
+			logger.Debug("watchdog: disabled")
+		}
 		// drain heartbeats
 		// wait for cancel and exit
 		for {
@@ -196,6 +226,10 @@ func RunWatchdog(
 				return
 			}
 		}
+	}
+
+	if logger != nil {
+		logger.Debug("watchdog: enabled", "timeout", timeout)
 	}
 
 	timer := time.NewTimer(timeout)
@@ -217,6 +251,9 @@ func RunWatchdog(
 		// timer completed
 		case <-timer.C:
 			// signal peer is inactive
+			if logger != nil {
+				logger.Info("watchdog: peer is inactive")
+			}
 			onInactive(ExitPolicy)
 			return
 		}

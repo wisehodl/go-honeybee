@@ -32,7 +32,7 @@ func TestRunDialer(t *testing.T) {
 			},
 		}
 
-		go RunDialer(url, ctx, pool, dial, newConn)
+		go RunDialer(url, ctx, pool, dial, newConn, nil)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -73,7 +73,7 @@ func TestRunDialer(t *testing.T) {
 				ConnectionConfig: connConfig,
 			}
 
-			go RunDialer(url, ctx, pool, dial, newConn)
+			go RunDialer(url, ctx, pool, dial, newConn, nil)
 			dial <- struct{}{}
 
 			// wait for dial to start blocking on gate
@@ -141,7 +141,7 @@ func TestRunDialer(t *testing.T) {
 			ConnectionConfig: connConfig,
 		}
 
-		go RunDialer(url, ctx, pool, dial, newConn)
+		go RunDialer(url, ctx, pool, dial, newConn, nil)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -175,7 +175,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunDialer(url, ctx, pool, dial, newConn)
+			RunDialer(url, ctx, pool, dial, newConn, nil)
 			close(done)
 		}()
 
@@ -213,7 +213,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunDialer(url, ctx, pool, dial, newConn)
+			RunDialer(url, ctx, pool, dial, newConn, nil)
 			close(done)
 		}()
 

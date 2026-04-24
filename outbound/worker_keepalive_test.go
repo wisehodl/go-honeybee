@@ -15,7 +15,7 @@ func TestRunKeepalive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunKeepalive(ctx, heartbeat, keepalive, timeout)
+		go RunKeepalive(ctx, heartbeat, keepalive, timeout, nil)
 
 		// send heartbeats faster than the timeout
 		for i := 0; i < 5; i++ {
@@ -41,7 +41,7 @@ func TestRunKeepalive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunKeepalive(ctx, heartbeat, keepalive, timeout)
+		go RunKeepalive(ctx, heartbeat, keepalive, timeout, nil)
 
 		// send no heartbeats, wait for timeout and keepalive signal
 		honeybeetest.Eventually(t, func() bool {
@@ -62,7 +62,7 @@ func TestRunKeepalive(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunKeepalive(ctx, heartbeat, keepalive, timeout)
+			RunKeepalive(ctx, heartbeat, keepalive, timeout, nil)
 			close(done)
 		}()
 
@@ -83,7 +83,7 @@ func TestRunKeepalive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		go RunKeepalive(ctx, heartbeat, keepalive, 0)
+		go RunKeepalive(ctx, heartbeat, keepalive, 0, nil)
 
 		// these must not block
 		for i := 0; i < 5; i++ {
