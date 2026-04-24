@@ -14,7 +14,7 @@ type RetryManager struct {
 
 func NewRetryManager(config *RetryConfig) *RetryManager {
 	// saturationCount: retry count at which base delay meets or exceeds MaxDelay.
-	// Conservative by one to preserve jitter variance near the boundary.
+	// Conservative by two to preserve jitter variance near the boundary.
 	saturation := 0
 	if config != nil &&
 		config.InitialDelay > 0 &&

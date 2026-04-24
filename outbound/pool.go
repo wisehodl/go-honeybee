@@ -228,7 +228,7 @@ func (p *Pool) Connect(id string) error {
 	p.peers[id] = &Peer{id: id, worker: worker}
 
 	if p.logger != nil {
-		p.logger.Info("connected to peer", "peer", id)
+		p.logger.Info("registered peer", "peer", id)
 	}
 
 	return nil

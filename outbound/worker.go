@@ -416,7 +416,7 @@ func RunKeepalive(
 		case <-timer.C:
 			// send keepalive signal, then reset the timer
 			if logger != nil {
-				logger.Info("keepalive: peer is inactive")
+				logger.Info("keepalive: no activity observed")
 			}
 			select {
 			case keepalive <- struct{}{}:

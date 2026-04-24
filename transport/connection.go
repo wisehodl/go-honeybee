@@ -399,7 +399,6 @@ func (c *Connection) Send(data []byte) error {
 			if c.logger != nil {
 				c.logger.Error("write deadline error", "error", err)
 			}
-			c.shutdownExternal()
 			return NewConnectionError(fmt.Errorf("%w: %w", ErrFailedWriteDeadline, err))
 		}
 	}

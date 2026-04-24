@@ -56,7 +56,7 @@ func GetDefaultRetryConfig() *RetryConfig {
 		MaxRetries:   0, // Infinite retries
 		InitialDelay: 1 * time.Second,
 		MaxDelay:     60 * time.Second,
-		JitterFactor: 0.5,
+		JitterFactor: 0.2,
 	}
 }
 

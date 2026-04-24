@@ -1,4 +1,3 @@
-// responderpool/config.go
 package inbound
 
 import (

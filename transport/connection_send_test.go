@@ -215,9 +215,9 @@ func TestConnectionSend(t *testing.T) {
 		err = conn.Send([]byte("test"))
 		assert.ErrorIs(t, err, ErrFailedWriteDeadline)
 
-		honeybeetest.Eventually(t, func() bool {
+		honeybeetest.Never(t, func() bool {
 			return conn.State() == StateClosed
-		}, "expected closed state")
+		}, "write error does not close connection")
 	})
 
 	t.Run("send fails on socket write error", func(t *testing.T) {
