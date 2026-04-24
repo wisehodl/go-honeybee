@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 )
 
 func makeWorkerContext(t *testing.T) (
@@ -33,11 +34,14 @@ func makeWorkerContext(t *testing.T) (
 
 func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *DefaultWorker {
 	t.Helper()
+	config, _ := NewWorkerConfig(
+		WithReconnectDelay(0 * time.Second),
+	)
 	return &DefaultWorker{
 		ctx:       ctx,
 		cancel:    cancel,
 		id:        "wss://test",
-		config:    GetDefaultWorkerConfig(),
+		config:    config,
 		heartbeat: make(chan struct{}),
 	}
 }
