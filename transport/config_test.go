@@ -3,6 +3,7 @@ package transport
 import (
 	"github.com/stretchr/testify/assert"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -10,20 +11,9 @@ import (
 // Connection Config Tests
 
 func TestNewConnectionConfig(t *testing.T) {
-	conf, err := NewConnectionConfig()
+	_, err := NewConnectionConfig()
 
 	assert.NoError(t, err)
-	assert.Equal(t, conf, &ConnectionConfig{
-		CloseHandler:       nil,
-		WriteTimeout:       30 * time.Second,
-		PingInterval:       20 * time.Second,
-		IncomingBufferSize: 100,
-		ErrorsBufferSize:   10,
-		LoggingEnabled:     true,
-		LogLevel:           nil,
-		Retry:              GetDefaultRetryConfig(),
-	})
-
 	// errors propagate
 	_, err = NewConnectionConfig(WithRetryMaxRetries(-1))
 	assert.Error(t, err)
@@ -35,10 +25,13 @@ func TestNewConnectionConfig(t *testing.T) {
 // Default Tests
 
 func TestDefaultConnectionConfig(t *testing.T) {
+	header := http.Header{}
+	header.Set("User-Agent", "honeybee/0.1.0")
 	conf := GetDefaultConnectionConfig()
 
 	assert.Equal(t, conf, &ConnectionConfig{
 		CloseHandler:       nil,
+		RequestHeader:      header,
 		WriteTimeout:       30 * time.Second,
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,

@@ -85,7 +85,7 @@ func TestAcquireSocket(t *testing.T) {
 			})
 
 			socket, _, err := AcquireSocket(
-				context.Background(), retryMgr, mockDialer, "ws://test", nil)
+				context.Background(), retryMgr, mockDialer, "ws://test", nil, nil)
 
 			assert.Equal(t, tc.wantRetryCount, retryMgr.RetryCount())
 			if tc.wantErr {
@@ -141,7 +141,7 @@ func TestAcquireSocketGuards(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			socket, resp, err := AcquireSocket(
-				context.Background(), tc.retryMgr, tc.dialer, tc.url, nil)
+				context.Background(), tc.retryMgr, tc.dialer, tc.url, nil, nil)
 
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, tc.wantErr)
@@ -168,7 +168,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 			cancel()
 
 			retryMgr := NewRetryManager(GetDefaultRetryConfig())
-			_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+			_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil, nil)
 
 			assert.ErrorIs(t, err, context.Canceled)
 			assert.False(t, dialCalled.Load())
@@ -195,7 +195,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil, nil)
 				done <- err
 			}()
 
@@ -233,7 +233,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 			retryMgr := NewRetryManager(GetDefaultRetryConfig())
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil)
+				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil, nil)
 				done <- err
 			}()
 
@@ -249,4 +249,23 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 			}
 
 		})
+}
+
+func TestAcquireSocketPassesHeaders(t *testing.T) {
+	header := http.Header{"User-Agent": []string{"test-agent"}}
+	dialCalled := false
+
+	mockDialer := &honeybeetest.MockDialer{
+		DialContextFunc: func(ctx context.Context, url string, h http.Header) (types.Socket, *http.Response, error) {
+			assert.Equal(t, "test-agent", h.Get("User-Agent"))
+			dialCalled = true
+			return honeybeetest.NewMockSocket(), nil, nil
+		},
+	}
+
+	retryMgr := NewRetryManager(&RetryConfig{MaxRetries: 0})
+	_, _, err := AcquireSocket(context.Background(), retryMgr, mockDialer, "ws://test", header, nil)
+
+	assert.NoError(t, err)
+	assert.True(t, dialCalled)
 }

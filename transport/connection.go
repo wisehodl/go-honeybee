@@ -169,7 +169,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 
 	retryMgr := NewRetryManager(c.config.Retry)
 	socket, _, err := AcquireSocket(
-		ctx, retryMgr, c.dialer, c.url.String(), c.logger)
+		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger)
 
 	if err != nil {
 		c.state = StateDisconnected

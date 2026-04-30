@@ -45,6 +45,7 @@ func AcquireSocket(
 	retryMgr *RetryManager,
 	dialer types.Dialer,
 	url string,
+	header http.Header,
 	logger *slog.Logger,
 ) (types.Socket, *http.Response, error) {
 	select {
@@ -68,7 +69,7 @@ func AcquireSocket(
 			logger.Debug("dialing", "attempt", retryMgr.RetryCount()+1)
 		}
 
-		socket, resp, err := dialer.DialContext(ctx, url, nil)
+		socket, resp, err := dialer.DialContext(ctx, url, header)
 		if err == nil {
 			if logger != nil {
 				logger.Debug("dial successful", "attempt", retryMgr.RetryCount()+1)
