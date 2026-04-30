@@ -404,6 +404,26 @@ func TestConnect(t *testing.T) {
 
 		conn.Close()
 	})
+
+	t.Run("passes headers when configured", func(t *testing.T) {
+		header := http.Header{"X-Custom": []string{"val"}}
+		conf, _ := NewConnectionConfig(WithRequestHeader(header))
+		conn, _ := NewConnection("ws://test", conf, nil)
+
+		dialCalled := false
+		conn.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(ctx context.Context, url string, h http.Header) (types.Socket, *http.Response, error) {
+				assert.Equal(t, "val", h.Get("X-Custom"))
+				dialCalled = true
+				return honeybeetest.NewMockSocket(), nil, nil
+			},
+		}
+
+		err := conn.Connect(context.Background())
+
+		assert.NoError(t, err)
+		assert.True(t, dialCalled)
+	})
 }
 
 func TestConnectContextCancellation(t *testing.T) {

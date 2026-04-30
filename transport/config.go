@@ -2,6 +2,7 @@ package transport
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 )
 
@@ -9,6 +10,7 @@ type CloseHandler func(code int, text string) error
 
 type ConnectionConfig struct {
 	CloseHandler       CloseHandler
+	RequestHeader      http.Header
 	WriteTimeout       time.Duration
 	PingInterval       time.Duration
 	IncomingBufferSize int
@@ -39,8 +41,11 @@ func NewConnectionConfig(options ...ConnectionOption) (*ConnectionConfig, error)
 }
 
 func GetDefaultConnectionConfig() *ConnectionConfig {
+	header := http.Header{}
+	header.Set("User-Agent", "honeybee/0.1.0")
 	return &ConnectionConfig{
 		CloseHandler:       nil,
+		RequestHeader:      header,
 		WriteTimeout:       30 * time.Second,
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
@@ -156,6 +161,13 @@ func validateJitterFactor(value float64) error {
 func WithCloseHandler(handler CloseHandler) ConnectionOption {
 	return func(c *ConnectionConfig) error {
 		c.CloseHandler = handler
+		return nil
+	}
+}
+
+func WithRequestHeader(header http.Header) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		c.RequestHeader = header.Clone()
 		return nil
 	}
 }
