@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -19,7 +20,7 @@ type workerTestVars struct {
 	incoming chan honeybeetest.MockIncomingData
 	outgoing chan honeybeetest.MockOutgoingData
 	pool     PoolPlugin
-	inbox    chan InboxMessage
+	inbox    chan types.InboxMessage
 	events   chan PoolEvent
 	exitKind *atomic.Value
 	wg       *sync.WaitGroup
@@ -36,7 +37,7 @@ func setupWorkerTest(t *testing.T) workerTestVars {
 	assert.NoError(t, err)
 	worker.cancel = cancel
 
-	inbox := make(chan InboxMessage, 256)
+	inbox := make(chan types.InboxMessage, 256)
 	events := make(chan PoolEvent, 10)
 	exitKind := &atomic.Value{}
 
@@ -134,7 +135,7 @@ func TestWorkerStart(t *testing.T) {
 		exitKind := &atomic.Value{}
 		var once sync.Once
 		pool := PoolPlugin{
-			Inbox:  make(chan InboxMessage, 256),
+			Inbox:  make(chan types.InboxMessage, 256),
 			Events: make(chan PoolEvent, 10),
 			OnExit: func(kind WorkerExitKind) {
 				once.Do(func() { exitKind.Store(kind) })
