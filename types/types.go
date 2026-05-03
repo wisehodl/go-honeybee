@@ -29,3 +29,9 @@ type ReceivedMessage struct {
 	Data       []byte
 	ReceivedAt time.Time
 }
+
+type InboxMessage struct {
+	ID         string
+	Data       []byte
+	ReceivedAt time.Time
+}

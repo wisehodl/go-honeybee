@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 // Types
@@ -42,15 +41,9 @@ type PeerStats struct {
 	Worker WorkerStats
 }
 
-type InboxMessage struct {
-	ID         string
-	Data       []byte
-	ReceivedAt time.Time
-}
-
 type PoolPlugin struct {
 	ID               string
-	Inbox            chan<- InboxMessage
+	Inbox            chan<- types.InboxMessage
 	Events           chan<- PoolEvent
 	Errors           chan<- error
 	InboxCounter     *atomic.Uint64
@@ -73,7 +66,7 @@ type Pool struct {
 	id string
 
 	peers  map[string]*Peer
-	inbox  chan InboxMessage
+	inbox  chan types.InboxMessage
 	events chan PoolEvent
 	errors chan error
 
@@ -127,7 +120,7 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 		cancel:        cancel,
 		id:            id,
 		peers:         make(map[string]*Peer),
-		inbox:         make(chan InboxMessage, config.InboxBufferSize),
+		inbox:         make(chan types.InboxMessage, config.InboxBufferSize),
 		events:        make(chan PoolEvent, config.EventsBufferSize),
 		errors:        make(chan error, config.ErrorsBufferSize),
 		inboxCounter:  &atomic.Uint64{},
@@ -150,7 +143,7 @@ func (p *Pool) Peers() []string {
 	return ids
 }
 
-func (p *Pool) Inbox() <-chan InboxMessage {
+func (p *Pool) Inbox() <-chan types.InboxMessage {
 	return p.inbox
 }
 

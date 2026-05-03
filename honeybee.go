@@ -24,6 +24,10 @@ type RetryConfig = transport.RetryConfig
 type ConnectionOption = transport.ConnectionOption
 type ConnectionStats = transport.ConnectionStats
 
+// Common Types
+
+type InboxMessage = types.InboxMessage
+
 // Outbound Pool types
 
 type OutboundPool = outbound.Pool
@@ -31,7 +35,6 @@ type OutboundPoolConfig = outbound.PoolConfig
 type OutboundPoolOption = outbound.PoolOption
 type OutboundWorkerConfig = outbound.WorkerConfig
 type OutboundWorkerOption = outbound.WorkerOption
-type OutboundInboxMessage = outbound.InboxMessage
 type OutboundPoolEvent = outbound.PoolEvent
 type OutboundPoolEventKind = outbound.PoolEventKind
 type OutboundPoolStats = outbound.PoolStats
@@ -54,7 +57,6 @@ type InboundWorkerOption = inbound.WorkerOption
 type InboundWorkerFactory = inbound.WorkerFactory
 type InboundWorker = inbound.Worker
 type InboundWorkerExitKind = inbound.WorkerExitKind
-type InboundInboxMessage = inbound.InboxMessage
 type InboundPoolEvent = inbound.PoolEvent
 type InboundPoolEventKind = inbound.PoolEventKind
 type InboundPoolStats = inbound.PoolStats

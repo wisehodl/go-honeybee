@@ -252,7 +252,7 @@ func RunForwarder(
 	id string,
 	ctx context.Context,
 	messages <-chan types.ReceivedMessage,
-	inbox chan<- InboxMessage,
+	inbox chan<- types.InboxMessage,
 	workerProcessedCount *atomic.Uint64,
 	poolInboxCount *atomic.Uint64,
 ) {
@@ -268,7 +268,7 @@ func RunForwarder(
 			case <-ctx.Done():
 				return
 
-			case inbox <- InboxMessage{
+			case inbox <- types.InboxMessage{
 				ID:         id,
 				Data:       msg.Data,
 				ReceivedAt: msg.ReceivedAt,

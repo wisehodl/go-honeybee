@@ -16,13 +16,13 @@ import (
 )
 
 func makeWorkerContext(t *testing.T) (
-	inbox chan InboxMessage,
+	inbox chan types.InboxMessage,
 	events chan PoolEvent,
 	errors chan error,
 	pool PoolPlugin,
 ) {
 	t.Helper()
-	inbox = make(chan InboxMessage, 256)
+	inbox = make(chan types.InboxMessage, 256)
 	events = make(chan PoolEvent, 10)
 	errors = make(chan error, 10)
 	pool = PoolPlugin{
