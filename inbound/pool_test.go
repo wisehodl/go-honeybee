@@ -30,7 +30,7 @@ func expectEvent(
 	honeybeetest.Eventually(t, func() bool {
 		select {
 		case e := <-events:
-			return e.ID == expectedURL && e.Kind == expectedKind
+			return e.ID == expectedURL && e.Kind == expectedKind && !e.At.IsZero()
 		default:
 			return false
 		}
