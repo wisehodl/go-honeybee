@@ -261,7 +261,7 @@ func (s *Session) Start(
 
 		// set up new connection
 		s.connPtr.Store(conn)
-		pool.Events <- PoolEvent{ID: s.id, Kind: EventConnected}
+		pool.Events <- PoolEvent{ID: s.id, Kind: EventConnected, At: time.Now()}
 
 		// set up session context
 		sctx, scancel := context.WithCancel(ctx)
@@ -296,7 +296,7 @@ func (s *Session) Start(
 
 		// tear down connection
 		s.connPtr.Store(nil)
-		pool.Events <- PoolEvent{ID: s.id, Kind: EventDisconnected}
+		pool.Events <- PoolEvent{ID: s.id, Kind: EventDisconnected, At: time.Now()}
 
 		// exit if worker is shutting down
 		select {

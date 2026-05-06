@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Types
@@ -34,6 +35,7 @@ type OnExitFunction func(kind WorkerExitKind)
 type PoolEvent struct {
 	ID   string
 	Kind PoolEventKind
+	At   time.Time
 }
 
 type PoolStats struct {
@@ -374,7 +376,7 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 			conn.Close()
 
 			select {
-			case p.events <- PoolEvent{ID: id, Kind: workerToPoolEvent[kind]}:
+			case p.events <- PoolEvent{ID: id, Kind: workerToPoolEvent[kind], At: time.Now()}:
 			case <-p.ctx.Done():
 				return
 			}

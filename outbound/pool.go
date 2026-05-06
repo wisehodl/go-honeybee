@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Types
@@ -22,6 +23,7 @@ const (
 type PoolEvent struct {
 	ID   string
 	Kind PoolEventKind
+	At   time.Time
 }
 
 type PoolStats struct {
