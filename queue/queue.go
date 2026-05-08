@@ -13,13 +13,14 @@ func RunQueue(
 	out chan<- types.ReceivedMessage,
 	maxQueueSize int,
 	droppedCount *atomic.Uint64,
+	bufferDepth *atomic.Int64,
 ) {
 	var next types.ReceivedMessage
 	var queue messageQueue
 	if maxQueueSize > 0 {
 		queue = newBoundedRing(maxQueueSize)
 	} else {
-		queue = newUnboundedRing(64)
+		queue = newUnboundedRing(1024)
 	}
 
 	for {
@@ -40,12 +41,15 @@ func RunQueue(
 				// drop oldest message
 				_ = queue.pop()
 				droppedCount.Add(1)
+				bufferDepth.Add(-1)
 			}
 			// add new message
 			queue.push(msg)
+			bufferDepth.Add(1)
 		// send next message to out channel
 		case outOrNil <- next:
 			_ = queue.pop()
+			bufferDepth.Add(-1)
 		}
 	}
 }
@@ -118,9 +122,8 @@ func newUnboundedRing(initialCap int) *unboundedRing {
 func (u *unboundedRing) push(m types.ReceivedMessage) {
 	if u.size == len(u.buf) {
 		bigger := make([]types.ReceivedMessage, len(u.buf)*2)
-		for i := 0; i < u.size; i++ {
-			bigger[i] = u.buf[(u.head+i)%len(u.buf)]
-		}
+		n := copy(bigger, u.buf[u.head:])
+		copy(bigger[n:], u.buf[:u.head])
 		u.buf = bigger
 		u.head = 0
 	}
