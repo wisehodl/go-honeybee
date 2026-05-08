@@ -26,6 +26,7 @@ type WorkerStats struct {
 	ChanIncoming      int
 	ChanQueue         int
 	ChanForwarder     int
+	BufferDepth       int64
 
 	ConnectionAvailable bool
 	Connection          transport.ConnectionStats
@@ -48,6 +49,7 @@ type DefaultWorker struct {
 	droppedCount   *atomic.Uint64
 	outgoingCount  *atomic.Uint64
 	restartCount   *atomic.Uint64
+	bufferDepth    *atomic.Int64
 
 	config *WorkerConfig
 	ctx    context.Context
@@ -79,6 +81,7 @@ func NewWorker(
 		droppedCount:   &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		restartCount:   &atomic.Uint64{},
+		bufferDepth:    &atomic.Int64{},
 		ctx:            wctx,
 		cancel:         wcancel,
 		logger:         logger,
@@ -111,7 +114,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		queue.RunQueue(w.id, w.ctx, w.toQueue, w.toForwarder, w.config.MaxQueueSize, w.droppedCount)
+		queue.RunQueue(w.id, w.ctx, w.toQueue, w.toForwarder, w.config.MaxQueueSize, w.droppedCount, w.bufferDepth)
 	}()
 
 	go func() {
@@ -192,6 +195,7 @@ func (w *DefaultWorker) Stats() WorkerStats {
 		ChanIncoming:      incomingLen,
 		ChanQueue:         len(w.toQueue),
 		ChanForwarder:     len(w.toForwarder),
+		BufferDepth:       w.bufferDepth.Load(),
 
 		ConnectionAvailable: connectionAvailable,
 		Connection:          connStats,
