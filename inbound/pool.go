@@ -41,7 +41,6 @@ type PoolEvent struct {
 type PoolStats struct {
 	ChanInbox  int
 	ChanEvents int
-	ChanErrors int
 
 	TotalReceived uint64
 	TotalSent     uint64
@@ -59,7 +58,6 @@ type PeerStats struct {
 type PoolPlugin struct {
 	Inbox        chan<- types.InboxMessage
 	Events       chan<- PoolEvent
-	Errors       chan<- error
 	InboxCounter *atomic.Uint64
 	OnExit       OnExitFunction
 	Handler      slog.Handler
@@ -83,7 +81,6 @@ type Pool struct {
 	peers  map[string]*Peer
 	inbox  chan types.InboxMessage
 	events chan PoolEvent
-	errors chan error
 
 	inboxCounter  *atomic.Uint64
 	outgoingCount *atomic.Uint64
@@ -140,7 +137,6 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 		peers:         make(map[string]*Peer),
 		inbox:         make(chan types.InboxMessage, config.InboxBufferSize),
 		events:        make(chan PoolEvent, config.EventsBufferSize),
-		errors:        make(chan error, config.ErrorsBufferSize),
 		inboxCounter:  &atomic.Uint64{},
 		outgoingCount: &atomic.Uint64{},
 		config:        config,
@@ -169,10 +165,6 @@ func (p *Pool) Events() <-chan PoolEvent {
 	return p.events
 }
 
-func (p *Pool) Errors() <-chan error {
-	return p.errors
-}
-
 func (p *Pool) Stats() PoolStats {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -190,7 +182,6 @@ func (p *Pool) Stats() PoolStats {
 	return PoolStats{
 		ChanInbox:  len(p.inbox),
 		ChanEvents: len(p.events),
-		ChanErrors: len(p.errors),
 
 		TotalReceived: p.inboxCounter.Load(),
 		TotalSent:     p.outgoingCount.Load(),
@@ -245,7 +236,6 @@ func (p *Pool) Close() {
 		p.wg.Wait()
 		close(p.inbox)
 		close(p.events)
-		close(p.errors)
 
 		if p.logger != nil {
 			p.logger.Info("closed")
@@ -386,7 +376,6 @@ func (p *Pool) addLocked(id string, socket types.Socket) error {
 	pool := PoolPlugin{
 		Inbox:        p.inbox,
 		Events:       p.events,
-		Errors:       p.errors,
 		InboxCounter: p.inboxCounter,
 		OnExit:       onExit,
 		Handler:      p.handler,

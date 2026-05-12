@@ -96,8 +96,6 @@ func TestPoolClose(t *testing.T) {
 		assert.False(t, ok)
 		_, ok = <-pool.Events()
 		assert.False(t, ok)
-		_, ok = <-pool.Errors()
-		assert.False(t, ok)
 	})
 
 	t.Run("connect after close returns error", func(t *testing.T) {

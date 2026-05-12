@@ -20,7 +20,6 @@ type WorkerFactory func(
 type PoolConfig struct {
 	InboxBufferSize  int
 	EventsBufferSize int
-	ErrorsBufferSize int
 	LoggingEnabled   bool
 	LogLevel         *slog.Level
 	ConnectionConfig *transport.ConnectionConfig
@@ -45,7 +44,6 @@ func GetDefaultPoolConfig() *PoolConfig {
 	return &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		ErrorsBufferSize: 10,
 		LoggingEnabled:   true,
 		LogLevel:         nil,
 		ConnectionConfig: nil,
@@ -100,16 +98,6 @@ func WithEventsBufferSize(value int) PoolOption {
 			return err
 		}
 		c.EventsBufferSize = value
-		return nil
-	}
-}
-
-func WithErrorsBufferSize(value int) PoolOption {
-	return func(c *PoolConfig) error {
-		if err := validateBufferSize(value); err != nil {
-			return err
-		}
-		c.ErrorsBufferSize = value
 		return nil
 	}
 }

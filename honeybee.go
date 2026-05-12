@@ -125,7 +125,6 @@ func NewOutboundWorkerConfig(opts ...OutboundWorkerOption) (*OutboundWorkerConfi
 var (
 	WithOutboundInboxBufferSize    = outbound.WithInboxBufferSize
 	WithOutboundEventsBufferSize   = outbound.WithEventsBufferSize
-	WithOutboundErrorsBufferSize   = outbound.WithErrorsBufferSize
 	WithOutboundPoolLoggingEnabled = outbound.WithPoolLoggingEnabled
 	WithOutboundPoolLogLevel       = outbound.WithPoolLogLevel
 	WithOutboundConnectionConfig   = outbound.WithConnectionConfig
@@ -161,7 +160,6 @@ func NewInboundWorkerConfig(opts ...InboundWorkerOption) (*InboundWorkerConfig, 
 var (
 	WithInboundInboxBufferSize    = inbound.WithInboxBufferSize
 	WithInboundEventsBufferSize   = inbound.WithEventsBufferSize
-	WithInboundErrorsBufferSize   = inbound.WithErrorsBufferSize
 	WithInboundPoolLoggingEnabled = inbound.WithPoolLoggingEnabled
 	WithInboundPoolLogLevel       = inbound.WithPoolLogLevel
 	WithInboundConnectionConfig   = inbound.WithConnectionConfig
