@@ -2,9 +2,7 @@ package outbound
 
 import (
 	"context"
-	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
-	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -18,17 +16,14 @@ import (
 func makeWorkerContext(t *testing.T) (
 	inbox chan types.InboxMessage,
 	events chan PoolEvent,
-	errors chan error,
 	pool PoolPlugin,
 ) {
 	t.Helper()
 	inbox = make(chan types.InboxMessage, 256)
 	events = make(chan PoolEvent, 10)
-	errors = make(chan error, 10)
 	pool = PoolPlugin{
 		Inbox:        inbox,
 		Events:       events,
-		Errors:       errors,
 		InboxCounter: &atomic.Uint64{},
 	}
 	return
@@ -69,7 +64,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, pool := makeWorkerContext(t)
+		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
 		pool.Dialer = mockDialer(mockSocket)
 
@@ -95,7 +90,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, pool := makeWorkerContext(t)
+		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, _, outgoingData := setupTestConnection(t)
 		pool.Dialer = mockDialer(mockSocket)
 
@@ -133,7 +128,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		inbox, events, _, pool := makeWorkerContext(t)
+		inbox, events, pool := makeWorkerContext(t)
 
 		incomingData := make(chan honeybeetest.MockIncomingData, 10)
 		mockSocket := honeybeetest.NewMockSocket()
@@ -188,7 +183,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, pool := makeWorkerContext(t)
+		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
 		pool.Dialer = mockDialer(mockSocket)
 
@@ -234,7 +229,7 @@ func TestWorkerStart(t *testing.T) {
 		defer cancel()
 
 		w := makeWorker(t, ctx, cancel)
-		_, events, _, pool := makeWorkerContext(t)
+		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
 		pool.Dialer = mockDialer(mockSocket)
 
@@ -282,7 +277,7 @@ func TestWorkerStart(t *testing.T) {
 		workerCtx, workerCancel := context.WithCancel(parentCtx)
 
 		w := makeWorker(t, workerCtx, workerCancel)
-		_, events, _, pool := makeWorkerContext(t)
+		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
 		pool.Dialer = mockDialer(mockSocket)
 
@@ -316,35 +311,5 @@ func TestWorkerStart(t *testing.T) {
 				return false
 			}
 		}, "expected wg to drain after parent cancel")
-	})
-
-	t.Run("dial failure emits to Errors", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		w := makeWorker(t, ctx, cancel)
-		_, _, errors, pool := makeWorkerContext(t)
-		pool.ConnectionConfig = &transport.ConnectionConfig{Retry: nil}
-		pool.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, fmt.Errorf("dial failed")
-			},
-		}
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			w.Start(pool)
-			wg.Done()
-		}()
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case err := <-errors:
-				return err != nil
-			default:
-				return false
-			}
-		}, "expected error on Errors channel")
 	})
 }

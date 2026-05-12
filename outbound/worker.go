@@ -556,10 +556,6 @@ func RunDialer(
 				if logger != nil {
 					logger.Warn("dialer: dial failed")
 				}
-				select {
-				case pool.Errors <- err:
-				case <-ctx.Done():
-				}
 				continue
 			}
 

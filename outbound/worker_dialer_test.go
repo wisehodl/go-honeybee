@@ -24,7 +24,6 @@ func TestRunDialer(t *testing.T) {
 
 		mockSocket := honeybeetest.NewMockSocket()
 		pool := PoolPlugin{
-			Errors: make(chan error, 1),
 			Dialer: &honeybeetest.MockDialer{
 				DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 					return mockSocket, nil, nil
@@ -61,7 +60,6 @@ func TestRunDialer(t *testing.T) {
 			started := make(chan struct{})
 			startOnce := sync.Once{}
 			pool := PoolPlugin{
-				Errors: make(chan error, 1),
 				Dialer: &honeybeetest.MockDialer{
 					DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 						dialCount.Add(1)
@@ -114,7 +112,6 @@ func TestRunDialer(t *testing.T) {
 
 	t.Run("dial failure emits error, succeeds on next signal", func(t *testing.T) {
 		url := "wss://test"
-		errors := make(chan error, 1)
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -125,7 +122,6 @@ func TestRunDialer(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		connConfig := &transport.ConnectionConfig{Retry: nil} // disable retry
 		pool := PoolPlugin{
-			Errors: errors,
 			Dialer: &honeybeetest.MockDialer{
 				DialContextFunc: func(
 					context.Context, string, http.Header,
@@ -143,16 +139,6 @@ func TestRunDialer(t *testing.T) {
 
 		go RunDialer(url, ctx, pool, dial, newConn, nil)
 		dial <- struct{}{}
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case err := <-errors:
-				return err != nil
-			default:
-				return false
-			}
-		}, "expected error")
-
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -171,7 +157,7 @@ func TestRunDialer(t *testing.T) {
 		newConn := make(chan *transport.Connection, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 
-		pool := PoolPlugin{Errors: make(chan error, 1)}
+		pool := PoolPlugin{}
 
 		done := make(chan struct{})
 		go func() {
@@ -198,7 +184,6 @@ func TestRunDialer(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		pool := PoolPlugin{
-			Errors:           make(chan error, 1),
 			ConnectionConfig: &transport.ConnectionConfig{Retry: nil},
 			Dialer: &honeybeetest.MockDialer{
 				DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {

@@ -105,7 +105,6 @@ func TestDefaultPoolConfig(t *testing.T) {
 	assert.Equal(t, &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		ErrorsBufferSize: 10,
 		LoggingEnabled:   true,
 		LogLevel:         nil,
 		ConnectionConfig: nil,
@@ -174,7 +173,6 @@ func TestWithBufferSizes(t *testing.T) {
 	err := applyPoolOptions(conf,
 		WithInboxBufferSize(100),
 		WithEventsBufferSize(20),
-		WithErrorsBufferSize(20),
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 100, conf.InboxBufferSize)
