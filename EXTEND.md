@@ -33,7 +33,6 @@ The pool constructs a `PoolPlugin` and passes it to `Start`. It gives the worker
 type PoolPlugin struct {
     Inbox        chan<- InboxMessage
     Events       chan<- PoolEvent
-    Errors       chan<- error
     InboxCounter *atomic.Uint64
     OnExit       OnExitFunction  // inbound only
     Handler      slog.Handler
@@ -42,9 +41,7 @@ type PoolPlugin struct {
 
 **`Inbox`** The shared channel that delivers received messages to the pool's consumer. All peers in the pool deliver to the same inbox channel. Workers must include their peer ID in each `InboxMessage`.
 
-**`Events`** The shared channel for lifecycle events. Outbound workers emit `EventConnected` and `EventDisconnected` directly. Inbound workers do not touch this channel directly; instead they call `OnExit`, and the pool translates the exit kind into the appropriate event.
-
-**`Errors`** The shared channel for non-fatal errors, such as dial failures on an outbound worker. Errors sent here do not stop the pool.
+**`Events`** The shared channel for lifecycle events. Outbound workers emit `EventConnected` and `EventDisconnected` directly. Inbound workers do not touch this channel directly; instead they call `OnExit`, and the pool translates the exit kind into the appropriate event. All events include a timestamp in the `At` field.
 
 **`InboxCounter`** An atomic counter owned by the pool. Workers must increment this once for each message forwarded to `Inbox`. The pool reads it in `Stats()`.
 
@@ -78,7 +75,7 @@ The default inbound worker is assembled from these exported functions. Each can 
 
 **`RunHeartbeatForwarder(ctx, conn, heartbeat, logger)`** Reads from `conn.Heartbeat()` and forwards each signal to `heartbeat`. This propagates pong replies from the connection layer into the worker's heartbeat channel, so pongs reset the inactivity watchdog alongside data messages.
 
-**`RunQueue(id, ctx, in, out, maxQueueSize, droppedCount)`** Buffers messages between the reader and the forwarder. When `maxQueueSize` is positive and the queue is full, the oldest message is dropped and `droppedCount` is incremented. When `maxQueueSize` is zero, the queue grows without bound.
+**`RunQueue(id, ctx, in, out, maxQueueSize, droppedCount, bufferDepth)`** Buffers messages between the reader and the forwarder. When `maxQueueSize` is positive and the queue is full, the oldest message is dropped and `droppedCount` is incremented. When `maxQueueSize` is zero, the queue grows without bound. `bufferDepth` is an `*atomic.Int64` maintained as the current number of items in the queue.
 
 **`RunForwarder(id, ctx, messages, inbox, workerProcessedCount, poolInboxCount)`** Reads from `messages` and writes to `inbox`. Increments both counters on each successful delivery.
 
@@ -110,7 +107,7 @@ The factory is set via `WithOutboundWorkerFactory` on the pool config.
 
 ### Building Blocks
 
-**`RunDialer(id, ctx, pool, dial, newConn, logger)`** Listens on `dial` for connection requests. On each signal, calls `connect` to dial a new `*transport.Connection`. While a dial is in progress, drains additional `dial` signals so that at most one dial runs at a time. On failure, sends the error to `pool.Errors` and waits for the next `dial` signal. On success, sends the connection on `newConn`. Exits when `ctx` is cancelled.
+**`RunDialer(id, ctx, pool, dial, newConn, logger)`** Listens on `dial` for connection requests. On each signal, calls `connect` to dial a new `*transport.Connection`. While a dial is in progress, drains additional `dial` signals so that at most one dial runs at a time. On failure, logs the error and waits for the next `dial` signal. On success, sends the connection on `newConn`. Exits when `ctx` is cancelled.
 
 **`RunKeepalive(ctx, heartbeat, keepalive, timeout, logger)`** Monitors `heartbeat`. Resets a timer on each signal. When the timer fires, sends a signal on `keepalive` to notify the session that the connection should be replaced. When `timeout` is zero, keepalive is disabled: it drains `heartbeat` without acting and exits when `ctx` is cancelled.
 

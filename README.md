@@ -135,6 +135,7 @@ go func() {
 // React to peer lifecycle:
 go func() {
     for ev := range pool.Events() {
+        // ev.At             is the event timestamp
         switch ev.Kind {
         case honeybee.InboundEventDisconnected:  // clean close
         case honeybee.InboundEventDroppedClose:  // peer closed with abnormal code
@@ -176,6 +177,7 @@ go func() {
 
 go func() {
     for ev := range pool.Events() {
+        // ev.At             is the event timestamp
         switch ev.Kind {
         case honeybee.OutboundEventConnected:
         case honeybee.OutboundEventDisconnected:
@@ -196,7 +198,7 @@ After a disconnect, the worker waits for `ReconnectDelay` before attempting the 
 
 `Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `OutboundEventConnected` before retrying and maintain their own write buffers if needed.
 
-Dial failures surface on `pool.Errors()`. These do not stop the pool; it continues retrying according to the connection's retry config.
+Dial failures are handled internally by the worker's retry logic and documented in structured logs. These do not stop the pool; it continues retrying according to the connection's retry config.
 
 ## Ping-Pong Heartbeats
 
@@ -223,7 +225,7 @@ stats := pool.Stats()
 
 // Single peer
 peerStats, err := pool.PeerStats(peerID)
-// peerStats.Worker      — queue depths, processed/dropped/sent counts
+// peerStats.Worker      — queue depths, buffer depth, processed/dropped/sent counts
 // peerStats.Connection  — channel depths, receive/send/heartbeat counts (inbound)
 
 // Bare connection

@@ -18,6 +18,9 @@ Sets a per-message write deadline. Applied before every call to `WriteMessage`. 
 **`WithCloseHandler(func(code int, text string) error)`**
 Installs a close handler on the underlying socket. Called when the remote peer sends a close frame.
 
+**`WithRequestHeader(http.Header)`**
+Sets custom HTTP headers to be sent during the WebSocket handshake. The default includes `User-Agent: honeybee/0.1.0`.
+
 ### Ping
 
 **`WithPingInterval(duration)`**
@@ -70,9 +73,6 @@ Sets the capacity of the pool's shared inbox channel. Must be at least 1.
 **`WithInboundEventsBufferSize(int)`**
 Sets the capacity of the pool's events channel. Must be at least 1.
 
-**`WithInboundErrorsBufferSize(int)`**
-Sets the capacity of the pool's errors channel. Must be at least 1.
-
 **`WithInboundPoolLoggingEnabled(bool)`**
 Enables or disables pool-level logging.
 
@@ -118,9 +118,6 @@ Sets the capacity of the pool's shared inbox channel. Must be at least 1.
 **`WithOutboundEventsBufferSize(int)`**
 Sets the capacity of the pool's events channel. Must be at least 1.
 
-**`WithOutboundErrorsBufferSize(int)`**
-Sets the capacity of the pool's errors channel. Must be at least 1.
-
 **`WithOutboundPoolLoggingEnabled(bool)`**
 Enables or disables pool-level logging.
 
@@ -162,6 +159,7 @@ Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the fact
 | Scope | Setting | Default | Disabled by | Notes |
 |---|---|---|---|---|
 | Connection | `WriteTimeout` | 30s | `0` | Per-message write deadline |
+| Connection | `RequestHeader` | User-Agent | — | honeybee/0.1.0 |
 | Connection | `PingInterval` | 20s | `0` | ±10% jitter applied per interval |
 | Connection | `IncomingBufferSize` | 100 | — | Must be positive |
 | Connection | `ErrorsBufferSize` | 10 | — | Must be positive |
@@ -174,7 +172,6 @@ Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the fact
 | Retry | `JitterFactor` | 0.2 | `0.0` | Range [0.0, 1.0] |
 | Inbound pool | `InboxBufferSize` | 256 | — | Must be positive |
 | Inbound pool | `EventsBufferSize` | 10 | — | Must be positive |
-| Inbound pool | `ErrorsBufferSize` | 10 | — | Must be positive |
 | Inbound pool | `LoggingEnabled` | true | `false` | |
 | Inbound pool | `LogLevel` | nil | — | |
 | Inbound worker | `InactivityTimeout` | 0 | `0` | 0 disables watchdog |
@@ -183,7 +180,6 @@ Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the fact
 | Inbound worker | `LogLevel` | nil | — | |
 | Outbound pool | `InboxBufferSize` | 256 | — | Must be positive |
 | Outbound pool | `EventsBufferSize` | 10 | — | Must be positive |
-| Outbound pool | `ErrorsBufferSize` | 10 | — | Must be positive |
 | Outbound pool | `LoggingEnabled` | true | `false` | |
 | Outbound pool | `LogLevel` | nil | — | |
 | Outbound worker | `KeepaliveTimeout` | 60s | `0` | 0 disables keepalive |
