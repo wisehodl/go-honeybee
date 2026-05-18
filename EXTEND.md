@@ -30,18 +30,30 @@ The behavioral contract for each method:
 The pool constructs a `PoolPlugin` and passes it to `Start`. It gives the worker access to pool-level channels and the logging handler.
 
 ```go
+// inbound.PoolPlugin
 type PoolPlugin struct {
-    Inbox        chan<- InboxMessage
-    Events       chan<- PoolEvent
+    Inbox        chan<- inbound.InboxMessage
+    Events       chan<- inbound.PoolEvent
     InboxCounter *atomic.Uint64
-    OnExit       OnExitFunction  // inbound only
+    OnExit       inbound.OnExitFunction  // inbound only
     Handler      slog.Handler
+}
+
+// outbound.PoolPlugin
+type PoolPlugin struct {
+    ID               string
+    Inbox            chan<- outbound.InboxMessage
+    Events           chan<- outbound.PoolEvent
+    InboxCounter     *atomic.Uint64
+    Dialer           outbound.Dialer
+    ConnectionConfig *transport.ConnectionConfig
+    Handler          slog.Handler
 }
 ```
 
 **`Inbox`** The shared channel that delivers received messages to the pool's consumer. All peers in the pool deliver to the same inbox channel. Workers must include their peer ID in each `InboxMessage`.
 
-**`Events`** The shared channel for lifecycle events. Outbound workers emit `EventConnected` and `EventDisconnected` directly. Inbound workers do not touch this channel directly; instead they call `OnExit`, and the pool translates the exit kind into the appropriate event. All events include a timestamp in the `At` field.
+**`Events`** The shared channel for lifecycle events. Outbound workers emit `outbound.EventConnected` and `outbound.EventDisconnected` directly. Inbound workers do not touch this channel directly; instead they call `OnExit`, and the pool translates the exit kind into the appropriate event. All events include a timestamp in the `At` field.
 
 **`InboxCounter`** An atomic counter owned by the pool. Workers must increment this once for each message forwarded to `Inbox`. The pool reads it in `Stats()`.
 
@@ -54,18 +66,18 @@ type PoolPlugin struct {
 ### Factory Signature
 
 ```go
-type WorkerFactory func(
+type inbound.WorkerFactory func(
     ctx    context.Context,
     id     string,
     conn   *transport.Connection,
-    config *WorkerConfig,
+    config *inbound.WorkerConfig,
     logger *slog.Logger,
-) (Worker, error)
+) (inbound.Worker, error)
 ```
 
 The pool calls the factory under its write lock when `Add` or `Replace` is called. The factory must return without blocking. The pool constructs `logger` from the worker logging config before calling the factory; pass it to your worker or ignore it.
 
-The factory is set via `WithInboundWorkerFactory` on the pool config.
+The factory is set via `inbound.WithWorkerFactory` on the pool config.
 
 ### Building Blocks
 
@@ -94,16 +106,16 @@ The default inbound worker is assembled from these exported functions. Each can 
 ### Factory Signature
 
 ```go
-type WorkerFactory func(
+type outbound.WorkerFactory func(
     ctx    context.Context,
     id     string,
     logger *slog.Logger,
-) (Worker, error)
+) (outbound.Worker, error)
 ```
 
 The pool calls the factory under its write lock when `Connect` is called. The factory must return without blocking. Note that the outbound factory does not receive a `*transport.Connection`; the worker is responsible for dialing and managing its own connections. The pool constructs `logger` from the worker logging config before calling the factory.
 
-The factory is set via `WithOutboundWorkerFactory` on the pool config.
+The factory is set via `outbound.WithWorkerFactory` on the pool config.
 
 ### Building Blocks
 

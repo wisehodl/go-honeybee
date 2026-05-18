@@ -5,8 +5,6 @@ WebSocket connection and pool primitives in Go. Built for Nostr.
 ## Library Map
 
 ```txt
-honeybee.go            top-level re-exports and constructors
-
 transport/             single-connection primitives
   connection.go          *Connection, state machine, reader goroutine, pinger
   config.go              ConnectionConfig, RetryConfig, options
@@ -27,7 +25,7 @@ outbound/              pool for self-initiated connections
 logging/               structured log construction
   logging.go             logger constructors, ForcedLevelHandler
 
-types/                 shared interfaces (Dialer, Socket)
+types/                 internal interfaces
 honeybeetest/          test helpers and mocks for consumers
 ````
 
@@ -71,10 +69,12 @@ replace git.wisehodl.dev/jay/go-honeybee => github.com/wisehodl/go-honeybee late
 
 ### Bare Connection
 
-A `Connection` wraps a single WebSocket. Use it directly when you need one socket and do not want pool semantics.
+Use `transport` directly when you need one socket and do not want pool semantics.
 
 ```go
-conn, err := honeybee.NewConnection("wss://example.com", nil, nil)
+import "git.wisehodl.dev/jay/go-honeybee/transport"
+
+conn, err := transport.NewConnection("wss://example.com", nil, nil)
 if err != nil { /* handle error */ }
 
 if err := conn.Connect(ctx); err != nil { /* handle error */ }
@@ -116,7 +116,9 @@ The inbound pool manages connections initiated by peers. The consumer accepts a 
 Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
 
 ```go
-pool, err := honeybee.NewInboundPool(ctx, "my-pool", nil, handler)
+import "git.wisehodl.dev/jay/go-honeybee/inbound"
+
+pool, err := inbound.NewPool(ctx, "my-pool", nil, handler)
 if err != nil { /* handle error */ }
 defer pool.Close()
 
@@ -137,10 +139,10 @@ go func() {
     for ev := range pool.Events() {
         // ev.At             is the event timestamp
         switch ev.Kind {
-        case honeybee.InboundEventDisconnected:  // clean close
-        case honeybee.InboundEventDroppedClose:  // peer closed with abnormal code
-        case honeybee.InboundEventDroppedError:  // read error
-        case honeybee.InboundEventEvictedPolicy: // inactivity timeout
+        case inbound.EventDisconnected:  // clean close
+        case inbound.EventDroppedClose:  // peer closed with abnormal code
+        case inbound.EventDroppedError:  // read error
+        case inbound.EventEvictedPolicy: // inactivity timeout
         }
     }
 }()
@@ -152,7 +154,7 @@ pool.Send(peerID, []byte("response"))
 
 Use `Replace` if you need to swap the socket for a peer while keeping its ID. No events are emitted during this process.
 
-The watchdog is configured via `WithInboundInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog observes message traffic and disconnects the peer if no messages arrive within the configured duration. The watchdog is disabled by default, meaning connections persist until manually removed or remotely terminated.
+The watchdog is configured via `inbound.WithInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog observes message traffic and disconnects the peer if no messages arrive within the configured duration. The watchdog is disabled by default, meaning connections persist until manually removed or remotely terminated.
 
 ### Outbound Pool
 
@@ -161,7 +163,9 @@ The outbound pool connects to peers by their URLs and keeps them connected. It r
 Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
 
 ```go
-pool, err := honeybee.NewOutboundPool(ctx, "my-pool", nil, handler)
+import "git.wisehodl.dev/jay/go-honeybee/outbound"
+
+pool, err := outbound.NewPool(ctx, "my-pool", nil, handler)
 if err != nil { /* handle error */ }
 defer pool.Close()
 
@@ -179,8 +183,8 @@ go func() {
     for ev := range pool.Events() {
         // ev.At             is the event timestamp
         switch ev.Kind {
-        case honeybee.OutboundEventConnected:
-        case honeybee.OutboundEventDisconnected:
+        case outbound.EventConnected:
+        case outbound.EventDisconnected:
         }
     }
 }()
@@ -188,11 +192,11 @@ go func() {
 pool.Send("wss://peer.example.com", []byte("hello"))
 ```
 
-URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `honeybee.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
+URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `outbound.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
 
-Every time a connection is established, `OutboundEventConnected` is emitted. Every time a connection drops for any reason, `OutboundEventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
+Every time a connection is established, `outbound.EventConnected` is emitted. Every time a connection drops for any reason, `outbound.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
 
-Keepalive is configured via `WithOutboundKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
+Keepalive is configured via `outbound.WithKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
 
 After a disconnect, the worker waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
 
@@ -208,7 +212,7 @@ For inbound workers, pong-derived heartbeats reset the inactivity watchdog timer
 
 For outbound workers, pong-derived heartbeats reset the keepalive timer. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-The ping interval is configured via `WithPingInterval` on the `ConnectionConfig`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
+The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool via `inbound.WithConnectionConfig` or `outbound.WithConnectionConfig`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
 ## Statistics
 
@@ -228,8 +232,8 @@ peerStats, err := pool.PeerStats(peerID)
 // peerStats.Worker      — queue depths, buffer depth, processed/dropped/sent counts
 // peerStats.Connection  — channel depths, receive/send/heartbeat counts (inbound)
 
-// Bare connection
-connStats := conn.Stats()
+// Bare connection (transport package)
+connStats := conn.Stats() // conn is a *transport.Connection
 // connStats.TotalReceived, connStats.TotalSent, connStats.TotalHeartbeats
 ```
 
@@ -263,8 +267,8 @@ go test -race ./...
 
 The `honeybeetest` package provides mocks and assertions for code that builds on Honeybee:
 
-- `MockSocket` implements `types.Socket` with pluggable function fields for every method, including `WriteControl` and `SetPongHandler`.
-- `MockDialer` implements `types.Dialer` with a pluggable `DialContextFunc`.
+- `MockSocket` implements `honeybeetest.Socket` with pluggable function fields for every method, including `WriteControl` and `SetPongHandler`.
+- `MockDialer` implements `honeybeetest.Dialer` with a pluggable `DialContextFunc`.
 - `MockSlogHandler` captures `slog` records for assertions against log output. Child handlers produced via `WithAttrs` share the same record slice as the parent, so attributes added by the logging package appear on the correct records.
 - `Eventually(t, condition, msg)` polls a condition until it holds or the test timeout expires.
 - `Never(t, condition, msg)` asserts a condition never holds over a short window.

@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// Re-exported types for consumer convenience
+
+type InboxMessage = types.InboxMessage
+type Dialer = types.Dialer
+
+var NormalizeURL = transport.NormalizeURL
+
 // Types
 
 type PoolEventKind string

@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// Re-exported types for consumer convenience
+
+type Socket = types.Socket
+type Dialer = types.Dialer
+
 // Dialer Mocks
 
 type MockDialer struct {

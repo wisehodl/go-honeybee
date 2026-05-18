@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+// Re-exported types for consumer convenience
+
+type Socket = types.Socket
+type InboxMessage = types.InboxMessage
+
+var NormalizeURL = transport.NormalizeURL
+
 // Types
 
 type PoolEventKind string

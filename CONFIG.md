@@ -8,7 +8,9 @@ Logging can be controlled independently at the pool, worker, and connection leve
 
 ## Connection Options
 
-These are passed to `NewConnectionConfig` or supplied via `WithInboundConnectionConfig` / `WithOutboundConnectionConfig`.
+`ConnectionConfig` is defined in the `transport` package. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct one, then pass it to a pool via `inbound.WithConnectionConfig` or `outbound.WithConnectionConfig`.
+
+These options are passed to `transport.NewConnectionConfig`.
 
 ### Write Behavior
 
@@ -63,95 +65,99 @@ Overrides the minimum log level for connection-scoped records. Does not affect p
 
 ## Inbound Pool Options
 
+Import `git.wisehodl.dev/jay/go-honeybee/inbound`.
+
 ### Pool
 
-These are passed to `NewInboundPoolConfig`.
+These are passed to `inbound.NewPoolConfig`.
 
-**`WithInboundInboxBufferSize(int)`**
+**`inbound.WithInboxBufferSize(int)`**
 Sets the capacity of the pool's shared inbox channel. Must be at least 1.
 
-**`WithInboundEventsBufferSize(int)`**
+**`inbound.WithEventsBufferSize(int)`**
 Sets the capacity of the pool's events channel. Must be at least 1.
 
-**`WithInboundPoolLoggingEnabled(bool)`**
+**`inbound.WithPoolLoggingEnabled(bool)`**
 Enables or disables pool-level logging.
 
-**`WithInboundPoolLogLevel(slog.Level)`**
+**`inbound.WithPoolLogLevel(slog.Level)`**
 Overrides the minimum log level for pool-scoped records only.
 
 ### Worker
 
-These are passed to `NewInboundWorkerConfig` or embedded in the pool config.
+These are passed to `inbound.NewWorkerConfig` or embedded in the pool config.
 
-**`WithInboundInactivityTimeout(duration)`**
-Enables the inactivity watchdog. When no data messages or pong replies arrive within this duration, the peer is evicted and `InboundEventEvictedPolicy` is emitted. When set to zero, the watchdog is disabled and connections persist until removed or remotely terminated. Must not be negative.
+**`inbound.WithInactivityTimeout(duration)`**
+Enables the inactivity watchdog. When no data messages or pong replies arrive within this duration, the peer is evicted and `inbound.EventEvictedPolicy` is emitted. When set to zero, the watchdog is disabled and connections persist until removed or remotely terminated. Must not be negative.
 
-**`WithInboundMaxQueueSize(int)`**
+**`inbound.WithMaxQueueSize(int)`**
 Bounds the worker's internal message queue. When the queue is full, the oldest undelivered message is dropped. When set to zero, the queue is unbounded. Must not be negative.
 
-**`WithInboundWorkerLoggingEnabled(bool)`**
+**`inbound.WithWorkerLoggingEnabled(bool)`**
 Enables or disables worker-level logging.
 
-**`WithInboundWorkerLogLevel(slog.Level)`**
+**`inbound.WithWorkerLogLevel(slog.Level)`**
 Overrides the minimum log level for worker-scoped records only.
 
 ### Wiring
 
-**`WithInboundConnectionConfig(*ConnectionConfig)`**
+**`inbound.WithConnectionConfig(*transport.ConnectionConfig)`**
 Supplies a connection config that is applied to every socket added to the pool.
 
-**`WithInboundWorkerConfig(*WorkerConfig)`**
+**`inbound.WithWorkerConfig(*inbound.WorkerConfig)`**
 Supplies a worker config that is applied to every worker the pool creates.
 
-**`WithInboundWorkerFactory(WorkerFactory)`**
+**`inbound.WithWorkerFactory(inbound.WorkerFactory)`**
 Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the factory contract.
 
 ## Outbound Pool Options
 
+Import `git.wisehodl.dev/jay/go-honeybee/outbound`.
+
 ### Pool
 
-These are passed to `NewOutboundPoolConfig`.
+These are passed to `outbound.NewPoolConfig`.
 
-**`WithOutboundInboxBufferSize(int)`**
+**`outbound.WithInboxBufferSize(int)`**
 Sets the capacity of the pool's shared inbox channel. Must be at least 1.
 
-**`WithOutboundEventsBufferSize(int)`**
+**`outbound.WithEventsBufferSize(int)`**
 Sets the capacity of the pool's events channel. Must be at least 1.
 
-**`WithOutboundPoolLoggingEnabled(bool)`**
+**`outbound.WithPoolLoggingEnabled(bool)`**
 Enables or disables pool-level logging.
 
-**`WithOutboundPoolLogLevel(slog.Level)`**
+**`outbound.WithPoolLogLevel(slog.Level)`**
 Overrides the minimum log level for pool-scoped records only.
 
 ### Worker
 
-These are passed to `NewOutboundWorkerConfig` or embedded in the pool config.
+These are passed to `outbound.NewWorkerConfig` or embedded in the pool config.
 
-**`WithOutboundKeepaliveTimeout(duration)`**
+**`outbound.WithKeepaliveTimeout(duration)`**
 Enables the keepalive mechanism. When no heartbeat (inbound data, outbound send, or pong reply) is observed within this duration, the current connection is closed and a new one is dialed. When set to zero, keepalive is disabled. Must not be negative.
 
-**`WithReconnectDelay(duration)`**
+**`outbound.WithReconnectDelay(duration)`**
 Sets the delay between a disconnect and the next dial attempt. Applies after every session end, including those triggered by keepalive. The default of 2 seconds prevents tight reconnect loops against unavailable peers. Set to zero in tests or when immediate reconnection is required. Must not be negative.
 
-**`WithOutboundMaxQueueSize(int)`**
+**`outbound.WithMaxQueueSize(int)`**
 Bounds the worker's internal message queue. When the queue is full, the oldest undelivered message is dropped. When set to zero, the queue is unbounded. Must not be negative.
 
-**`WithOutboundWorkerLoggingEnabled(bool)`**
+**`outbound.WithWorkerLoggingEnabled(bool)`**
 Enables or disables worker-level logging.
 
-**`WithOutboundWorkerLogLevel(slog.Level)`**
+**`outbound.WithWorkerLogLevel(slog.Level)`**
 Overrides the minimum log level for worker-scoped records only.
 
 ### Wiring
 
-**`WithOutboundConnectionConfig(*ConnectionConfig)`**
+**`outbound.WithConnectionConfig(*transport.ConnectionConfig)`**
 Supplies a connection config used when dialing each peer.
 
-**`WithOutboundWorkerConfig(*WorkerConfig)`**
+**`outbound.WithWorkerConfig(*outbound.WorkerConfig)`**
 Supplies a worker config applied to every worker the pool creates.
 
-**`WithOutboundWorkerFactory(WorkerFactory)`**
+**`outbound.WithWorkerFactory(outbound.WorkerFactory)`**
 Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the factory contract.
 
 ## Defaults
