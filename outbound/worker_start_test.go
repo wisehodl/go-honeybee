@@ -40,8 +40,6 @@ func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *D
 		id:             "wss://test",
 		config:         config,
 		heartbeat:      make(chan struct{}),
-		toQueue:        make(chan types.ReceivedMessage, 256),
-		toForwarder:    make(chan types.ReceivedMessage, 256),
 		processedCount: &atomic.Uint64{},
 		droppedCount:   &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},

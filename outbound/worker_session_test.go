@@ -29,7 +29,7 @@ type testVars struct {
 	keepalive chan struct{}
 	heartbeat chan struct{}
 	newConn   chan *transport.Connection
-	messages  chan types.ReceivedMessage
+	poolInbox chan types.InboxMessage
 
 	conn         *transport.Connection
 	mockSocket   *honeybeetest.MockSocket
@@ -53,7 +53,7 @@ func setup(t *testing.T) (
 		keepalive:    make(chan struct{}, 1),
 		heartbeat:    make(chan struct{}, 1),
 		newConn:      make(chan *transport.Connection, 1),
-		messages:     make(chan types.ReceivedMessage, 256),
+		poolInbox:    make(chan types.InboxMessage, 256),
 		conn:         conn,
 		mockSocket:   mockSocket,
 		incomingData: incomingData,
@@ -84,7 +84,7 @@ func TestRunSessionDial(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -104,7 +104,7 @@ func TestRunSessionDial(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -128,7 +128,7 @@ func TestRunSessionDial(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -156,7 +156,7 @@ func TestRunSessionConnect(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -181,7 +181,7 @@ func TestRunSessionConnect(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -213,7 +213,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		session := &Session{
 			id:           v.id,
 			connPtr:      v.connPtr,
-			messages:     v.messages,
+			poolInbox:    v.poolInbox,
 			heartbeat:    v.heartbeat,
 			dial:         v.dial,
 			keepalive:    v.keepalive,
@@ -240,7 +240,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		session := &Session{
 			id:           v.id,
 			connPtr:      v.connPtr,
-			messages:     v.messages,
+			poolInbox:    v.poolInbox,
 			heartbeat:    v.heartbeat,
 			dial:         v.dial,
 			keepalive:    v.keepalive,
@@ -270,7 +270,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		session := &Session{
 			id:           v.id,
 			connPtr:      v.connPtr,
-			messages:     v.messages,
+			poolInbox:    v.poolInbox,
 			heartbeat:    v.heartbeat,
 			dial:         v.dial,
 			keepalive:    v.keepalive,
@@ -308,7 +308,7 @@ func TestRunSessionDisconnect(t *testing.T) {
 		session := &Session{
 			id:           v.id,
 			connPtr:      v.connPtr,
-			messages:     v.messages,
+			poolInbox:    v.poolInbox,
 			heartbeat:    v.heartbeat,
 			dial:         v.dial,
 			keepalive:    v.keepalive,
@@ -338,7 +338,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -379,7 +379,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,
@@ -415,7 +415,7 @@ func TestRunSessionCancellation(t *testing.T) {
 		session := &Session{
 			id:        v.id,
 			connPtr:   v.connPtr,
-			messages:  v.messages,
+			poolInbox: v.poolInbox,
 			heartbeat: v.heartbeat,
 			dial:      v.dial,
 			keepalive: v.keepalive,

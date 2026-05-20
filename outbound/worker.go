@@ -3,7 +3,6 @@ package outbound
 import (
 	"context"
 	"git.wisehodl.dev/jay/go-honeybee/logging"
-	"git.wisehodl.dev/jay/go-honeybee/queue"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
@@ -24,8 +23,6 @@ type Worker interface {
 type WorkerStats struct {
 	IncomingAvailable bool
 	ChanIncoming      int
-	ChanQueue         int
-	ChanForwarder     int
 	BufferDepth       int64
 
 	ConnectionAvailable bool
@@ -41,9 +38,7 @@ type DefaultWorker struct {
 	id   string
 	conn atomic.Pointer[transport.Connection]
 
-	heartbeat   chan struct{}
-	toQueue     chan types.ReceivedMessage
-	toForwarder chan types.ReceivedMessage
+	heartbeat chan struct{}
 
 	processedCount *atomic.Uint64
 	droppedCount   *atomic.Uint64
@@ -75,8 +70,6 @@ func NewWorker(
 		id:             id,
 		config:         config,
 		heartbeat:      make(chan struct{}),
-		toQueue:        make(chan types.ReceivedMessage, 256),
-		toForwarder:    make(chan types.ReceivedMessage, 256),
 		processedCount: &atomic.Uint64{},
 		droppedCount:   &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
@@ -100,7 +93,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 	keepalive := make(chan struct{}, 1)
 
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
@@ -114,20 +107,10 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		queue.RunQueue(w.id, w.ctx, w.toQueue, w.toForwarder, w.config.MaxQueueSize, w.droppedCount, w.bufferDepth)
-	}()
-
-	go func() {
-		defer wg.Done()
-		RunForwarder(w.id, w.ctx, w.toForwarder, pool.Inbox, w.processedCount, pool.InboxCounter)
-	}()
-
-	go func() {
-		defer wg.Done()
 		session := &Session{
 			id:             w.id,
 			connPtr:        &w.conn,
-			messages:       w.toQueue,
+			poolInbox:      pool.Inbox,
 			heartbeat:      w.heartbeat,
 			dial:           dial,
 			keepalive:      keepalive,
@@ -193,8 +176,6 @@ func (w *DefaultWorker) Stats() WorkerStats {
 	return WorkerStats{
 		IncomingAvailable: connectionAvailable,
 		ChanIncoming:      incomingLen,
-		ChanQueue:         len(w.toQueue),
-		ChanForwarder:     len(w.toForwarder),
 		BufferDepth:       w.bufferDepth.Load(),
 
 		ConnectionAvailable: connectionAvailable,
@@ -211,7 +192,7 @@ type Session struct {
 	id      string
 	connPtr *atomic.Pointer[transport.Connection]
 
-	messages  chan<- types.ReceivedMessage
+	poolInbox chan<- types.InboxMessage
 	heartbeat chan<- struct{}
 	dial      chan<- struct{}
 
@@ -276,7 +257,7 @@ func (s *Session) Start(
 		wg.Add(3)
 		go func() {
 			defer wg.Done()
-			RunReader(sctx, onStop, conn, s.messages, s.heartbeat, s.logger)
+			RunReader(s.id, sctx, onStop, conn, s.poolInbox, s.heartbeat, s.logger)
 		}()
 		go func() {
 			defer wg.Done()
@@ -317,10 +298,11 @@ func (s *Session) Start(
 }
 
 func RunReader(
+	id string,
 	ctx context.Context,
 	onStop func(),
 	conn *transport.Connection,
-	messages chan<- types.ReceivedMessage,
+	poolInbox chan<- types.InboxMessage,
 	heartbeat chan<- struct{},
 	logger *slog.Logger,
 ) {
@@ -347,7 +329,11 @@ func RunReader(
 			}
 
 			// send message forward
-			messages <- types.ReceivedMessage{Data: data, ReceivedAt: time.Now()}
+			poolInbox <- types.InboxMessage{
+				ID:         id,
+				Data:       data,
+				ReceivedAt: time.Now(),
+			}
 
 			// send heartbeat
 			select {
@@ -403,38 +389,6 @@ func RunStopMonitor(
 	case <-keepalive:
 		if logger != nil {
 			logger.Debug("stop monitor: stopping: keepalive")
-		}
-	}
-}
-
-func RunForwarder(
-	id string,
-	ctx context.Context,
-	messages <-chan types.ReceivedMessage,
-	inbox chan<- types.InboxMessage,
-	workerProcessedCount *atomic.Uint64,
-	poolInboxCount *atomic.Uint64,
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-messages:
-			if !ok {
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-
-			case inbox <- types.InboxMessage{
-				ID:         id,
-				Data:       msg.Data,
-				ReceivedAt: msg.ReceivedAt,
-			}:
-				workerProcessedCount.Add(1)
-				poolInboxCount.Add(1)
-			}
 		}
 	}
 }
@@ -558,7 +512,7 @@ func RunDialer(
 					goto drained
 				}
 			}
-			drained:
+		drained:
 
 			// send the new connection or close and exit
 			select {

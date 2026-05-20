@@ -19,7 +19,7 @@ func TestRunReader(t *testing.T) {
 		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
-		messages := make(chan types.ReceivedMessage, 1)
+		inbox := make(chan types.InboxMessage, 1)
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -28,7 +28,7 @@ func TestRunReader(t *testing.T) {
 			for range heartbeat {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
+		go RunReader("wss://test", ctx, cancel, conn, inbox, heartbeat, nil)
 
 		before := time.Now()
 		incomingData <- honeybeetest.MockIncomingData{
@@ -38,7 +38,7 @@ func TestRunReader(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
-			case msg := <-messages:
+			case msg := <-inbox:
 				return string(msg.Data) == "hello" && msg.ReceivedAt.After(before)
 			default:
 				return false
@@ -50,7 +50,7 @@ func TestRunReader(t *testing.T) {
 		conn, _, incomingData, _ := setupTestConnection(t)
 		defer conn.Close()
 
-		messages := make(chan types.ReceivedMessage, 10)
+		inbox := make(chan types.InboxMessage, 10)
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -62,10 +62,10 @@ func TestRunReader(t *testing.T) {
 			}
 		}()
 		go func() {
-			for range messages {
+			for range inbox {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
+		go RunReader("wss://test", ctx, cancel, conn, inbox, heartbeat, nil)
 
 		const count = 3
 		for i := 0; i < count; i++ {
@@ -83,7 +83,7 @@ func TestRunReader(t *testing.T) {
 	t.Run("incoming channel close calls conn.Close and onStop", func(t *testing.T) {
 		conn, _, incomingData, _ := setupTestConnection(t)
 
-		messages := make(chan types.ReceivedMessage, 1)
+		inbox := make(chan types.InboxMessage, 1)
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -93,10 +93,10 @@ func TestRunReader(t *testing.T) {
 			}
 		}()
 		go func() {
-			for range messages {
+			for range inbox {
 			}
 		}()
-		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
+		go RunReader("wss://test", ctx, cancel, conn, inbox, heartbeat, nil)
 
 		// induce connection closure via reader
 		incomingData <- honeybeetest.MockIncomingData{Err: io.EOF}
@@ -121,11 +121,11 @@ func TestRunReader(t *testing.T) {
 	t.Run("sessionDone close calls conn.Close and onStop", func(t *testing.T) {
 		conn, _, _, _ := setupTestConnection(t)
 
-		messages := make(chan types.ReceivedMessage, 1)
+		inbox := make(chan types.InboxMessage, 1)
 		heartbeat := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
 
-		go RunReader(ctx, cancel, conn, messages, heartbeat, nil)
+		go RunReader("wss://test", ctx, cancel, conn, inbox, heartbeat, nil)
 
 		cancel()
 
