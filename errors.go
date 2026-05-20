@@ -7,7 +7,6 @@ var (
 	// Config errors
 	InvalidKeepaliveTimeout = errors.New("keepalive timeout cannot be negative")
 	InvalidReconnectDelay   = errors.New("reconnect delay cannot be negative")
-	InvalidMaxQueueSize     = errors.New("maximum queue size cannot be negative")
 	InvalidBufferSize       = errors.New("buffer size must be greater than zero")
 
 	// Pool errors

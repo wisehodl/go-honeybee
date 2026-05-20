@@ -142,7 +142,7 @@ func (p *Pool) Peers() []string {
 	defer p.mu.RUnlock()
 
 	ids := make([]string, 0, len(p.peers))
-	for i, _ := range p.peers {
+	for i := range p.peers {
 		ids = append(ids, i)
 	}
 	return ids
@@ -255,9 +255,11 @@ func (p *Pool) Connect(id string) error {
 	}
 
 	var logger *slog.Logger
-	if p.handler != nil && p.config.WorkerConfig.LoggingEnabled {
-		logger = logging.NewOutboundWorkerLogger(
-			logging.WrapOrDefault(p.config.WorkerConfig.LogLevel, p.handler), p.id, id)
+	if p.handler != nil && p.config.WorkerConfig != nil {
+		if p.config.WorkerConfig.LoggingEnabled {
+			logger = logging.NewOutboundWorkerLogger(
+				logging.WrapOrDefault(p.config.WorkerConfig.LogLevel, p.handler), p.id, id)
+		}
 	}
 
 	// The worker factory must be non-blocking to avoid deadlocks
