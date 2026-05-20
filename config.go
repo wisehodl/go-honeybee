@@ -157,7 +157,6 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 type WorkerConfig struct {
 	KeepaliveTimeout time.Duration
 	ReconnectDelay   time.Duration
-	MaxQueueSize     int
 	LoggingEnabled   bool
 	LogLevel         *slog.Level
 }
@@ -179,7 +178,6 @@ func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
 		KeepaliveTimeout: 60 * time.Second,
 		ReconnectDelay:   2 * time.Second,
-		MaxQueueSize:     0, // disabled by default
 		LoggingEnabled:   true,
 		LogLevel:         nil,
 	}
@@ -200,18 +198,6 @@ func ValidateWorkerConfig(config *WorkerConfig) error {
 		return err
 	}
 
-	err = validateMaxQueueSize(config.MaxQueueSize)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func validateMaxQueueSize(value int) error {
-	if value < 0 {
-		return InvalidMaxQueueSize
-	}
 	return nil
 }
 
@@ -248,18 +234,6 @@ func WithReconnectDelay(value time.Duration) WorkerOption {
 			return err
 		}
 		c.ReconnectDelay = value
-		return nil
-	}
-}
-
-// When MaxQueueSize is set to zero, queue limits are disabled.
-func WithMaxQueueSize(value int) WorkerOption {
-	return func(c *WorkerConfig) error {
-		err := validateMaxQueueSize(value)
-		if err != nil {
-			return err
-		}
-		c.MaxQueueSize = value
 		return nil
 	}
 }

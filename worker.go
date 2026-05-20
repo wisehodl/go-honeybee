@@ -23,13 +23,11 @@ type Worker interface {
 type WorkerStats struct {
 	IncomingAvailable bool
 	ChanIncoming      int
-	BufferDepth       int64
 
 	ConnectionAvailable bool
 	Connection          transport.ConnectionStats
 
 	TotalProcessed uint64
-	TotalDropped   uint64
 	TotalSent      uint64
 	TotalRestarts  uint64
 }
@@ -41,10 +39,8 @@ type DefaultWorker struct {
 	heartbeat chan struct{}
 
 	processedCount *atomic.Uint64
-	droppedCount   *atomic.Uint64
 	outgoingCount  *atomic.Uint64
 	restartCount   *atomic.Uint64
-	bufferDepth    *atomic.Int64
 
 	config *WorkerConfig
 	ctx    context.Context
@@ -71,10 +67,8 @@ func NewWorker(
 		config:         config,
 		heartbeat:      make(chan struct{}),
 		processedCount: &atomic.Uint64{},
-		droppedCount:   &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		restartCount:   &atomic.Uint64{},
-		bufferDepth:    &atomic.Int64{},
 		ctx:            wctx,
 		cancel:         wcancel,
 		logger:         logger,
@@ -176,13 +170,11 @@ func (w *DefaultWorker) Stats() WorkerStats {
 	return WorkerStats{
 		IncomingAvailable: connectionAvailable,
 		ChanIncoming:      incomingLen,
-		BufferDepth:       w.bufferDepth.Load(),
 
 		ConnectionAvailable: connectionAvailable,
 		Connection:          connStats,
 
 		TotalProcessed: w.processedCount.Load(),
-		TotalDropped:   w.droppedCount.Load(),
 		TotalRestarts:  w.restartCount.Load(),
 		TotalSent:      w.outgoingCount.Load(),
 	}
