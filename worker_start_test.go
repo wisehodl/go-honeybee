@@ -41,10 +41,8 @@ func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *D
 		config:         config,
 		heartbeat:      make(chan struct{}),
 		processedCount: &atomic.Uint64{},
-		droppedCount:   &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		restartCount:   &atomic.Uint64{},
-		bufferDepth:    &atomic.Int64{},
 	}
 }
 
