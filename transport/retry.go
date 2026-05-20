@@ -59,22 +59,16 @@ func (r *RetryManager) CalculateDelay() time.Duration {
 	}
 
 	// Exponential backoff: InitialDelay * 2^(attempts-1)
-	shift := r.retryCount - 1
-	if shift > 62 {
-		shift = 62
-	} // prevent overflow
+	shift := min(r.retryCount-1, 62) // prevent overflow
 	backoffMultiplier := float64(int64(1) << shift)
 	baseDelay := float64(r.config.InitialDelay) * backoffMultiplier
 
 	// Apply jitter: delay * (1 + jitterFactor * (random - 0.5))
 	random := rand.Float64()
 	jitterMultiplier := 1 + r.config.JitterFactor*(random-0.5)
-	delay := time.Duration(baseDelay * jitterMultiplier)
-
-	// Cap at MaxDelay
-	if delay > r.config.MaxDelay {
-		delay = r.config.MaxDelay
-	}
+	delay := min(
+		// Cap at MaxDelay
+		time.Duration(baseDelay*jitterMultiplier), r.config.MaxDelay)
 
 	return delay
 }

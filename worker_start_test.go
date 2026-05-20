@@ -65,11 +65,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -91,11 +89,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -144,11 +140,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -184,11 +178,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -230,11 +222,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {
@@ -278,11 +268,9 @@ func TestWorkerStart(t *testing.T) {
 		pool.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			w.Start(pool)
-			wg.Done()
-		}()
+		})
 
 		honeybeetest.Eventually(t, func() bool {
 			select {

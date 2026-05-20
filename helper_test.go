@@ -1,6 +1,7 @@
 package honeybee
 
 import (
+	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ func setupTestConnection(t *testing.T) (
 	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
 
 	var err error
-	conn, err = transport.NewConnectionFromSocket(socket, nil, nil)
+	conn, err = transport.NewConnectionFromSocket(context.Background(), socket, nil, nil)
 	assert.NoError(t, err)
 	return
 }

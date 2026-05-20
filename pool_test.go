@@ -15,7 +15,7 @@ import (
 
 func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 	t.Helper()
-	pool, err := NewPool(context.Background(), "pool-1", nil, nil)
+	pool, err := NewPool(context.Background(), nil, nil)
 	assert.NoError(t, err)
 	dialer := &honeybeetest.MockDialer{
 		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
@@ -44,11 +44,6 @@ func expectEvent(
 }
 
 // Tests
-
-func TestPoolID(t *testing.T) {
-	_, err := NewPool(context.Background(), "", nil, nil)
-	assert.ErrorIs(t, err, ErrInvalidPoolID)
-}
 
 func TestPoolConnect(t *testing.T) {
 	t.Run("successfully adds connection", func(t *testing.T) {
@@ -90,7 +85,7 @@ func TestPoolConnect(t *testing.T) {
 
 func TestPoolClose(t *testing.T) {
 	t.Run("channels close after pool close", func(t *testing.T) {
-		pool, _ := NewPool(context.Background(), "pool-1", nil, nil)
+		pool, _ := NewPool(context.Background(), nil, nil)
 		pool.Close()
 		_, ok := <-pool.Inbox()
 		assert.False(t, ok)
@@ -99,7 +94,7 @@ func TestPoolClose(t *testing.T) {
 	})
 
 	t.Run("connect after close returns error", func(t *testing.T) {
-		pool, _ := NewPool(context.Background(), "pool-1", nil, nil)
+		pool, _ := NewPool(context.Background(), nil, nil)
 		pool.Close()
 		err := pool.Connect("wss://test")
 		assert.ErrorIs(t, err, ErrPoolClosed)
@@ -157,7 +152,7 @@ func TestPoolSend(t *testing.T) {
 		},
 	}
 
-	pool, err := NewPool(context.Background(), "pool-1", nil, nil)
+	pool, err := NewPool(context.Background(), nil, nil)
 	assert.NoError(t, err)
 	pool.dialer = mockDialer
 

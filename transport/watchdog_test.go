@@ -12,15 +12,14 @@ import (
 func TestIdleWatchdog(t *testing.T) {
 	t.Run("heartbeat resets timer, onTimeout not called", func(t *testing.T) {
 		activity := make(chan struct{})
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		called := atomic.Bool{}
 		go IdleWatchdog(
 			ctx, activity, 200*time.Millisecond, func() { called.Store(true) },
 		)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			time.Sleep(20 * time.Millisecond)
 			activity <- struct{}{}
 		}
@@ -32,8 +31,7 @@ func TestIdleWatchdog(t *testing.T) {
 
 	t.Run("timeout fires onTimeout exactly once", func(t *testing.T) {
 		activity := make(chan struct{})
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		count := atomic.Int32{}
 		done := make(chan struct{})
@@ -123,7 +121,7 @@ func TestIdleWatchdog(t *testing.T) {
 		}()
 
 		// these must not block
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			activity <- struct{}{}
 		}
 

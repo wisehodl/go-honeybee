@@ -68,10 +68,10 @@ func TestRunReader(t *testing.T) {
 		go RunReader("wss://test", ctx, cancel, conn, inbox, heartbeat, nil)
 
 		const count = 3
-		for i := 0; i < count; i++ {
+		for i := range count {
 			incomingData <- honeybeetest.MockIncomingData{
 				MsgType: websocket.TextMessage,
-				Data:    []byte(fmt.Sprintf("msg-%d", i)),
+				Data:    fmt.Appendf(nil, "msg-%d", i),
 			}
 		}
 
@@ -150,12 +150,11 @@ func TestHeartbeatForwarder(t *testing.T) {
 		var pongHandler func(string) error
 		socket.SetPongHandlerFunc = func(h func(string) error) { pongHandler = h }
 
-		conn, err := transport.NewConnectionFromSocket(socket, nil, nil)
+		conn, err := transport.NewConnectionFromSocket(context.Background(), socket, nil, nil)
 		assert.NoError(t, err)
 
 		heartbeat := make(chan struct{}, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go RunHeartbeatForwarder(ctx, conn, heartbeat, nil)
 

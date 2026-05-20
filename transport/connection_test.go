@@ -39,11 +39,11 @@ func TestConnectionStateString(t *testing.T) {
 
 func TestConnectionState(t *testing.T) {
 	// Test initial state
-	conn, _ := NewConnection("ws://test", nil, nil)
+	conn, _ := NewConnection(context.Background(), "ws://test", nil, nil)
 	assert.Equal(t, StateDisconnected, conn.State())
 
 	// Test state after FromSocket (should be Connected)
-	conn2, _ := NewConnectionFromSocket(honeybeetest.NewMockSocket(), nil, nil)
+	conn2, _ := NewConnectionFromSocket(context.Background(), honeybeetest.NewMockSocket(), nil, nil)
 	assert.Equal(t, StateConnected, conn2.State())
 
 	// Test state after close
@@ -94,7 +94,7 @@ func TestNewConnection(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			conn, err := NewConnection(tc.url, tc.config, nil)
+			conn, err := NewConnection(context.Background(), tc.url, tc.config, nil)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -194,7 +194,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 				}
 			}
 
-			conn, err := NewConnectionFromSocket(tc.socket, tc.config, nil)
+			conn, err := NewConnectionFromSocket(context.Background(), tc.socket, tc.config, nil)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -236,7 +236,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	t.Run("connect fails when socket already present", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		conn.socket = honeybeetest.NewMockSocket()
@@ -248,7 +248,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect fails when connection closed", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		conn.Close()
@@ -260,7 +260,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("connect succeeds and starts goroutines", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
@@ -306,7 +306,7 @@ func TestConnect(t *testing.T) {
 				JitterFactor: 0.0,
 			},
 		}
-		conn, err := NewConnection("ws://test", config, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
 		attemptCount := 0
@@ -338,7 +338,7 @@ func TestConnect(t *testing.T) {
 				JitterFactor: 0.0,
 			},
 		}
-		conn, err := NewConnection("ws://test", config, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
 		mockDialer := &honeybeetest.MockDialer{
@@ -355,7 +355,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("state transitions during connect", func(t *testing.T) {
-		conn, err := NewConnection("ws://test", nil, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, StateDisconnected, conn.State())
 
@@ -383,7 +383,7 @@ func TestConnect(t *testing.T) {
 				return nil
 			},
 		}
-		conn, err := NewConnection("ws://test", config, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
 		mockSocket := honeybeetest.NewMockSocket()
@@ -408,7 +408,7 @@ func TestConnect(t *testing.T) {
 	t.Run("passes headers when configured", func(t *testing.T) {
 		header := http.Header{"X-Custom": []string{"val"}}
 		conf, _ := NewConnectionConfig(WithRequestHeader(header))
-		conn, _ := NewConnection("ws://test", conf, nil)
+		conn, _ := NewConnection(context.Background(), "ws://test", conf, nil)
 
 		dialCalled := false
 		conn.dialer = &honeybeetest.MockDialer{
@@ -436,7 +436,7 @@ func TestConnectContextCancellation(t *testing.T) {
 				JitterFactor: 0.0,
 			},
 		}
-		conn, err := NewConnection("ws://test", config, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
 		dialCount := atomic.Int32{}
@@ -475,7 +475,7 @@ func TestConnectContextCancellation(t *testing.T) {
 // Connection method tests
 
 func TestConnectionIncoming(t *testing.T) {
-	conn, err := NewConnection("ws://test", nil, nil)
+	conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 	assert.NoError(t, err)
 
 	incoming := conn.Incoming()
@@ -498,7 +498,7 @@ func TestConnectionErrors(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -521,7 +521,7 @@ func TestConnectionErrors(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -541,7 +541,7 @@ func TestConnectionErrors(t *testing.T) {
 			return 0, nil, io.EOF
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -573,7 +573,7 @@ func TestConnectionHeartbeat(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		conn, _ := NewConnectionFromSocket(socket, conf, nil)
+		conn, _ := NewConnectionFromSocket(context.Background(), socket, conf, nil)
 		defer conn.Close()
 
 		honeybeetest.Eventually(t,
@@ -586,7 +586,7 @@ func TestConnectionHeartbeat(t *testing.T) {
 		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		socket.SetPongHandlerFunc = func(h func(string) error) { handler = h }
 
-		conn, _ := NewConnectionFromSocket(socket, nil, nil)
+		conn, _ := NewConnectionFromSocket(context.Background(), socket, nil, nil)
 		defer conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
@@ -620,7 +620,7 @@ func setupTestConnection(t *testing.T) (
 	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
 
 	var err error
-	conn, err = NewConnectionFromSocket(socket, nil, nil)
+	conn, err = NewConnectionFromSocket(context.Background(), socket, nil, nil)
 	assert.NoError(t, err)
 	return
 }

@@ -12,7 +12,7 @@ import (
 type WorkerFactory func(
 	ctx context.Context,
 	id string,
-	logger *slog.Logger,
+	handler slog.Handler,
 ) (Worker, error)
 
 // Pool Config
@@ -20,8 +20,6 @@ type WorkerFactory func(
 type PoolConfig struct {
 	InboxBufferSize  int
 	EventsBufferSize int
-	LoggingEnabled   bool
-	LogLevel         *slog.Level
 	ConnectionConfig *transport.ConnectionConfig
 	WorkerFactory    WorkerFactory
 	WorkerConfig     *WorkerConfig
@@ -44,8 +42,6 @@ func GetDefaultPoolConfig() *PoolConfig {
 	return &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		LoggingEnabled:   true,
-		LogLevel:         nil,
 		ConnectionConfig: nil,
 		WorkerFactory:    nil,
 		WorkerConfig:     nil,
@@ -108,21 +104,6 @@ func WithEventsBufferSize(value int) PoolOption {
 	}
 }
 
-func WithPoolLoggingEnabled(value bool) PoolOption {
-	return func(c *PoolConfig) error {
-		c.LoggingEnabled = value
-		return nil
-	}
-}
-
-func WithPoolLogLevel(level slog.Level) PoolOption {
-	return func(c *PoolConfig) error {
-		l := level
-		c.LogLevel = &l
-		return nil
-	}
-}
-
 func WithConnectionConfig(cc *transport.ConnectionConfig) PoolOption {
 	return func(c *PoolConfig) error {
 		err := transport.ValidateConnectionConfig(cc)
@@ -157,8 +138,6 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 type WorkerConfig struct {
 	KeepaliveTimeout time.Duration
 	ReconnectDelay   time.Duration
-	LoggingEnabled   bool
-	LogLevel         *slog.Level
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -178,8 +157,6 @@ func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
 		KeepaliveTimeout: 60 * time.Second,
 		ReconnectDelay:   2 * time.Second,
-		LoggingEnabled:   true,
-		LogLevel:         nil,
 	}
 }
 
@@ -234,21 +211,6 @@ func WithReconnectDelay(value time.Duration) WorkerOption {
 			return err
 		}
 		c.ReconnectDelay = value
-		return nil
-	}
-}
-
-func WithWorkerLoggingEnabled(value bool) WorkerOption {
-	return func(c *WorkerConfig) error {
-		c.LoggingEnabled = value
-		return nil
-	}
-}
-
-func WithWorkerLogLevel(level slog.Level) WorkerOption {
-	return func(c *WorkerConfig) error {
-		l := level
-		c.LogLevel = &l
 		return nil
 	}
 }

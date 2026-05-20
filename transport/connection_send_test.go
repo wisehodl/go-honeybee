@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/gorilla/websocket"
@@ -62,12 +63,12 @@ func TestConnectionSend(t *testing.T) {
 		defer close(done)
 
 		var wg sync.WaitGroup
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				for j := 0; j < 10; j++ {
-					data := []byte(fmt.Sprintf("msg-%d-%d", id, j))
+				for j := range 10 {
+					data := fmt.Appendf(nil, "msg-%d-%d", id, j)
 					for {
 						// send and retry until success
 						err := conn.Send(data)
@@ -129,7 +130,7 @@ func TestConnectionSend(t *testing.T) {
 			return nil
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -175,7 +176,7 @@ func TestConnectionSend(t *testing.T) {
 			return nil
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -208,7 +209,7 @@ func TestConnectionSend(t *testing.T) {
 			return fmt.Errorf("test error")
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, config, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -228,7 +229,7 @@ func TestConnectionSend(t *testing.T) {
 			return writeErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 

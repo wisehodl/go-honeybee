@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 	"time"
+	// slog used for ExpectedLog level constants
 
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
@@ -26,9 +27,8 @@ func log(level slog.Level, msg string, attrs map[string]any) honeybeetest.Expect
 func TestConnectLogging(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
-		conn, err := NewConnection("ws://test", nil, logger)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, mockHandler)
 		assert.NoError(t, err)
 
 		mockSocket := honeybeetest.NewMockSocket()
@@ -57,7 +57,6 @@ func TestConnectLogging(t *testing.T) {
 
 	t.Run("max retries failure", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{
 			Retry: &RetryConfig{
@@ -68,7 +67,7 @@ func TestConnectLogging(t *testing.T) {
 			},
 		}
 
-		conn, err := NewConnection("ws://test", config, logger)
+		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
 
 		dialErr := fmt.Errorf("dial error")
@@ -100,7 +99,6 @@ func TestConnectLogging(t *testing.T) {
 
 	t.Run("success after retry", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{
 			Retry: &RetryConfig{
@@ -111,7 +109,7 @@ func TestConnectLogging(t *testing.T) {
 			},
 		}
 
-		conn, err := NewConnection("ws://test", config, logger)
+		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
 
 		attemptCount := 0
@@ -151,10 +149,9 @@ func TestConnectLogging(t *testing.T) {
 func TestCloseLogging(t *testing.T) {
 	t.Run("normal close", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		mockSocket := honeybeetest.NewMockSocket()
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 
 		conn.Close()
@@ -176,7 +173,6 @@ func TestCloseLogging(t *testing.T) {
 
 	t.Run("close with socket error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		closeErr := fmt.Errorf("close error")
 		mockSocket := honeybeetest.NewMockSocket()
@@ -184,7 +180,7 @@ func TestCloseLogging(t *testing.T) {
 			return closeErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 
 		conn.Close()
@@ -208,7 +204,6 @@ func TestCloseLogging(t *testing.T) {
 func TestReaderLogging(t *testing.T) {
 	t.Run("clean close by peer", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
@@ -218,7 +213,7 @@ func TestReaderLogging(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -236,7 +231,6 @@ func TestReaderLogging(t *testing.T) {
 
 	t.Run("unexpected close", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
@@ -246,7 +240,7 @@ func TestReaderLogging(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -264,14 +258,13 @@ func TestReaderLogging(t *testing.T) {
 
 	t.Run("read error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
 			return 0, nil, io.EOF
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -285,7 +278,6 @@ func TestReaderLogging(t *testing.T) {
 func TestWriterLogging(t *testing.T) {
 	t.Run("write deadline error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
 
@@ -295,7 +287,7 @@ func TestWriterLogging(t *testing.T) {
 			return deadlineErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, config, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, config, mockHandler)
 		assert.NoError(t, err)
 
 		err = conn.Send([]byte("test"))
@@ -317,7 +309,6 @@ func TestWriterLogging(t *testing.T) {
 
 	t.Run("write message error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
-		logger := slog.New(mockHandler)
 
 		writeErr := fmt.Errorf("write error")
 		mockSocket := honeybeetest.NewMockSocket()
@@ -325,7 +316,7 @@ func TestWriterLogging(t *testing.T) {
 			return writeErr
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, logger)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, mockHandler)
 		assert.NoError(t, err)
 
 		err = conn.Send([]byte("test"))
@@ -350,7 +341,7 @@ func TestLoggingDisabled(t *testing.T) {
 	t.Run("nil logger produces no logs", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		conn, err := NewConnection("ws://test", nil, nil)
+		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
 		assert.NoError(t, err)
 
 		mockSocket := honeybeetest.NewMockSocket()

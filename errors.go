@@ -10,10 +10,9 @@ var (
 	InvalidBufferSize       = errors.New("buffer size must be greater than zero")
 
 	// Pool errors
-	ErrInvalidPoolID = errors.New("pool id cannot be empty")
-	ErrPoolClosed    = errors.New("pool is closed")
-	ErrPeerNotFound  = errors.New("peer not found")
-	ErrPeerExists    = errors.New("peer already exists")
+	ErrPoolClosed   = errors.New("pool is closed")
+	ErrPeerNotFound = errors.New("peer not found")
+	ErrPeerExists   = errors.New("peer already exists")
 
 	// Worker errors
 	ErrConnectionUnavailable = errors.New("connection unavailable")

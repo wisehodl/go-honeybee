@@ -19,8 +19,7 @@ func TestRunDialer(t *testing.T) {
 		url := "wss://test"
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		mockSocket := honeybeetest.NewMockSocket()
 		pool := PoolPlugin{
@@ -31,7 +30,7 @@ func TestRunDialer(t *testing.T) {
 			},
 		}
 
-		go RunDialer(url, ctx, pool, dial, newConn, nil)
+		go RunDialer(url, ctx, pool, dial, newConn, nil, nil)
 		dial <- struct{}{}
 
 		honeybeetest.Eventually(t, func() bool {
@@ -49,8 +48,7 @@ func TestRunDialer(t *testing.T) {
 			url := "wss://test"
 			dial := make(chan struct{}, 1)
 			newConn := make(chan *transport.Connection, 1)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			gate := make(chan struct{})
 			dialCount := atomic.Int32{}
@@ -71,14 +69,14 @@ func TestRunDialer(t *testing.T) {
 				ConnectionConfig: connConfig,
 			}
 
-			go RunDialer(url, ctx, pool, dial, newConn, nil)
+			go RunDialer(url, ctx, pool, dial, newConn, nil, nil)
 			dial <- struct{}{}
 
 			// wait for dial to start blocking on gate
 			<-started
 
 			// flood dial while dialer is blocked
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				select {
 				case dial <- struct{}{}:
 				default:
@@ -114,8 +112,7 @@ func TestRunDialer(t *testing.T) {
 		url := "wss://test"
 		dial := make(chan struct{}, 1)
 		newConn := make(chan *transport.Connection, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		// use atomic counter to fail first dial and pass second
 		dialCount := atomic.Int32{}
@@ -137,7 +134,7 @@ func TestRunDialer(t *testing.T) {
 			ConnectionConfig: connConfig,
 		}
 
-		go RunDialer(url, ctx, pool, dial, newConn, nil)
+		go RunDialer(url, ctx, pool, dial, newConn, nil, nil)
 		dial <- struct{}{}
 		dial <- struct{}{}
 
@@ -161,7 +158,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunDialer(url, ctx, pool, dial, newConn, nil)
+			RunDialer(url, ctx, pool, dial, newConn, nil, nil)
 			close(done)
 		}()
 
@@ -198,7 +195,7 @@ func TestRunDialer(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			RunDialer(url, ctx, pool, dial, newConn, nil)
+			RunDialer(url, ctx, pool, dial, newConn, nil, nil)
 			close(done)
 		}()
 

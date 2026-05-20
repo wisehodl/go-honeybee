@@ -140,7 +140,7 @@ func TestRunSessionDial(t *testing.T) {
 		// drain initial dial
 		expectDial(t, v.dial)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			v.keepalive <- struct{}{}
 			expectDial(t, v.dial)
 		}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	component "git.wisehodl.dev/jay/go-mana-component"
 	"github.com/gorilla/websocket"
 )
 
@@ -74,7 +75,7 @@ type Connection struct {
 	cleanupOnce sync.Once
 }
 
-func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger) (*Connection, error) {
+func NewConnection(ctx context.Context, urlStr string, config *ConnectionConfig, handler slog.Handler) (*Connection, error) {
 	if config == nil {
 		config = GetDefaultConnectionConfig()
 	}
@@ -86,6 +87,18 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 	url, err := ParseURL(urlStr)
 	if err != nil {
 		return nil, err
+	}
+
+	if component.FromContext(ctx) == nil {
+		ctx = component.MustNew(ctx, "honeybee", "connection")
+	} else {
+		ctx = component.MustExtend(ctx, "connection")
+	}
+
+	var logger *slog.Logger
+	if handler != nil {
+		c := component.FromContext(ctx)
+		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
 	conn := &Connection{
@@ -108,7 +121,7 @@ func NewConnection(urlStr string, config *ConnectionConfig, logger *slog.Logger)
 }
 
 func NewConnectionFromSocket(
-	socket types.Socket, config *ConnectionConfig, logger *slog.Logger,
+	ctx context.Context, socket types.Socket, config *ConnectionConfig, handler slog.Handler,
 ) (*Connection, error) {
 	if socket == nil {
 		return nil, NewConnectionError(ErrNilSocket)
@@ -120,6 +133,18 @@ func NewConnectionFromSocket(
 
 	if err := ValidateConnectionConfig(config); err != nil {
 		return nil, err
+	}
+
+	if component.FromContext(ctx) == nil {
+		ctx = component.MustNew(ctx, "honeybee", "connection")
+	} else {
+		ctx = component.MustExtend(ctx, "connection")
+	}
+
+	var logger *slog.Logger
+	if handler != nil {
+		c := component.FromContext(ctx)
+		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
 	conn := &Connection{
@@ -293,9 +318,7 @@ func (c *Connection) shutdownLogComplete() {
 }
 
 func (c *Connection) startReader() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		defer c.shutdownInternal()
 
 		for {
@@ -362,7 +385,7 @@ func (c *Connection) startReader() {
 
 			}
 		}
-	}()
+	})
 }
 
 func (c *Connection) setupPongHandler() {
@@ -381,9 +404,7 @@ func (c *Connection) startPinger() {
 		return
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		defer c.shutdownInternal()
 
 		// Calculate 10% jitter window
@@ -404,7 +425,7 @@ func (c *Connection) startPinger() {
 				}
 			}
 		}
-	}()
+	})
 
 }
 

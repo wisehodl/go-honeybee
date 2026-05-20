@@ -2,10 +2,11 @@ package honeybee
 
 import (
 	"context"
-	"git.wisehodl.dev/jay/go-honeybee/logging"
+	"log/slog"
+
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
-	"log/slog"
+	component "git.wisehodl.dev/jay/go-mana-component"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,13 +51,11 @@ type PeerStats struct {
 }
 
 type PoolPlugin struct {
-	ID               string
 	Inbox            chan<- types.InboxMessage
 	Events           chan<- PoolEvent
 	InboxCounter     *atomic.Uint64
 	Dialer           types.Dialer
 	ConnectionConfig *transport.ConnectionConfig
-	Handler          slog.Handler
 }
 
 // Pool
@@ -69,8 +68,6 @@ type Peer struct {
 type Pool struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-
-	id string
 
 	peers  map[string]*Peer
 	inbox  chan types.InboxMessage
@@ -89,12 +86,8 @@ type Pool struct {
 	closed bool
 }
 
-func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Handler,
+func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 ) (*Pool, error) {
-	if id == "" {
-		return nil, ErrInvalidPoolID
-	}
-
 	if config == nil {
 		config = GetDefaultPoolConfig()
 	}
@@ -104,8 +97,8 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 	// deadlocks.
 	if config.WorkerFactory == nil {
 		config.WorkerFactory = func(
-			ctx context.Context, id string, logger *slog.Logger) (Worker, error) {
-			return NewWorker(ctx, id, config.WorkerConfig, logger)
+			ctx context.Context, id string, handler slog.Handler) (Worker, error) {
+			return NewWorker(ctx, id, config.WorkerConfig, handler)
 		}
 	}
 
@@ -113,18 +106,17 @@ func NewPool(ctx context.Context, id string, config *PoolConfig, handler slog.Ha
 		return nil, err
 	}
 
-	pctx, cancel := context.WithCancel(ctx)
+	pctx, cancel := context.WithCancel(component.MustNew(ctx, "honeybee", "pool"))
 
 	var logger *slog.Logger
-	if handler != nil && config.LoggingEnabled {
-		logger = logging.NewOutboundPoolLogger(
-			logging.WrapOrDefault(config.LogLevel, handler), id)
+	if handler != nil {
+		c := component.FromContext(pctx)
+		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
 	return &Pool{
 		ctx:           pctx,
 		cancel:        cancel,
-		id:            id,
 		peers:         make(map[string]*Peer),
 		inbox:         make(chan types.InboxMessage, config.InboxBufferSize),
 		events:        make(chan PoolEvent, config.EventsBufferSize),
@@ -254,35 +246,23 @@ func (p *Pool) Connect(id string) error {
 		return NewPoolError(ErrPeerExists)
 	}
 
-	var logger *slog.Logger
-	if p.handler != nil && p.config.WorkerConfig != nil {
-		if p.config.WorkerConfig.LoggingEnabled {
-			logger = logging.NewOutboundWorkerLogger(
-				logging.WrapOrDefault(p.config.WorkerConfig.LogLevel, p.handler), p.id, id)
-		}
-	}
-
 	// The worker factory must be non-blocking to avoid deadlocks
-	worker, err := p.config.WorkerFactory(p.ctx, id, logger)
+	worker, err := p.config.WorkerFactory(p.ctx, id, p.handler)
 	if err != nil {
 		return err
 	}
 
 	pool := PoolPlugin{
-		ID:               p.id,
 		Inbox:            p.inbox,
 		Events:           p.events,
 		InboxCounter:     p.inboxCounter,
 		Dialer:           p.dialer,
 		ConnectionConfig: p.config.ConnectionConfig,
-		Handler:          p.handler,
 	}
 
-	p.wg.Add(1)
-	go func() {
+	p.wg.Go(func() {
 		worker.Start(pool)
-		p.wg.Done()
-	}()
+	})
 
 	p.peers[id] = &Peer{id: id, worker: worker}
 

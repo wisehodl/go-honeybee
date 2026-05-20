@@ -2,13 +2,14 @@ package honeybee
 
 import (
 	"context"
-	"git.wisehodl.dev/jay/go-honeybee/logging"
-	"git.wisehodl.dev/jay/go-honeybee/transport"
-	"git.wisehodl.dev/jay/go-honeybee/types"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"git.wisehodl.dev/jay/go-honeybee/transport"
+	"git.wisehodl.dev/jay/go-honeybee/types"
+	component "git.wisehodl.dev/jay/go-mana-component"
 )
 
 // Worker
@@ -42,23 +43,36 @@ type DefaultWorker struct {
 	outgoingCount  *atomic.Uint64
 	restartCount   *atomic.Uint64
 
-	config *WorkerConfig
-	ctx    context.Context
-	cancel context.CancelFunc
-	logger *slog.Logger
+	config  *WorkerConfig
+	ctx     context.Context
+	cancel  context.CancelFunc
+	handler slog.Handler
+	logger  *slog.Logger
 }
 
 func NewWorker(
 	ctx context.Context,
 	id string,
 	config *WorkerConfig,
-	logger *slog.Logger,
+	handler slog.Handler,
 ) (*DefaultWorker, error) {
 	if config == nil {
 		config = GetDefaultWorkerConfig()
 	}
 	if err := ValidateWorkerConfig(config); err != nil {
 		return nil, err
+	}
+
+	if component.FromContext(ctx) == nil {
+		ctx = component.MustNew(ctx, "honeybee", "worker")
+	} else {
+		ctx = component.MustExtend(ctx, "worker")
+	}
+
+	var logger *slog.Logger
+	if handler != nil {
+		c := component.FromContext(ctx)
+		logger = slog.New(handler).With(slog.Any("component", c), slog.String("peer_id", id))
 	}
 
 	wctx, wcancel := context.WithCancel(ctx)
@@ -71,6 +85,7 @@ func NewWorker(
 		restartCount:   &atomic.Uint64{},
 		ctx:            wctx,
 		cancel:         wcancel,
+		handler:        handler,
 		logger:         logger,
 	}
 
@@ -91,7 +106,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	go func() {
 		defer wg.Done()
-		RunDialer(w.id, w.ctx, pool, dial, newConn, w.logger)
+		RunDialer(w.id, w.ctx, pool, dial, newConn, w.handler, w.logger)
 	}()
 
 	go func() {
@@ -447,14 +462,9 @@ func connect(
 	id string,
 	ctx context.Context,
 	pool PoolPlugin,
+	handler slog.Handler,
 ) (*transport.Connection, error) {
-	var logger *slog.Logger
-	if pool.Handler != nil && pool.ConnectionConfig.LoggingEnabled {
-		logger = logging.NewConnectionLogger(
-			logging.WrapOrDefault(pool.ConnectionConfig.LogLevel, pool.Handler), pool.ID, id)
-	}
-
-	conn, err := transport.NewConnection(id, pool.ConnectionConfig, logger)
+	conn, err := transport.NewConnection(ctx, id, pool.ConnectionConfig, handler)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +481,7 @@ func RunDialer(
 	dial <-chan struct{},
 	newConn chan<- *transport.Connection,
 
+	handler slog.Handler,
 	logger *slog.Logger,
 ) {
 	for {
@@ -482,7 +493,7 @@ func RunDialer(
 				logger.Debug("dialer: dialing")
 			}
 			// dial a new connection
-			conn, err := connect(id, ctx, pool)
+			conn, err := connect(id, ctx, pool, handler)
 
 			// send error if dial failed and continue
 			if err != nil {

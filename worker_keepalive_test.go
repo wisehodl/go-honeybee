@@ -12,13 +12,12 @@ func TestRunKeepalive(t *testing.T) {
 		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
 		timeout := 200 * time.Millisecond
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go RunKeepalive(ctx, heartbeat, keepalive, timeout, nil)
 
 		// send heartbeats faster than the timeout
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			time.Sleep(20 * time.Millisecond)
 			heartbeat <- struct{}{}
 		}
@@ -38,8 +37,7 @@ func TestRunKeepalive(t *testing.T) {
 		heartbeat := make(chan struct{}, 1)
 		keepalive := make(chan struct{}, 1)
 		timeout := 20 * time.Millisecond
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go RunKeepalive(ctx, heartbeat, keepalive, timeout, nil)
 
@@ -80,13 +78,12 @@ func TestRunKeepalive(t *testing.T) {
 	t.Run("disabled keepalive drains heartbeats without blocking", func(t *testing.T) {
 		heartbeat := make(chan struct{})
 		keepalive := make(chan struct{}, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		go RunKeepalive(ctx, heartbeat, keepalive, 0, nil)
 
 		// these must not block
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			heartbeat <- struct{}{}
 		}
 

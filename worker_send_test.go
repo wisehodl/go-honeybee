@@ -81,8 +81,8 @@ func TestWorkerSend(t *testing.T) {
 		}()
 
 		const count = 3
-		for i := 0; i < count; i++ {
-			err := w.Send([]byte(fmt.Sprintf("msg-%d", i)))
+		for i := range count {
+			err := w.Send(fmt.Appendf(nil, "msg-%d", i))
 			assert.NoError(t, err)
 		}
 

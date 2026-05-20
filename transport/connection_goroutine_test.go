@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -66,7 +67,7 @@ func TestStartReader(t *testing.T) {
 			return 0, nil, io.EOF
 		}
 
-		conn, err := NewConnectionFromSocket(mockSocket, nil, nil)
+		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 
 		honeybeetest.Eventually(t, func() bool {

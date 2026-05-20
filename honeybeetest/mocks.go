@@ -98,7 +98,7 @@ func (m *MockSocket) SetPongHandler(h func(s string) error) {
 type MockSlogHandler struct {
 	records *[]slog.Record
 	attrs   []slog.Attr
-	mu      sync.RWMutex
+	mu      *sync.RWMutex
 }
 
 func NewMockSlogHandler() *MockSlogHandler {
@@ -106,6 +106,7 @@ func NewMockSlogHandler() *MockSlogHandler {
 	return &MockSlogHandler{
 		records: &records,
 		attrs:   make([]slog.Attr, 0),
+		mu:      &sync.RWMutex{},
 	}
 }
 
@@ -126,6 +127,7 @@ func (m *MockSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	defer m.mu.RUnlock()
 	return &MockSlogHandler{
 		records: m.records, // shared records slice
+		mu:      m.mu,      // shared mutex
 		attrs:   append(m.attrs, attrs...),
 	}
 }

@@ -14,8 +14,6 @@ func TestNewPoolConfig(t *testing.T) {
 	assert.Equal(t, conf, &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		LoggingEnabled:   true,
-		LogLevel:         nil,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
@@ -28,8 +26,6 @@ func TestDefaultPoolConfig(t *testing.T) {
 	assert.Equal(t, conf, &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		LoggingEnabled:   true,
-		LogLevel:         nil,
 		ConnectionConfig: nil,
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
