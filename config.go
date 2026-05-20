@@ -1,4 +1,4 @@
-package inbound
+package honeybee
 
 import (
 	"context"
@@ -7,15 +7,15 @@ import (
 	"time"
 )
 
-// Pool Config
+// Types
 
 type WorkerFactory func(
 	ctx context.Context,
 	id string,
-	conn *transport.Connection,
-	config *WorkerConfig,
 	logger *slog.Logger,
 ) (Worker, error)
+
+// Pool Config
 
 type PoolConfig struct {
 	InboxBufferSize  int
@@ -23,8 +23,8 @@ type PoolConfig struct {
 	LoggingEnabled   bool
 	LogLevel         *slog.Level
 	ConnectionConfig *transport.ConnectionConfig
-	WorkerConfig     *WorkerConfig
 	WorkerFactory    WorkerFactory
+	WorkerConfig     *WorkerConfig
 }
 
 type PoolOption func(*PoolConfig) error
@@ -47,8 +47,8 @@ func GetDefaultPoolConfig() *PoolConfig {
 		LoggingEnabled:   true,
 		LogLevel:         nil,
 		ConnectionConfig: nil,
-		WorkerConfig:     nil,
 		WorkerFactory:    nil,
+		WorkerConfig:     nil,
 	}
 }
 
@@ -62,16 +62,22 @@ func applyPoolOptions(config *PoolConfig, options ...PoolOption) error {
 }
 
 func ValidatePoolConfig(config *PoolConfig) error {
+	var err error
+
 	if config.ConnectionConfig != nil {
-		if err := transport.ValidateConnectionConfig(config.ConnectionConfig); err != nil {
+		err = transport.ValidateConnectionConfig(config.ConnectionConfig)
+		if err != nil {
 			return err
 		}
 	}
+
 	if config.WorkerConfig != nil {
-		if err := ValidateWorkerConfig(config.WorkerConfig); err != nil {
+		err = ValidateWorkerConfig(config.WorkerConfig)
+		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -119,7 +125,8 @@ func WithPoolLogLevel(level slog.Level) PoolOption {
 
 func WithConnectionConfig(cc *transport.ConnectionConfig) PoolOption {
 	return func(c *PoolConfig) error {
-		if err := transport.ValidateConnectionConfig(cc); err != nil {
+		err := transport.ValidateConnectionConfig(cc)
+		if err != nil {
 			return err
 		}
 		c.ConnectionConfig = cc
@@ -129,7 +136,8 @@ func WithConnectionConfig(cc *transport.ConnectionConfig) PoolOption {
 
 func WithWorkerConfig(wc *WorkerConfig) PoolOption {
 	return func(c *PoolConfig) error {
-		if err := ValidateWorkerConfig(wc); err != nil {
+		err := ValidateWorkerConfig(wc)
+		if err != nil {
 			return err
 		}
 		c.WorkerConfig = wc
@@ -147,10 +155,11 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 // Worker Config
 
 type WorkerConfig struct {
-	MaxQueueSize      int
-	InactivityTimeout time.Duration
-	LoggingEnabled    bool
-	LogLevel          *slog.Level
+	KeepaliveTimeout time.Duration
+	ReconnectDelay   time.Duration
+	MaxQueueSize     int
+	LoggingEnabled   bool
+	LogLevel         *slog.Level
 }
 
 type WorkerOption func(*WorkerConfig) error
@@ -168,10 +177,11 @@ func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 
 func GetDefaultWorkerConfig() *WorkerConfig {
 	return &WorkerConfig{
-		MaxQueueSize:      0, // queue can grow indefinitely by default
-		InactivityTimeout: 0, // eviction disabled by default
-		LoggingEnabled:    true,
-		LogLevel:          nil,
+		KeepaliveTimeout: 60 * time.Second,
+		ReconnectDelay:   2 * time.Second,
+		MaxQueueSize:     0, // disabled by default
+		LoggingEnabled:   true,
+		LogLevel:         nil,
 	}
 }
 
@@ -185,12 +195,16 @@ func applyWorkerOptions(config *WorkerConfig, options ...WorkerOption) error {
 }
 
 func ValidateWorkerConfig(config *WorkerConfig) error {
-	if err := validateMaxQueueSize(config.MaxQueueSize); err != nil {
+	err := validateKeepaliveTimeout(config.KeepaliveTimeout)
+	if err != nil {
 		return err
 	}
-	if err := validateInactivityTimeout(config.InactivityTimeout); err != nil {
+
+	err = validateMaxQueueSize(config.MaxQueueSize)
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -201,31 +215,51 @@ func validateMaxQueueSize(value int) error {
 	return nil
 }
 
-func validateInactivityTimeout(value time.Duration) error {
+func validateKeepaliveTimeout(value time.Duration) error {
 	if value < 0 {
-		return InvalidInactivityTimeout
+		return InvalidKeepaliveTimeout
 	}
 	return nil
 }
 
-// When MaxQueueSize is zero, queue limits are disabled.
-func WithMaxQueueSize(value int) WorkerOption {
+func validateReconnectDelay(value time.Duration) error {
+	if value < 0 {
+		return InvalidReconnectDelay
+	}
+	return nil
+}
+
+// When KeepaliveTimeout is set to zero, keepalive timeouts are disabled.
+func WithKeepaliveTimeout(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
-		if err := validateMaxQueueSize(value); err != nil {
+		err := validateKeepaliveTimeout(value)
+		if err != nil {
 			return err
 		}
-		c.MaxQueueSize = value
+		c.KeepaliveTimeout = value
 		return nil
 	}
 }
 
-// When InactivityTimeout is zero, the watchdog is disabled.
-func WithInactivityTimeout(value time.Duration) WorkerOption {
+func WithReconnectDelay(value time.Duration) WorkerOption {
 	return func(c *WorkerConfig) error {
-		if err := validateInactivityTimeout(value); err != nil {
+		err := validateReconnectDelay(value)
+		if err != nil {
 			return err
 		}
-		c.InactivityTimeout = value
+		c.ReconnectDelay = value
+		return nil
+	}
+}
+
+// When MaxQueueSize is set to zero, queue limits are disabled.
+func WithMaxQueueSize(value int) WorkerOption {
+	return func(c *WorkerConfig) error {
+		err := validateMaxQueueSize(value)
+		if err != nil {
+			return err
+		}
+		c.MaxQueueSize = value
 		return nil
 	}
 }

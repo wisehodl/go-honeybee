@@ -1,4 +1,4 @@
-package outbound
+package honeybee
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"
