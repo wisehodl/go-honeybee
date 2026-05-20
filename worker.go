@@ -97,39 +97,10 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 		w.logger.Debug("starting")
 	}
 
-	dial := make(chan struct{}, 1)
-	newConn := make(chan *transport.Connection, 1)
-	keepalive := make(chan struct{}, 1)
-
 	var wg sync.WaitGroup
-	wg.Add(3)
-
-	go func() {
-		defer wg.Done()
-		RunDialer(w.id, w.ctx, pool, dial, newConn, w.handler, w.logger)
-	}()
-
-	go func() {
-		defer wg.Done()
-		RunKeepalive(w.ctx, w.heartbeat, keepalive, w.config.KeepaliveTimeout, w.logger)
-	}()
-
-	go func() {
-		defer wg.Done()
-		session := &Session{
-			id:             w.id,
-			connPtr:        &w.conn,
-			poolInbox:      pool.Inbox,
-			heartbeat:      w.heartbeat,
-			dial:           dial,
-			keepalive:      keepalive,
-			newConn:        newConn,
-			reconnectDelay: w.config.ReconnectDelay,
-			restartCount:   w.restartCount,
-			logger:         w.logger,
-		}
-		session.Start(w.ctx, pool)
-	}()
+	wg.Go(func() {
+		w.runSession(w.ctx, pool)
+	})
 
 	if w.logger != nil {
 		w.logger.Info("started")
@@ -139,6 +110,165 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 
 	if w.logger != nil {
 		w.logger.Info("stopped")
+	}
+}
+
+func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
+	newConn := make(chan *transport.Connection, 1)
+
+	var timer *time.Timer
+	if w.config.KeepaliveTimeout > 0 {
+		if w.logger != nil {
+			w.logger.Debug("keepalive: enabled", "timeout", w.config.KeepaliveTimeout)
+		}
+		timer = time.NewTimer(w.config.KeepaliveTimeout)
+		defer timer.Stop()
+	} else {
+		if w.logger != nil {
+			w.logger.Debug("keepalive: disabled")
+		}
+	}
+
+	resetTimer := func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(w.config.KeepaliveTimeout)
+	}
+
+	timerC := func() <-chan time.Time {
+		if timer == nil {
+			return nil
+		}
+		return timer.C
+	}
+
+	var dialCancel context.CancelFunc
+
+	spawnDial := func() {
+		if dialCancel != nil {
+			dialCancel()
+		}
+		var dialCtx context.Context
+		dialCtx, dialCancel = context.WithCancel(ctx)
+		if w.logger != nil {
+			w.logger.Debug("session: requesting connection")
+		}
+		go func() {
+			conn, err := connect(w.id, dialCtx, pool, w.handler)
+			if err != nil {
+				if w.logger != nil {
+					w.logger.Warn("dialer: dial failed")
+				}
+				return
+			}
+			select {
+			case newConn <- conn:
+			case <-dialCtx.Done():
+				conn.Close()
+			}
+		}()
+	}
+
+	for {
+		// spawn initial dial for this reconnect cycle
+		spawnDial()
+
+		// obtain new connection
+		var conn *transport.Connection
+	preConn:
+		for {
+			select {
+			case <-ctx.Done():
+				if dialCancel != nil {
+					dialCancel()
+				}
+				return
+			case <-w.heartbeat:
+				resetTimer()
+			case <-timerC():
+				if w.logger != nil {
+					w.logger.Info("keepalive: no activity observed")
+				}
+				timer.Reset(w.config.KeepaliveTimeout)
+				spawnDial()
+			case conn = <-newConn:
+				if w.logger != nil {
+					w.logger.Debug("session: connected")
+				}
+				break preConn
+			}
+		}
+
+		// set up new connection
+		w.conn.Store(conn)
+		pool.Events <- PoolEvent{ID: w.id, Kind: EventConnected, At: time.Now()}
+
+		if w.logger != nil {
+			w.logger.Info("session: started")
+		}
+
+		// run session loop
+	conn_loop:
+		for {
+			select {
+			case <-ctx.Done():
+				break conn_loop
+			case <-w.heartbeat:
+				resetTimer()
+			case <-timerC():
+				if w.logger != nil {
+					w.logger.Info("keepalive: no activity observed")
+				}
+				timer.Reset(w.config.KeepaliveTimeout)
+				break conn_loop
+			case data, ok := <-conn.Incoming():
+				if !ok {
+					if w.logger != nil {
+						w.logger.Debug("reader: disconnected")
+					}
+					break conn_loop
+				}
+				pool.Inbox <- types.InboxMessage{
+					ID:         w.id,
+					Data:       data,
+					ReceivedAt: time.Now(),
+				}
+				resetTimer()
+			case <-conn.Heartbeat():
+				if w.logger != nil {
+					w.logger.Debug("ping-pong heartbeat")
+				}
+				resetTimer()
+			}
+		}
+
+		conn.Close()
+
+		if w.logger != nil {
+			w.logger.Info("session: ended")
+		}
+
+		// tear down connection
+		w.conn.Store(nil)
+		pool.Events <- PoolEvent{ID: w.id, Kind: EventDisconnected, At: time.Now()}
+
+		// exit if worker is shutting down
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// refresh session
+		time.Sleep(w.config.ReconnectDelay)
+		w.restartCount.Add(1)
 	}
 }
 
@@ -195,269 +325,6 @@ func (w *DefaultWorker) Stats() WorkerStats {
 	}
 }
 
-type Session struct {
-	id      string
-	connPtr *atomic.Pointer[transport.Connection]
-
-	poolInbox chan<- types.InboxMessage
-	heartbeat chan<- struct{}
-	dial      chan<- struct{}
-
-	keepalive <-chan struct{}
-	newConn   <-chan *transport.Connection
-
-	reconnectDelay time.Duration
-	restartCount   *atomic.Uint64
-
-	logger *slog.Logger
-}
-
-func (s *Session) Start(
-	ctx context.Context,
-	pool PoolPlugin,
-) {
-	for {
-		if s.logger != nil {
-			s.logger.Debug("session: requesting connection")
-		}
-
-		// request new connection
-		select {
-		case s.dial <- struct{}{}:
-		default:
-		}
-
-		// obtain new connection
-		var conn *transport.Connection
-	preConn:
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-s.keepalive:
-				select {
-				case s.dial <- struct{}{}:
-					if s.logger != nil {
-						s.logger.Debug("session: requesting connection")
-					}
-
-				default:
-				}
-			case conn = <-s.newConn:
-				if s.logger != nil {
-					s.logger.Debug("session: connected")
-				}
-				break preConn
-			}
-		}
-
-		// set up new connection
-		s.connPtr.Store(conn)
-		pool.Events <- PoolEvent{ID: s.id, Kind: EventConnected, At: time.Now()}
-
-		// set up session context
-		sctx, scancel := context.WithCancel(ctx)
-		onStop := func() { scancel() }
-
-		// start session
-		var wg sync.WaitGroup
-		wg.Add(3)
-		go func() {
-			defer wg.Done()
-			RunReader(s.id, sctx, onStop, conn, s.poolInbox, s.heartbeat, s.logger)
-		}()
-		go func() {
-			defer wg.Done()
-			RunHeartbeatForwarder(sctx, conn, s.heartbeat, s.logger)
-		}()
-		go func() {
-			defer wg.Done()
-			RunStopMonitor(sctx, onStop, conn, s.keepalive, s.logger)
-		}()
-
-		if s.logger != nil {
-			s.logger.Info("session: started")
-		}
-
-		// complete session
-		wg.Wait()
-
-		if s.logger != nil {
-			s.logger.Info("session: ended")
-		}
-
-		// tear down connection
-		s.connPtr.Store(nil)
-		pool.Events <- PoolEvent{ID: s.id, Kind: EventDisconnected, At: time.Now()}
-
-		// exit if worker is shutting down
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// refresh session
-		time.Sleep(s.reconnectDelay)
-		s.restartCount.Add(1)
-	}
-
-}
-
-func RunReader(
-	id string,
-	ctx context.Context,
-	onStop func(),
-	conn *transport.Connection,
-	poolInbox chan<- types.InboxMessage,
-	heartbeat chan<- struct{},
-	logger *slog.Logger,
-) {
-	defer func() {
-		if logger != nil {
-			logger.Debug("reader: stopping")
-		}
-
-		conn.Close()
-		onStop()
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data, ok := <-conn.Incoming():
-			if !ok {
-				// connection has closed
-				if logger != nil {
-					logger.Debug("reader: disconnected")
-				}
-				return
-			}
-
-			// send message forward
-			poolInbox <- types.InboxMessage{
-				ID:         id,
-				Data:       data,
-				ReceivedAt: time.Now(),
-			}
-
-			// send heartbeat
-			select {
-			case heartbeat <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-}
-
-func RunHeartbeatForwarder(
-	ctx context.Context,
-	conn *transport.Connection,
-	heartbeat chan<- struct{},
-	logger *slog.Logger,
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-conn.Heartbeat():
-			select {
-			case heartbeat <- struct{}{}:
-				if logger != nil {
-					logger.Debug("ping-pong heartbeat")
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-}
-
-func RunStopMonitor(
-	ctx context.Context,
-	onStop func(),
-	conn *transport.Connection,
-	keepalive <-chan struct{},
-	logger *slog.Logger,
-) {
-	defer func() {
-		if logger != nil {
-			logger.Debug("stop monitor: stopping")
-		}
-
-		conn.Close()
-		onStop()
-	}()
-
-	select {
-	case <-ctx.Done():
-	case <-keepalive:
-		if logger != nil {
-			logger.Debug("stop monitor: stopping: keepalive")
-		}
-	}
-}
-
-func RunKeepalive(
-	ctx context.Context,
-	heartbeat <-chan struct{},
-	keepalive chan<- struct{},
-	timeout time.Duration,
-	logger *slog.Logger,
-) {
-	// disable keepalive timeout if not configured
-	if timeout <= 0 {
-		if logger != nil {
-			logger.Debug("keepalive: disabled")
-		}
-		// drain heartbeats
-		// wait for cancel and exit
-		for {
-			select {
-			case <-heartbeat:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-
-	if logger != nil {
-		logger.Debug("keepalive: enabled", "timeout", timeout)
-	}
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-heartbeat:
-			// drain the timer channel and reset
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(timeout)
-		// timer completed
-		case <-timer.C:
-			// send keepalive signal, then reset the timer
-			if logger != nil {
-				logger.Info("keepalive: no activity observed")
-			}
-			select {
-			case keepalive <- struct{}{}:
-			default:
-			}
-			timer.Reset(timeout)
-		}
-	}
-}
-
 func connect(
 	id string,
 	ctx context.Context,
@@ -471,59 +338,4 @@ func connect(
 
 	conn.SetDialer(pool.Dialer)
 	return conn, conn.Connect(ctx)
-}
-
-func RunDialer(
-	id string,
-	ctx context.Context,
-	pool PoolPlugin,
-
-	dial <-chan struct{},
-	newConn chan<- *transport.Connection,
-
-	handler slog.Handler,
-	logger *slog.Logger,
-) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-dial:
-			if logger != nil {
-				logger.Debug("dialer: dialing")
-			}
-			// dial a new connection
-			conn, err := connect(id, ctx, pool, handler)
-
-			// send error if dial failed and continue
-			if err != nil {
-				if logger != nil {
-					logger.Warn("dialer: dial failed")
-				}
-				continue
-			}
-
-			if logger != nil {
-				logger.Debug("dialer: connected")
-			}
-
-			// drain any redundant signals that arrived during the dial
-			for {
-				select {
-				case <-dial:
-				default:
-					goto drained
-				}
-			}
-		drained:
-
-			// send the new connection or close and exit
-			select {
-			case newConn <- conn:
-			case <-ctx.Done():
-				conn.Close()
-				return
-			}
-		}
-	}
 }

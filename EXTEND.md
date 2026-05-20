@@ -65,27 +65,11 @@ The pool calls the factory under its write lock when `Connect` is called. The fa
 
 The factory is set via `honeybee.WithWorkerFactory` on the pool config.
 
-### Building Blocks
+### Replacing the Worker
 
-**`RunDialer(id, ctx, pool, dial, newConn, logger)`** Listens on `dial` for connection requests. On each signal, calls `connect` to dial a new `*transport.Connection`. While a dial is in progress, drains additional `dial` signals so that at most one dial runs at a time. On failure, logs the error and waits for the next `dial` signal. On success, sends the connection on `newConn`. Exits when `ctx` is cancelled.
+Satisfy the `Worker` interface and register your implementation via `honeybee.WithWorkerFactory`. Your worker is responsible for the full connection lifecycle: dialing and redialing, managing connection state, forwarding received messages to `pool.Inbox`, emitting `EventConnected` and `EventDisconnected` to `pool.Events`, and incrementing `pool.InboxCounter` for each message forwarded.
 
-**`RunKeepalive(ctx, heartbeat, keepalive, timeout, logger)`** Monitors `heartbeat`. Resets a timer on each signal. When the timer fires, sends a signal on `keepalive` to notify the session that the connection should be replaced. When `timeout` is zero, keepalive is disabled: it drains `heartbeat` without acting and exits when `ctx` is cancelled.
-
-**`RunReader(id, ctx, onStop, conn, inbox, heartbeat, logger)`** Reads from `conn.Incoming()` until the channel closes or `ctx` is cancelled. Builds an `InboxMessage` inline with the peer ID and writes it directly to `inbox`. Sends a signal on `heartbeat` for each message. On exit, calls `conn.Close()` and then `onStop`.
-
-**`RunHeartbeatForwarder(ctx, conn, heartbeat, logger)`** Reads from `conn.Heartbeat()` and forwards each signal to `heartbeat`. Propagates pong replies into the worker's heartbeat channel so pongs reset the keepalive timer alongside data messages and sends.
-
-**`RunStopMonitor(ctx, onStop, conn, keepalive, logger)`** Waits for either `ctx.Done` or a signal on `keepalive`. On either, calls `conn.Close()` and then `onStop`. This is how a keepalive expiry propagates into a session tear-down.
-
-**`Session`** The coordination struct that ties the above blocks together for one connection lifecycle. `Session.Start` runs a loop: request a dial, wait for a connection, run `RunReader`, `RunHeartbeatForwarder`, and `RunStopMonitor` concurrently, wait for them to finish, emit `EventDisconnected`, sleep for `ReconnectDelay`, then repeat. `Session` is exported so it can be embedded or used directly in a custom worker.
-
-### Replacement Patterns
-
-**Swap one block.** The most common case is replacing `RunReader` to intercept or annotate inbound messages, or replacing `RunKeepalive` with a different activity metric. Reuse `Session` for the connection lifecycle and substitute the one goroutine you need to change.
-
-**Replace the session loop.** Construct your own loop using `RunDialer`, `RunKeepalive`, and the session-level blocks. This gives you control over reconnection logic, back-off behavior, or multi-connection strategies while keeping the lower-level I/O blocks intact.
-
-**Implement from scratch.** Satisfy the `Worker` interface directly. You are responsible for dialing, managing connection state, forwarding messages to `pool.Inbox`, emitting `honeybee.EventConnected` and `honeybee.EventDisconnected` to `pool.Events`, and incrementing `pool.InboxCounter`.
+`DefaultWorker`'s source is the authoritative reference for how those responsibilities are met.
 
 ## Factory Constraints
 

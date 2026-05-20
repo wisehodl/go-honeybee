@@ -266,9 +266,9 @@ connStats := conn.Stats() // conn is a *transport.Connection
 
 ## Extending Pools
 
-The pool owns peer registration, event plumbing, and lifecycle. The worker owns what happens on the wire. The default worker can be replaced entirely or composed from the exported `Run*` building blocks that Honeybee provides.
+The pool owns peer registration, event plumbing, and lifecycle. The worker owns what happens on the wire. The default worker can be replaced entirely via `WorkerFactory`.
 
-See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and the available building blocks for the pool worker.
+See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and extension patterns.
 
 ## Configuration
 
