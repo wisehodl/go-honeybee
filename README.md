@@ -5,38 +5,31 @@ WebSocket connection and pool primitives in Go. Built for Nostr.
 ## Library Map
 
 ```txt
-transport/             single-connection primitives
-  connection.go          *Connection, state machine, reader goroutine, pinger
+honeybee.go            Pool, Worker, public types
+
+transport/             single-connection primitives and helpers
+  connection.go          Connection, state machine, reader goroutine, pinger
   config.go              ConnectionConfig, RetryConfig, options
   retry.go               exponential backoff with jitter
   socket.go              Dialer interface, AcquireSocket
   url.go                 parsing and normalization
-
-inbound/               pool for peer-initiated connections
-  pool.go                Pool, Peer, event plumbing
-  worker.go              Worker interface, DefaultWorker, Run* functions
-  config.go              WorkerConfig, PoolConfig, options
-
-outbound/              pool for self-initiated connections
-  pool.go                Pool, Peer, event plumbing
-  worker.go              Worker interface, DefaultWorker, Session, Run* functions
-  config.go              WorkerConfig, PoolConfig, options
+  watchdog.go            IdleWatchdog helper
 
 logging/               structured log construction
   logging.go             logger constructors, ForcedLevelHandler
 
-types/                 internal interfaces
+types/                 shared interfaces (Dialer, Socket, ReceivedMessage)
 honeybeetest/          test helpers and mocks for consumers
-````
+```
 
 ## What This Library Does
 
-Honeybee is a reliable and simple library for managing websocket connections and pools.
+Honeybee is a minimal, general-purpose WebSocket transport library.
 
-- Handles websocket connections and pools cleanly and safely.
-- Provides two pools: one to manage outbound peers and another to manage inbound peers.
-- Exposes statistics at the connection, worker, and pool levels.
-- Exposes a means to replace the internal pool worker to inject custom extensions.
+- Client-Side: Manage a pool of outbound peer connections that reconnect automatically and surface lifecycle events.
+- Server-Side: Wrap already-upgraded sockets in the connection primitive, which provides a ping-based heartbeat, automated read-loop, concurrent-safe writes, and classified disconnect errors.
+- The same connection primitive may also be used directly on the client side when pool semantics are not needed, providing automated dialing retry with exponential backoff and jitter.
+- Exposes a means to completely replace the internal pool worker to inject custom behavior.
 
 ## What This Library Does Not Do
 
@@ -45,7 +38,7 @@ Honeybee is a pure transport layer, but it is also a deliberately simple one. Ho
 Honeybee does not provide:
 
 - interpretation of message content. All messages are treated equally.
-- message queuing, prioritization, batching, or coalescing.
+- message queuing, buffering, prioritization, batching, or coalescing.
 - rate limiting, circuit breakers, token buckets, or adaptive throttling.
 - broadcast, fanout, or any many-to-many message routing.
 - compression strategies, prepared message caching, or encoding optimization.
@@ -65,11 +58,146 @@ If the primary repository is unavailable, use the `replace` directive in your go
 replace git.wisehodl.dev/jay/go-honeybee => github.com/wisehodl/go-honeybee latest
 ```
 
-## Usage
+## Outbound Pool
 
-### Bare Connection
+The pool connects to peers by their URLs and keeps them connected. It reconnects automatically when a connection drops and proactively refreshes inactive connections.
 
-Use `transport` directly when you need one socket and do not want pool semantics.
+```go
+import "git.wisehodl.dev/jay/go-honeybee"
+
+pool, err := honeybee.NewPool(ctx, nil, handler)
+if err != nil { /* handle error or panic */ }
+defer pool.Close()
+
+if err := pool.Connect("wss://peer.example.com"); err != nil { /* handle error */ }
+
+go func() {
+    for msg := range pool.Inbox() {
+        // msg.ID            is the normalized URL
+        // msg.Data          is the payload
+        // msg.ReceivedAt    is the timestamp
+    }
+}()
+
+go func() {
+    for ev := range pool.Events() {
+        // ev.At             is the event timestamp
+        switch ev.Kind {
+        case honeybee.EventConnected:
+        case honeybee.EventDisconnected:
+        }
+    }
+}()
+
+pool.Send("wss://peer.example.com", []byte("hello"))
+```
+
+**Usage Notes:**
+
+ URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `honeybee.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
+
+Every time a connection is established, `honeybee.EventConnected` is emitted. Every time a connection drops for any reason, `honeybee.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
+
+Keepalive is configured via `honeybee.WithKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
+
+After a disconnect, the worker waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
+
+`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `EventConnected` before retrying and maintain their own write buffers if needed.
+
+Dial failures are handled internally by the worker's retry logic and documented in structured logs. These do not stop the pool; it continues retrying according to the connection's retry config.
+
+## Server-Side Usage
+
+### Connection
+
+Use `transport.NewConnectionFromSocket` when your HTTP upgrade handler gives you an open socket. The connection starts in `StateConnected`; do not call `Connect`.
+
+```go
+import "git.wisehodl.dev/jay/go-honeybee/transport"
+
+// wsConn is a *websocket.Conn from your upgrade handler
+conn, err := transport.NewConnectionFromSocket(wsConn, nil, logger)
+if err != nil { /* handle error */ }
+defer conn.Close()
+
+go func() {
+    for data := range conn.Incoming() { // data: []byte
+        // process incoming messages
+    }
+}()
+
+go func() {
+    for err := range conn.Errors() {
+        // log or handle disconnects / read errors
+    }
+}()
+
+// Send can be called concurrently
+conn.Send([]byte("hello"))
+```
+
+`Send` is safe for concurrent callers. `Close` is idempotent and safe to call from any goroutine.
+
+When the reader exits, exactly one classified error reaches `Errors()` before the channel closes.
+
+- `ErrPeerClosedClean` for normal closure
+- `ErrPeerClosedUnexpected` for abnormal close codes
+- `ErrReadError` for anything else
+
+Pass an `*slog.Logger` as the third argument to get structured logs. Pass nil to disable logging entirely.
+
+### IdleWatchdog
+
+The watchdog helper detects clients that have gone silent. Wire activity signals from your `Incoming()` consumer, on each Send() call, and from the connection's `Heartbeat()` channel into it, and provide a callback to invoke when the timeout fires. Feeding all three sources means a client that neither sends or receives data but still responds to pings will not be considered idle. Since there is no reconnect loop on the server side, the typical callback is `conn.Close()`.
+
+```go
+import "time"
+
+activity := make(chan struct{}, 1)
+
+signal := func() {
+    select {
+    case activity <- struct{}{}:
+    default:
+    }
+}
+
+// Feed data messages:
+go func() {
+    for data := range conn.Incoming() {
+        signal()
+        // process data
+    }
+}()
+
+// Feed sends:
+func SendWithHeartbeat(conn *Connection, data []byte) error {
+    err := conn.Send(data)
+    if err != nil {
+	    return err
+    }
+    signal()
+    return nil
+}
+
+// Feed pong heartbeats:
+go func() {
+    for range conn.Heartbeat() {
+        signal()
+    }
+}()
+
+// Start the watchdog:
+go transport.IdleWatchdog(ctx, activity, 30*time.Second, func() {
+    conn.Close()
+})
+```
+
+When no activity signal arrives within the timeout, `onTimeout` is called once and the watchdog exits. When `ctx` is cancelled, the watchdog exits without calling `onTimeout`. When the timeout is zero or negative, the watchdog drains activity signals and waits for `ctx` to be cancelled without ever firing.
+
+## Bare Connection
+
+Use `transport.NewConnection` when you need a single outbound connection without pool semantics — for example, a one-shot query or a custom use-case. It adds several conveniences over a raw socket: a retry loop with exponential backoff, concurrent-safe writes, automatic write deadline enforcement, classified disconnect errors, and observable connection state.
 
 ```go
 import "git.wisehodl.dev/jay/go-honeybee/transport"
@@ -88,14 +216,15 @@ go func() {
 
 go func() {
     for err := range conn.Errors() {
-        // log or handle
+        // log or handle disconnects / read errors
     }
 }()
 
+// Send can be called concurrently
 conn.Send([]byte("hello"))
 ```
 
-The connection goes through four states: `StateDisconnected`, `StateConnecting`, `StateConnected`, `StateClosed`. Transitions are atomic and observable via `conn.State()`. Once closed, the connection should not be reused. Instead, construct a new one with the same URL and reconnect.
+The connection goes through four states: `StateDisconnected`, `StateConnecting`, `StateConnected`, `StateClosed`. Transitions are atomic and observable via `conn.State()`. Once closed, the connection should not be reused; construct a new one with the same URL and reconnect.
 
 `Send` is safe for concurrent callers. `Close` is idempotent and safe to call from any goroutine.
 
@@ -105,118 +234,17 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 - `ErrPeerClosedUnexpected` for abnormal close codes
 - `ErrReadError` for anything else
 
-Consumers use this to decide whether the disconnect was expected. No other errors are sent by the connection.
-
-Pass an `*slog.Logger` as the third argument to get structured logs. Pass nil to disable logging entirely.
-
-### Inbound Pool
-
-The inbound pool manages connections initiated by peers. The consumer accepts a WebSocket somewhere else and hands the resulting socket to the pool along with an ID.
-
-Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
-
-```go
-import "git.wisehodl.dev/jay/go-honeybee/inbound"
-
-pool, err := inbound.NewPool(ctx, "my-pool", nil, handler)
-if err != nil { /* handle error */ }
-defer pool.Close()
-
-// When a peer connects at the HTTP layer:
-if err := pool.Add(peerID, socket); err != nil { /* handle error */ }
-
-// Consume inbound data from all peers on one channel:
-go func() {
-    for msg := range pool.Inbox() {
-        // msg.ID            identifies the peer
-        // msg.Data          is the payload
-        // msg.ReceivedAt    is the timestamp
-    }
-}()
-
-// React to peer lifecycle:
-go func() {
-    for ev := range pool.Events() {
-        // ev.At             is the event timestamp
-        switch ev.Kind {
-        case inbound.EventDisconnected:  // clean close
-        case inbound.EventDroppedClose:  // peer closed with abnormal code
-        case inbound.EventDroppedError:  // read error
-        case inbound.EventEvictedPolicy: // inactivity timeout
-        }
-    }
-}()
-
-pool.Send(peerID, []byte("response"))
-```
-
-`Add`, `Replace`, and `Remove` do not emit events. Events are emitted only when a worker exits on its own, either when the peer closed the socket or it was determined to be inactive.
-
-Use `Replace` if you need to swap the socket for a peer while keeping its ID. No events are emitted during this process.
-
-The watchdog is configured via `inbound.WithInactivityTimeout`. When set to zero, it is disabled. When set, the watchdog observes message traffic and disconnects the peer if no messages arrive within the configured duration. The watchdog is disabled by default, meaning connections persist until manually removed or remotely terminated.
-
-### Outbound Pool
-
-The outbound pool connects to peers by their URLs and keeps them connected. It reconnects automatically when a connection drops and proactively refreshes inactive connections.
-
-Each pool requires a non-empty string ID. This ID is attached to all structured log records emitted by the pool, its workers, and their connections.
-
-```go
-import "git.wisehodl.dev/jay/go-honeybee/outbound"
-
-pool, err := outbound.NewPool(ctx, "my-pool", nil, handler)
-if err != nil { /* handle error */ }
-defer pool.Close()
-
-if err := pool.Connect("wss://peer.example.com"); err != nil { /* handle error */ }
-
-go func() {
-    for msg := range pool.Inbox() {
-        // msg.ID            is the normalized URL
-        // msg.Data          is the payload
-        // msg.ReceivedAt    is the timestamp
-    }
-}()
-
-go func() {
-    for ev := range pool.Events() {
-        // ev.At             is the event timestamp
-        switch ev.Kind {
-        case outbound.EventConnected:
-        case outbound.EventDisconnected:
-        }
-    }
-}()
-
-pool.Send("wss://peer.example.com", []byte("hello"))
-```
-
-URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `outbound.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
-
-Every time a connection is established, `outbound.EventConnected` is emitted. Every time a connection drops for any reason, `outbound.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
-
-Keepalive is configured via `outbound.WithKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
-
-After a disconnect, the worker waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
-
-`Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `OutboundEventConnected` before retrying and maintain their own write buffers if needed.
-
-Dial failures are handled internally by the worker's retry logic and documented in structured logs. These do not stop the pool; it continues retrying according to the connection's retry config.
-
 ## Ping-Pong Heartbeats
 
 Connections send periodic WebSocket ping frames and listen for the corresponding pong replies. A received pong registers as a heartbeat signal within the worker.
 
-For inbound workers, pong-derived heartbeats reset the inactivity watchdog timer alongside data messages. A peer that sends no data but responds to pings will not be evicted.
+Pong-derived heartbeats reset the keepalive timer alongside data messages and sends. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-For outbound workers, pong-derived heartbeats reset the keepalive timer. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
-
-The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool via `inbound.WithConnectionConfig` or `outbound.WithConnectionConfig`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
+The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool via `honeybee.WithConnectionConfig`, or supply it directly to `NewConnection` and `NewConnectionFromSocket`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
 ## Statistics
 
-Pools, workers, and connections expose counters and channel depths that can be sampled at any time. All values are snapshots; counters are monotonically increasing and are not reset between reconnects on an outbound worker.
+Pools, workers, and connections expose counters and channel depths that can be sampled at any time. All values are snapshots; counters are monotonically increasing and are not reset between reconnects.
 
 ```go
 // Pool-level snapshot
@@ -229,8 +257,7 @@ stats := pool.Stats()
 
 // Single peer
 peerStats, err := pool.PeerStats(peerID)
-// peerStats.Worker      — queue depths, buffer depth, processed/dropped/sent counts
-// peerStats.Connection  — channel depths, receive/send/heartbeat counts (inbound)
+// peerStats.Worker      — channel depths, processed/sent counts
 
 // Bare connection (transport package)
 connStats := conn.Stats() // conn is a *transport.Connection
@@ -241,7 +268,7 @@ connStats := conn.Stats() // conn is a *transport.Connection
 
 The pool owns peer registration, event plumbing, and lifecycle. The worker owns what happens on the wire. The default worker can be replaced entirely or composed from the exported `Run*` building blocks that Honeybee provides.
 
-See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and the available building blocks for both inbound and outbound pools.
+See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and the available building blocks for the pool worker.
 
 ## Configuration
 
