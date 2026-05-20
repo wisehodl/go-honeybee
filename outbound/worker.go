@@ -532,24 +532,11 @@ func RunDialer(
 		case <-ctx.Done():
 			return
 		case <-dial:
-			// drain dial signals while connection is being established
-			done := make(chan struct{})
-			go func() {
-				for {
-					select {
-					case <-dial:
-					case <-done:
-						return
-					}
-				}
-			}()
-
 			if logger != nil {
 				logger.Debug("dialer: dialing")
 			}
 			// dial a new connection
 			conn, err := connect(id, ctx, pool)
-			close(done)
 
 			// send error if dial failed and continue
 			if err != nil {
@@ -562,6 +549,16 @@ func RunDialer(
 			if logger != nil {
 				logger.Debug("dialer: connected")
 			}
+
+			// drain any redundant signals that arrived during the dial
+			for {
+				select {
+				case <-dial:
+				default:
+					goto drained
+				}
+			}
+			drained:
 
 			// send the new connection or close and exit
 			select {
