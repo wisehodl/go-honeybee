@@ -9,10 +9,22 @@ import (
 
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
-	component "git.wisehodl.dev/jay/go-mana-component"
+	"git.wisehodl.dev/jay/go-mana-component"
 )
 
+// ----------------------------------------------------------------------------
 // Worker
+// ----------------------------------------------------------------------------
+
+// ---------------------------/
+// Types
+// -------------------------/
+
+type WorkerFactory func(
+	ctx context.Context,
+	id string,
+	handler slog.Handler,
+) (Worker, error)
 
 type Worker interface {
 	Start(pool PoolPlugin)
@@ -37,18 +49,22 @@ type DefaultWorker struct {
 	id   string
 	conn atomic.Pointer[transport.Connection]
 
-	heartbeat chan struct{}
+	sendHeartbeat chan struct{}
+
+	ctx     context.Context
+	cancel  context.CancelFunc
+	config  *WorkerConfig
+	handler slog.Handler
+	logger  *slog.Logger
 
 	processedCount *atomic.Uint64
 	outgoingCount  *atomic.Uint64
 	restartCount   *atomic.Uint64
-
-	config  *WorkerConfig
-	ctx     context.Context
-	cancel  context.CancelFunc
-	handler slog.Handler
-	logger  *slog.Logger
 }
+
+// ---------------------------/
+// Constructor
+// -------------------------/
 
 func NewWorker(
 	ctx context.Context,
@@ -77,20 +93,27 @@ func NewWorker(
 
 	wctx, wcancel := context.WithCancel(ctx)
 	w := &DefaultWorker{
-		id:             id,
-		config:         config,
-		heartbeat:      make(chan struct{}),
+		id: id,
+
+		sendHeartbeat: make(chan struct{}),
+
+		ctx:     wctx,
+		cancel:  wcancel,
+		config:  config,
+		handler: handler,
+		logger:  logger,
+
 		processedCount: &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		restartCount:   &atomic.Uint64{},
-		ctx:            wctx,
-		cancel:         wcancel,
-		handler:        handler,
-		logger:         logger,
 	}
 
 	return w, nil
 }
+
+// ---------------------------/
+// Session
+// -------------------------/
 
 func (w *DefaultWorker) Start(pool PoolPlugin) {
 	if w.logger != nil {
@@ -114,71 +137,19 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 }
 
 func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
-	newConn := make(chan *transport.Connection, 1)
-
-	var timer *time.Timer
-	if w.config.KeepaliveTimeout > 0 {
-		if w.logger != nil {
-			w.logger.Debug("keepalive: enabled", "timeout", w.config.KeepaliveTimeout)
-		}
-		timer = time.NewTimer(w.config.KeepaliveTimeout)
-		defer timer.Stop()
-	} else {
-		if w.logger != nil {
-			w.logger.Debug("keepalive: disabled")
-		}
-	}
-
-	resetTimer := func() {
-		if timer == nil {
-			return
-		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-		timer.Reset(w.config.KeepaliveTimeout)
-	}
-
-	timerC := func() <-chan time.Time {
-		if timer == nil {
-			return nil
-		}
-		return timer.C
-	}
-
+	// setup dialer
 	var dialCancel context.CancelFunc
+	newConn := make(chan *transport.Connection, 1)
+	spawnDialer := func() { dialCancel = w.spawnDialer(ctx, dialCancel, newConn, pool) }
 
-	spawnDial := func() {
-		if dialCancel != nil {
-			dialCancel()
-		}
-		var dialCtx context.Context
-		dialCtx, dialCancel = context.WithCancel(ctx)
-		if w.logger != nil {
-			w.logger.Debug("session: requesting connection")
-		}
-		go func() {
-			conn, err := connect(w.id, dialCtx, pool, w.handler)
-			if err != nil {
-				if w.logger != nil {
-					w.logger.Warn("dialer: dial failed")
-				}
-				return
-			}
-			select {
-			case newConn <- conn:
-			case <-dialCtx.Done():
-				conn.Close()
-			}
-		}()
-	}
+	// setup heartbeat
+	timer, timerC, heartbeat := w.setupHeartbeat()
+	defer timer.Stop()
 
+	// main loop
 	for {
 		// spawn initial dial for this reconnect cycle
-		spawnDial()
+		spawnDialer()
 
 		// obtain new connection
 		var conn *transport.Connection
@@ -190,23 +161,26 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 					dialCancel()
 				}
 				return
-			case <-w.heartbeat:
-				resetTimer()
-			case <-timerC():
-				if w.logger != nil {
-					w.logger.Info("keepalive: no activity observed")
-				}
-				timer.Reset(w.config.KeepaliveTimeout)
-				spawnDial()
+
 			case conn = <-newConn:
 				if w.logger != nil {
 					w.logger.Debug("session: connected")
 				}
 				break preConn
+
+			case <-w.sendHeartbeat:
+				heartbeat()
+
+			case <-timerC():
+				if w.logger != nil {
+					w.logger.Info("keepalive: no activity observed")
+				}
+				timer.Reset(w.config.KeepaliveTimeout)
+				spawnDialer()
 			}
 		}
 
-		// set up new connection
+		// setup new connection
 		w.conn.Store(conn)
 		pool.Events <- PoolEvent{ID: w.id, Kind: EventConnected, At: time.Now()}
 
@@ -220,14 +194,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 			select {
 			case <-ctx.Done():
 				break conn_loop
-			case <-w.heartbeat:
-				resetTimer()
-			case <-timerC():
-				if w.logger != nil {
-					w.logger.Info("keepalive: no activity observed")
-				}
-				timer.Reset(w.config.KeepaliveTimeout)
-				break conn_loop
+
 			case data, ok := <-conn.Incoming():
 				if !ok {
 					if w.logger != nil {
@@ -235,20 +202,34 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 					}
 					break conn_loop
 				}
+
 				pool.Inbox <- types.InboxMessage{
-					ID:         w.id,
-					Data:       data,
-					ReceivedAt: time.Now(),
-				}
-				resetTimer()
+					ID: w.id, Data: data, ReceivedAt: time.Now()}
+
+				pool.InboxCounter.Add(1)
+				w.processedCount.Add(1)
+
+				heartbeat()
+
 			case <-conn.Heartbeat():
 				if w.logger != nil {
 					w.logger.Debug("ping-pong heartbeat")
 				}
-				resetTimer()
+				heartbeat()
+
+			case <-w.sendHeartbeat:
+				heartbeat()
+
+			case <-timerC():
+				if w.logger != nil {
+					w.logger.Info("keepalive: no activity observed")
+				}
+				timer.Reset(w.config.KeepaliveTimeout)
+				break conn_loop
 			}
 		}
 
+		// session ended
 		conn.Close()
 
 		if w.logger != nil {
@@ -272,6 +253,98 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 	}
 }
 
+func (w *DefaultWorker) setupHeartbeat() (
+	timer *time.Timer, timerC func() <-chan time.Time, heartbeat func(),
+) {
+	if w.config.KeepaliveTimeout > 0 {
+		if w.logger != nil {
+			w.logger.Debug("keepalive: enabled", "timeout", w.config.KeepaliveTimeout)
+		}
+		timer = time.NewTimer(w.config.KeepaliveTimeout)
+	} else {
+		if w.logger != nil {
+			w.logger.Debug("keepalive: disabled")
+		}
+	}
+
+	heartbeat = func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(w.config.KeepaliveTimeout)
+	}
+
+	timerC = func() <-chan time.Time {
+		if timer == nil {
+			return nil
+		}
+		return timer.C
+	}
+
+	return
+}
+
+func (w *DefaultWorker) spawnDialer(
+	ctx context.Context,
+	dialCancel context.CancelFunc,
+	newConn chan<- *transport.Connection,
+	pool PoolPlugin,
+) context.CancelFunc {
+	if dialCancel != nil {
+		dialCancel()
+	}
+
+	dialCtx, dialCancel := context.WithCancel(ctx)
+
+	if w.logger != nil {
+		w.logger.Debug("session: requesting connection")
+	}
+
+	go func() {
+		conn, err := connect(w.id, dialCtx, pool, w.handler)
+
+		if err != nil {
+			if w.logger != nil {
+				w.logger.Warn("dialer: dial failed", "error", err)
+			}
+			return
+		}
+
+		select {
+		case newConn <- conn:
+		case <-dialCtx.Done():
+			conn.Close()
+		}
+	}()
+
+	return dialCancel
+}
+
+func connect(
+	id string,
+	ctx context.Context,
+	pool PoolPlugin,
+	handler slog.Handler,
+) (*transport.Connection, error) {
+	conn, err := transport.NewConnection(ctx, id, pool.ConnectionConfig, handler)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.SetDialer(pool.Dialer)
+	return conn, conn.Connect(ctx)
+}
+
+// ---------------------------/
+// Methods
+// -------------------------/
+
 func (w *DefaultWorker) Stop() {
 	if w.logger != nil {
 		w.logger.Debug("shutting down")
@@ -291,7 +364,7 @@ func (w *DefaultWorker) Send(data []byte) error {
 	}
 
 	select {
-	case w.heartbeat <- struct{}{}:
+	case w.sendHeartbeat <- struct{}{}:
 	case <-w.ctx.Done():
 	}
 
@@ -323,19 +396,4 @@ func (w *DefaultWorker) Stats() WorkerStats {
 		TotalRestarts:  w.restartCount.Load(),
 		TotalSent:      w.outgoingCount.Load(),
 	}
-}
-
-func connect(
-	id string,
-	ctx context.Context,
-	pool PoolPlugin,
-	handler slog.Handler,
-) (*transport.Connection, error) {
-	conn, err := transport.NewConnection(ctx, id, pool.ConnectionConfig, handler)
-	if err != nil {
-		return nil, err
-	}
-
-	conn.SetDialer(pool.Dialer)
-	return conn, conn.Connect(ctx)
 }

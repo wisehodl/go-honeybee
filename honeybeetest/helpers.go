@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
+// ----------------------------------------------------------------------------
 // Constants
+// ----------------------------------------------------------------------------
 
 const (
 	TestTimeout         = 2 * time.Second
@@ -18,7 +20,9 @@ const (
 	NegativeTestTimeout = 100 * time.Millisecond
 )
 
+// ----------------------------------------------------------------------------
 // Types
+// ----------------------------------------------------------------------------
 
 type MockIncomingData struct {
 	MsgType int
@@ -37,7 +41,9 @@ type ExpectedLog struct {
 	Attrs map[string]any
 }
 
+// ----------------------------------------------------------------------------
 // Setup
+// ----------------------------------------------------------------------------
 
 func SetupTestSocket(t *testing.T) (
 	socket *MockSocket,
@@ -81,7 +87,9 @@ func SetupTestSocket(t *testing.T) (
 	return
 }
 
+// ----------------------------------------------------------------------------
 // Helpers
+// ----------------------------------------------------------------------------
 
 func ExpectIncoming(t *testing.T, incoming <-chan []byte, expected []byte) {
 	t.Helper()
@@ -126,7 +134,9 @@ func Never(t *testing.T, condition func() bool, msg string) {
 	assert.Never(t, condition, NegativeTestTimeout, TestTick, msg)
 }
 
+// ----------------------------------------------------------------------------
 // Logging Helpers
+// ----------------------------------------------------------------------------
 
 func AssertLogSequence(t *testing.T, records []slog.Record, expected []ExpectedLog) {
 	t.Helper()

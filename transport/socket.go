@@ -69,6 +69,7 @@ func AcquireSocket(
 			logger.Debug("dialing", "attempt", retryMgr.RetryCount()+1)
 		}
 
+		// dial
 		socket, resp, err := dialer.DialContext(ctx, url, header)
 		if err == nil {
 			if logger != nil {
@@ -77,7 +78,9 @@ func AcquireSocket(
 			return socket, resp, nil
 		}
 
+		// dial failed, retry
 		if !retryMgr.ShouldRetry() {
+			// retry policy expired
 			if logger != nil {
 				logger.Error("dial failed, max retries reached",
 					"error", err,
@@ -95,6 +98,7 @@ func AcquireSocket(
 				"next_delay", delay)
 		}
 
+		// context cancellable backoff
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():

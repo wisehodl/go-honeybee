@@ -1,21 +1,15 @@
 package honeybee
 
 import (
-	"context"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
-	"log/slog"
 	"time"
 )
 
-// Types
-
-type WorkerFactory func(
-	ctx context.Context,
-	id string,
-	handler slog.Handler,
-) (Worker, error)
-
+// ----------------------------------------------------------------------------
 // Pool Config
+// ----------------------------------------------------------------------------
+
+// Types
 
 type PoolConfig struct {
 	InboxBufferSize  int
@@ -26,6 +20,8 @@ type PoolConfig struct {
 }
 
 type PoolOption func(*PoolConfig) error
+
+// Constructor
 
 func NewPoolConfig(options ...PoolOption) (*PoolConfig, error) {
 	conf := GetDefaultPoolConfig()
@@ -57,6 +53,8 @@ func applyPoolOptions(config *PoolConfig, options ...PoolOption) error {
 	return nil
 }
 
+// Validation
+
 func ValidatePoolConfig(config *PoolConfig) error {
 	var err error
 
@@ -83,6 +81,8 @@ func validateBufferSize(value int) error {
 	}
 	return nil
 }
+
+// Options
 
 func WithInboxBufferSize(value int) PoolOption {
 	return func(c *PoolConfig) error {
@@ -133,7 +133,11 @@ func WithWorkerFactory(wf WorkerFactory) PoolOption {
 	}
 }
 
+// ----------------------------------------------------------------------------
 // Worker Config
+// ----------------------------------------------------------------------------
+
+// Types
 
 type WorkerConfig struct {
 	KeepaliveTimeout time.Duration
@@ -141,6 +145,8 @@ type WorkerConfig struct {
 }
 
 type WorkerOption func(*WorkerConfig) error
+
+// Constructor
 
 func NewWorkerConfig(options ...WorkerOption) (*WorkerConfig, error) {
 	conf := GetDefaultWorkerConfig()
@@ -169,6 +175,8 @@ func applyWorkerOptions(config *WorkerConfig, options ...WorkerOption) error {
 	return nil
 }
 
+// Validation
+
 func ValidateWorkerConfig(config *WorkerConfig) error {
 	err := validateKeepaliveTimeout(config.KeepaliveTimeout)
 	if err != nil {
@@ -191,6 +199,8 @@ func validateReconnectDelay(value time.Duration) error {
 	}
 	return nil
 }
+
+// Options
 
 // When KeepaliveTimeout is set to zero, keepalive timeouts are disabled.
 func WithKeepaliveTimeout(value time.Duration) WorkerOption {

@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// ----------------------------------------------------------------------------
+// Connection Config
+// ----------------------------------------------------------------------------
+
+// Types
+
 type CloseHandler func(code int, text string) error
 
 type ConnectionConfig struct {
@@ -25,6 +31,8 @@ type RetryConfig struct {
 }
 
 type ConnectionOption func(*ConnectionConfig) error
+
+// Constructors
 
 func NewConnectionConfig(options ...ConnectionOption) (*ConnectionConfig, error) {
 	conf := GetDefaultConnectionConfig()
@@ -68,6 +76,8 @@ func applyConnectionOptions(config *ConnectionConfig, options ...ConnectionOptio
 	}
 	return nil
 }
+
+// Validation
 
 func ValidateConnectionConfig(config *ConnectionConfig) error {
 	err := validateWriteTimeout(config.WriteTimeout)
@@ -152,6 +162,8 @@ func validateJitterFactor(value float64) error {
 	}
 	return nil
 }
+
+// Options
 
 func WithCloseHandler(handler CloseHandler) ConnectionOption {
 	return func(c *ConnectionConfig) error {

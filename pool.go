@@ -6,7 +6,7 @@ import (
 
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
-	component "git.wisehodl.dev/jay/go-mana-component"
+	"git.wisehodl.dev/jay/go-mana-component"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +19,9 @@ type Dialer = types.Dialer
 
 var NormalizeURL = transport.NormalizeURL
 
+// ----------------------------------------------------------------------------
 // Types
+// ----------------------------------------------------------------------------
 
 type PoolEventKind string
 
@@ -58,7 +60,9 @@ type PoolPlugin struct {
 	ConnectionConfig *transport.ConnectionConfig
 }
 
+// ----------------------------------------------------------------------------
 // Pool
+// ----------------------------------------------------------------------------
 
 type Peer struct {
 	id     string
@@ -66,24 +70,23 @@ type Peer struct {
 }
 
 type Pool struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-
 	peers  map[string]*Peer
 	inbox  chan types.InboxMessage
 	events chan PoolEvent
-
-	inboxCounter  *atomic.Uint64
-	outgoingCount *atomic.Uint64
+	closed bool
 
 	dialer  types.Dialer
 	config  *PoolConfig
 	handler slog.Handler
 	logger  *slog.Logger
 
+	ctx    context.Context
+	cancel context.CancelFunc
 	mu     sync.RWMutex
 	wg     sync.WaitGroup
-	closed bool
+
+	inboxCounter  *atomic.Uint64
+	outgoingCount *atomic.Uint64
 }
 
 func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
@@ -106,26 +109,29 @@ func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 		return nil, err
 	}
 
-	pctx, cancel := context.WithCancel(component.MustNew(ctx, "honeybee", "pool"))
+	ctx, cancel := context.WithCancel(component.MustNew(ctx, "honeybee", "pool"))
 
 	var logger *slog.Logger
 	if handler != nil {
-		c := component.FromContext(pctx)
+		c := component.FromContext(ctx)
 		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
 	return &Pool{
-		ctx:           pctx,
-		cancel:        cancel,
-		peers:         make(map[string]*Peer),
-		inbox:         make(chan types.InboxMessage, config.InboxBufferSize),
-		events:        make(chan PoolEvent, config.EventsBufferSize),
+		peers:  make(map[string]*Peer),
+		inbox:  make(chan types.InboxMessage, config.InboxBufferSize),
+		events: make(chan PoolEvent, config.EventsBufferSize),
+
+		dialer:  transport.NewDialer(),
+		config:  config,
+		handler: handler,
+		logger:  logger,
+
+		ctx:    ctx,
+		cancel: cancel,
+
 		inboxCounter:  &atomic.Uint64{},
 		outgoingCount: &atomic.Uint64{},
-		dialer:        transport.NewDialer(),
-		config:        config,
-		handler:       handler,
-		logger:        logger,
 	}, nil
 }
 

@@ -9,12 +9,16 @@ import (
 	"time"
 )
 
-// Re-exported types for consumer convenience
+// ----------------------------------------------------------------------------
+// Re-exports
+// ----------------------------------------------------------------------------
 
 type Socket = types.Socket
 type Dialer = types.Dialer
 
+// ----------------------------------------------------------------------------
 // Dialer Mocks
+// ----------------------------------------------------------------------------
 
 type MockDialer struct {
 	DialContextFunc func(
@@ -28,7 +32,9 @@ func (m *MockDialer) DialContext(
 	return m.DialContextFunc(ctx, url, h)
 }
 
+// ----------------------------------------------------------------------------
 // Socket Mocks
+// ----------------------------------------------------------------------------
 
 type MockSocket struct {
 	WriteMessageFunc     func(int, []byte) error
@@ -93,7 +99,9 @@ func (m *MockSocket) SetPongHandler(h func(s string) error) {
 	m.SetPongHandlerFunc(h)
 }
 
+// ----------------------------------------------------------------------------
 // Logging mocks
+// ----------------------------------------------------------------------------
 
 type MockSlogHandler struct {
 	records *[]slog.Record
