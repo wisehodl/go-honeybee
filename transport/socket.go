@@ -82,7 +82,7 @@ func AcquireSocket(
 		if !retryMgr.ShouldRetry() {
 			// retry policy expired
 			if logger != nil {
-				logger.Error("dial failed, max retries reached",
+				logger.Debug("dial failed, max retries reached",
 					"error", err,
 					"attempt", retryMgr.RetryCount()+1)
 			}

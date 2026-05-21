@@ -2,6 +2,7 @@ package honeybee
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -124,13 +125,13 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 	})
 
 	if w.logger != nil {
-		w.logger.Info("started")
+		w.logger.Debug("started")
 	}
 
 	wg.Wait()
 
 	if w.logger != nil {
-		w.logger.Info("stopped")
+		w.logger.Debug("stopped")
 	}
 }
 
@@ -162,7 +163,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 
 			case conn = <-newConn:
 				if w.logger != nil {
-					w.logger.Debug("session: connected")
+					w.logger.Info("connected")
 				}
 				break preConn
 
@@ -171,7 +172,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 
 			case <-inactive():
 				if w.logger != nil {
-					w.logger.Info("keepalive: no activity observed")
+					w.logger.Warn("keepalive: no activity observed")
 				}
 				timer.Reset(w.config.KeepaliveTimeout)
 				spawnDialer()
@@ -183,7 +184,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 		pool.Events <- PoolEvent{ID: w.id, Kind: EventConnected, At: time.Now()}
 
 		if w.logger != nil {
-			w.logger.Info("session: started")
+			w.logger.Debug("session: started")
 		}
 
 		// run session loop
@@ -195,8 +196,14 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 
 			case data, ok := <-conn.Incoming():
 				if !ok {
+					var reason error
+					select {
+					case reason = <-conn.Errors():
+					default:
+						reason = fmt.Errorf("unknown")
+					}
 					if w.logger != nil {
-						w.logger.Debug("reader: disconnected")
+						w.logger.Info("websocket: closed", "reason", reason)
 					}
 					break conn_loop
 				}
@@ -210,9 +217,6 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 				heartbeat()
 
 			case <-conn.Heartbeat():
-				if w.logger != nil {
-					w.logger.Debug("ping-pong heartbeat")
-				}
 				heartbeat()
 
 			case <-w.sendHeartbeat:
@@ -220,7 +224,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 
 			case <-inactive():
 				if w.logger != nil {
-					w.logger.Info("keepalive: no activity observed")
+					w.logger.Warn("keepalive: no activity observed")
 				}
 				timer.Reset(w.config.KeepaliveTimeout)
 				break conn_loop
@@ -231,7 +235,10 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 		conn.Close()
 
 		if w.logger != nil {
-			w.logger.Info("session: ended")
+			w.logger.Info("disconnected")
+		}
+		if w.logger != nil {
+			w.logger.Debug("session: ended")
 		}
 
 		// tear down connection
@@ -301,16 +308,13 @@ func (w *DefaultWorker) spawnDialer(
 	dialCtx, dialCancel := context.WithCancel(ctx)
 
 	if w.logger != nil {
-		w.logger.Debug("session: requesting connection")
+		w.logger.Debug("session: dialing")
 	}
 
 	go func() {
 		conn, err := connect(w.id, dialCtx, pool, w.handler)
 
 		if err != nil {
-			if w.logger != nil {
-				w.logger.Warn("dialer: dial failed", "error", err)
-			}
 			return
 		}
 
@@ -345,7 +349,7 @@ func connect(
 
 func (w *DefaultWorker) Stop() {
 	if w.logger != nil {
-		w.logger.Debug("shutting down")
+		w.logger.Info("shutting down")
 	}
 	w.cancel()
 }

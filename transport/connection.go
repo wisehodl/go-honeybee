@@ -219,7 +219,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 		// socket acquisition failed
 		c.state = StateDisconnected
 		if c.logger != nil {
-			c.logger.Error("connection failed", "error", err)
+			c.logger.Warn("connection failed", "error", err)
 		}
 		return NewConnectionError(err)
 	}
@@ -244,7 +244,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	c.state = StateConnected
 
 	if c.logger != nil {
-		c.logger.Info("connected")
+		c.logger.Debug("connected")
 	}
 
 	return nil
@@ -357,7 +357,7 @@ func (c *Connection) classifyCloseError(err error) error {
 		switch closeErr.Code {
 		case websocket.CloseNormalClosure, websocket.CloseGoingAway:
 			if c.logger != nil {
-				c.logger.Info("connection closed by peer",
+				c.logger.Debug("connection closed by peer",
 					"code", closeErr.Code,
 					"text", closeErr.Text,
 				)
@@ -366,7 +366,7 @@ func (c *Connection) classifyCloseError(err error) error {
 
 		default:
 			if c.logger != nil {
-				c.logger.Error("unexpected close",
+				c.logger.Warn("unexpected close",
 					"code", closeErr.Code,
 					"text", closeErr.Text,
 				)
@@ -492,7 +492,7 @@ func (c *Connection) shutdownInner() {
 	})
 
 	if c.logger != nil {
-		c.logger.Info("closing")
+		c.logger.Debug("closing")
 	}
 
 	if c.socket != nil {
@@ -518,7 +518,7 @@ func (c *Connection) shutdownCleanup() {
 		close(c.errors)
 
 		if c.logger != nil {
-			c.logger.Info("closed")
+			c.logger.Debug("closed")
 		}
 	})
 }
