@@ -92,10 +92,9 @@ func NewWorker(
 
 		sendHeartbeat: make(chan struct{}),
 
-		ctx:     ctx,
-		cancel:  cancel,
-		config:  config,
-		handler: handler,
+		ctx:    ctx,
+		cancel: cancel,
+		config: config,
 
 		processedCount: &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
@@ -104,7 +103,8 @@ func NewWorker(
 
 	if handler != nil {
 		comp := component.FromContext(ctx)
-		w.logger = slog.New(handler).With(slog.Any("component", comp), slog.String("peer_id", id))
+		w.handler = handler.WithAttrs([]slog.Attr{slog.String("peer", id)})
+		w.logger = slog.New(w.handler).With(slog.Any("component", comp))
 	}
 
 	return w, nil
