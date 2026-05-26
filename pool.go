@@ -101,7 +101,8 @@ func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 	if config.WorkerFactory == nil {
 		config.WorkerFactory = func(
 			ctx context.Context, id string, handler slog.Handler) (Worker, error) {
-			return NewWorker(ctx, id, config.WorkerConfig, handler)
+			wc := config.WorkerConfig
+			return NewWorker(ctx, id, &wc, handler)
 		}
 	}
 

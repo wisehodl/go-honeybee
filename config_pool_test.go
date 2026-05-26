@@ -15,7 +15,7 @@ func TestNewPoolConfig(t *testing.T) {
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
 		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
-		WorkerConfig:     nil,
+		WorkerConfig:     *GetDefaultWorkerConfig(),
 		WorkerFactory:    nil,
 	})
 }
@@ -27,7 +27,7 @@ func TestDefaultPoolConfig(t *testing.T) {
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
 		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
-		WorkerConfig:     nil,
+		WorkerConfig:     *GetDefaultWorkerConfig(),
 		WorkerFactory:    nil,
 	})
 }

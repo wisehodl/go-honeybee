@@ -16,7 +16,7 @@ type PoolConfig struct {
 	EventsBufferSize int
 	ConnectionConfig transport.ConnectionConfig
 	WorkerFactory    WorkerFactory
-	WorkerConfig     *WorkerConfig
+	WorkerConfig     WorkerConfig
 }
 
 type PoolOption func(*PoolConfig) error
@@ -40,7 +40,7 @@ func GetDefaultPoolConfig() *PoolConfig {
 		EventsBufferSize: 10,
 		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
 		WorkerFactory:    nil,
-		WorkerConfig:     nil,
+		WorkerConfig:     *GetDefaultWorkerConfig(),
 	}
 }
 
@@ -63,11 +63,9 @@ func ValidatePoolConfig(config *PoolConfig) error {
 		return err
 	}
 
-	if config.WorkerConfig != nil {
-		err = ValidateWorkerConfig(config.WorkerConfig)
-		if err != nil {
-			return err
-		}
+	err = ValidateWorkerConfig(&config.WorkerConfig)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -113,9 +111,9 @@ func WithConnectionConfig(cc transport.ConnectionConfig) PoolOption {
 	}
 }
 
-func WithWorkerConfig(wc *WorkerConfig) PoolOption {
+func WithWorkerConfig(wc WorkerConfig) PoolOption {
 	return func(c *PoolConfig) error {
-		err := ValidateWorkerConfig(wc)
+		err := ValidateWorkerConfig(&wc)
 		if err != nil {
 			return err
 		}
