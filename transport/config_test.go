@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
@@ -252,4 +253,11 @@ func TestValidateConnectionConfig(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestWithConnectionDialer(t *testing.T) {
+	mock := &honeybeetest.MockDialer{}
+	conf, err := NewConnectionConfig(WithConnectionDialer(mock))
+	assert.NoError(t, err)
+	assert.Equal(t, mock, conf.Dialer)
 }

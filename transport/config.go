@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"git.wisehodl.dev/jay/go-honeybee/types"
 	"net/http"
 	"time"
 )
@@ -21,6 +22,7 @@ type ConnectionConfig struct {
 	IncomingBufferSize int
 	ErrorsBufferSize   int
 	Retry              RetryConfig
+	Dialer             types.Dialer
 }
 
 type RetryConfig struct {
@@ -216,6 +218,13 @@ func WithErrorsBufferSize(value int) ConnectionOption {
 			return err
 		}
 		c.ErrorsBufferSize = value
+		return nil
+	}
+}
+
+func WithConnectionDialer(d types.Dialer) ConnectionOption {
+	return func(c *ConnectionConfig) error {
+		c.Dialer = d
 		return nil
 	}
 }
