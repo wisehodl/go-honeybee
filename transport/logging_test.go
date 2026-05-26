@@ -49,7 +49,7 @@ func TestConnectLogging(t *testing.T) {
 			log(slog.LevelDebug, "connecting", map[string]any{}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 1}),
 			log(slog.LevelDebug, "dial successful", map[string]any{"attempt": 1}),
-			log(slog.LevelInfo, "connected", map[string]any{}),
+			log(slog.LevelDebug, "connected", map[string]any{}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)
@@ -90,8 +90,8 @@ func TestConnectLogging(t *testing.T) {
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 2}),
 			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
-			log(slog.LevelError, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}),
-			log(slog.LevelError, "connection failed", map[string]any{"error": dialErr}),
+			log(slog.LevelDebug, "dial failed, max retries reached", map[string]any{"attempt": 3, "error": dialErr}),
+			log(slog.LevelWarn, "connection failed", map[string]any{"error": dialErr}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)
@@ -139,7 +139,7 @@ func TestConnectLogging(t *testing.T) {
 			log(slog.LevelWarn, "dial failed, retrying", map[string]any{"attempt": 2, "error": dialErr}),
 			log(slog.LevelDebug, "dialing", map[string]any{"attempt": 3}),
 			log(slog.LevelDebug, "dial successful", map[string]any{"attempt": 3}),
-			log(slog.LevelInfo, "connected", map[string]any{}),
+			log(slog.LevelDebug, "connected", map[string]any{}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)
@@ -158,14 +158,14 @@ func TestCloseLogging(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			return honeybeetest.FindLogRecord(
-				mockHandler.GetRecords(), slog.LevelInfo, "closed") != nil
+				mockHandler.GetRecords(), slog.LevelDebug, "closed") != nil
 		}, "expected log")
 
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "closing", map[string]any{}),
-			log(slog.LevelInfo, "closed", map[string]any{}),
+			log(slog.LevelDebug, "closing", map[string]any{}),
+			log(slog.LevelDebug, "closed", map[string]any{}),
 		}
 
 		honeybeetest.AssertLogSequence(t, records, expected)
@@ -193,7 +193,7 @@ func TestCloseLogging(t *testing.T) {
 		records := mockHandler.GetRecords()
 
 		expected := []honeybeetest.ExpectedLog{
-			log(slog.LevelInfo, "closing", map[string]any{}),
+			log(slog.LevelDebug, "closing", map[string]any{}),
 			log(slog.LevelError, "socket close failed", map[string]any{"error": closeErr}),
 		}
 
@@ -219,10 +219,10 @@ func TestReaderLogging(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			return honeybeetest.FindLogRecord(
-				mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer") != nil
+				mockHandler.GetRecords(), slog.LevelDebug, "connection closed by peer") != nil
 		}, "expected log")
 
-		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelInfo, "connection closed by peer")
+		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelDebug, "connection closed by peer")
 		assert.NotNil(t, record)
 		honeybeetest.AssertAttributePresent(t, *record, "code", websocket.CloseNormalClosure)
 		honeybeetest.AssertAttributePresent(t, *record, "text", "goodbye")
@@ -246,10 +246,10 @@ func TestReaderLogging(t *testing.T) {
 
 		honeybeetest.Eventually(t, func() bool {
 			return honeybeetest.FindLogRecord(
-				mockHandler.GetRecords(), slog.LevelError, "unexpected close") != nil
+				mockHandler.GetRecords(), slog.LevelWarn, "unexpected close") != nil
 		}, "expected log")
 
-		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelError, "unexpected close")
+		record := honeybeetest.FindLogRecord(mockHandler.GetRecords(), slog.LevelWarn, "unexpected close")
 		assert.NotNil(t, record)
 		honeybeetest.AssertAttributePresent(t, *record, "code", websocket.CloseProtocolError)
 		honeybeetest.AssertAttributePresent(t, *record, "text", "bad protocol")
