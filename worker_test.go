@@ -25,9 +25,10 @@ func makeWorkerContext(t *testing.T) (
 	inbox = make(chan types.InboxMessage, 256)
 	events = make(chan PoolEvent, 10)
 	pool = PoolPlugin{
-		Inbox:        inbox,
-		Events:       events,
-		InboxCounter: &atomic.Uint64{},
+		Inbox:            inbox,
+		Events:           events,
+		InboxCounter:     &atomic.Uint64{},
+		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
 	}
 	return
 }
@@ -95,7 +96,7 @@ func TestWorkerSession(t *testing.T) {
 			},
 		}
 		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = cc
+		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -151,7 +152,7 @@ func TestWorkerSession(t *testing.T) {
 			},
 		}
 		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = cc
+		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -176,7 +177,7 @@ func TestWorkerSession(t *testing.T) {
 			},
 		}
 		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = cc
+		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })

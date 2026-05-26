@@ -57,7 +57,7 @@ type PoolPlugin struct {
 	Events           chan<- PoolEvent
 	InboxCounter     *atomic.Uint64
 	Dialer           types.Dialer
-	ConnectionConfig *transport.ConnectionConfig
+	ConnectionConfig transport.ConnectionConfig
 }
 
 // ----------------------------------------------------------------------------
@@ -264,6 +264,7 @@ func (p *Pool) Connect(id string) error {
 		InboxCounter:     p.inboxCounter,
 		Dialer:           p.dialer,
 		ConnectionConfig: p.config.ConnectionConfig,
+		// ConnectionConfig is assigned by value — each worker gets its own copy
 	}
 
 	p.wg.Go(func() {

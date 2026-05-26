@@ -14,7 +14,7 @@ func TestNewPoolConfig(t *testing.T) {
 	assert.Equal(t, conf, &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		ConnectionConfig: nil,
+		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
 	})
@@ -26,7 +26,7 @@ func TestDefaultPoolConfig(t *testing.T) {
 	assert.Equal(t, conf, &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		ConnectionConfig: nil,
+		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
 		WorkerConfig:     nil,
 		WorkerFactory:    nil,
 	})
@@ -36,7 +36,7 @@ func TestApplyPoolOptions(t *testing.T) {
 	conf := &PoolConfig{}
 	err := applyPoolOptions(
 		conf,
-		WithConnectionConfig(&transport.ConnectionConfig{
+		WithConnectionConfig(transport.ConnectionConfig{
 			Retry: transport.RetryConfig{Disabled: true},
 		}),
 	)
@@ -59,19 +59,18 @@ func TestWithBufferSizes(t *testing.T) {
 
 func TestWithConnectionConfig(t *testing.T) {
 	conf := &PoolConfig{}
-	opt := WithConnectionConfig(&transport.ConnectionConfig{
+	opt := WithConnectionConfig(transport.ConnectionConfig{
 		WriteTimeout: 1 * time.Second,
 		Retry:        transport.RetryConfig{Disabled: true},
 	})
 	err := applyPoolOptions(conf, opt)
 	assert.NoError(t, err)
-	assert.NotNil(t, conf.ConnectionConfig)
 	assert.Equal(t, 1*time.Second, conf.ConnectionConfig.WriteTimeout)
 
 	// invalid config is rejected
 	conf = &PoolConfig{}
 	opt = WithConnectionConfig(
-		&transport.ConnectionConfig{
+		transport.ConnectionConfig{
 			WriteTimeout: -1 * time.Second,
 			Retry:        transport.RetryConfig{Disabled: true},
 		})
@@ -87,8 +86,12 @@ func TestValidatePoolConfig(t *testing.T) {
 		wantErrText string
 	}{
 		{
-			name: "valid empty",
-			conf: *&PoolConfig{},
+			name: "valid empty (retry disabled)",
+			conf: PoolConfig{
+				ConnectionConfig: transport.ConnectionConfig{
+					Retry: transport.RetryConfig{Disabled: true},
+				},
+			},
 		},
 		{
 			name: "valid defaults",
@@ -97,7 +100,7 @@ func TestValidatePoolConfig(t *testing.T) {
 		{
 			name: "valid complete",
 			conf: PoolConfig{
-				ConnectionConfig: &transport.ConnectionConfig{
+				ConnectionConfig: transport.ConnectionConfig{
 					Retry: transport.RetryConfig{Disabled: true},
 				},
 			},
@@ -105,7 +108,7 @@ func TestValidatePoolConfig(t *testing.T) {
 		{
 			name: "invalid connection config",
 			conf: PoolConfig{
-				ConnectionConfig: &transport.ConnectionConfig{
+				ConnectionConfig: transport.ConnectionConfig{
 					Retry: transport.RetryConfig{
 						InitialDelay: 10 * time.Second,
 						MaxDelay:     1 * time.Second,

@@ -334,7 +334,8 @@ func connect(
 	pool PoolPlugin,
 	handler slog.Handler,
 ) (*transport.Connection, error) {
-	conn, err := transport.NewConnection(ctx, id, pool.ConnectionConfig, handler)
+	cc := pool.ConnectionConfig
+	conn, err := transport.NewConnection(ctx, id, &cc, handler)
 	if err != nil {
 		return nil, err
 	}
