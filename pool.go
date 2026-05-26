@@ -231,7 +231,22 @@ func (p *Pool) Close() {
 	}()
 }
 
-func (p *Pool) Connect(id string) error {
+// ConnectOption configures a single Connect call.
+type ConnectOption func(*connectOptions)
+
+type connectOptions struct {
+	dialer types.Dialer
+}
+
+// WithDialer returns a ConnectOption that overrides the pool dialer for this
+// connection only.
+func WithDialer(d types.Dialer) ConnectOption {
+	return func(o *connectOptions) {
+		o.dialer = d
+	}
+}
+
+func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 	if p.logger != nil {
 		p.logger.Info("connecting", "peer", id)
 	}
@@ -258,8 +273,17 @@ func (p *Pool) Connect(id string) error {
 		return err
 	}
 
+	o := &connectOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	effectiveDialer := p.dialer
+	if o.dialer != nil {
+		effectiveDialer = o.dialer
+	}
+
 	cc := p.config.ConnectionConfig.Clone()
-	cc.Dialer = p.dialer
+	cc.Dialer = effectiveDialer
 
 	pool := PoolPlugin{
 		Inbox:            p.inbox,
