@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
+	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -15,14 +16,20 @@ import (
 
 func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 	t.Helper()
-	pool, err := NewPool(context.Background(), nil, nil)
-	assert.NoError(t, err)
 	dialer := &honeybeetest.MockDialer{
 		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
-	pool.dialer = dialer
+	cc := *transport.GetDefaultConnectionConfig()
+	cc.Dialer = dialer
+	pool, err := NewPool(context.Background(), &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		ConnectionConfig: cc,
+		WorkerConfig:     *GetDefaultWorkerConfig(),
+	}, nil)
+	assert.NoError(t, err)
 	return pool, dialer
 }
 
@@ -152,9 +159,15 @@ func TestPoolSend(t *testing.T) {
 		},
 	}
 
-	pool, err := NewPool(context.Background(), nil, nil)
+	cc := *transport.GetDefaultConnectionConfig()
+	cc.Dialer = mockDialer
+	pool, err := NewPool(context.Background(), &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		ConnectionConfig: cc,
+		WorkerConfig:     *GetDefaultWorkerConfig(),
+	}, nil)
 	assert.NoError(t, err)
-	pool.dialer = mockDialer
 
 	err = pool.Connect("wss://test")
 	assert.NoError(t, err)

@@ -255,6 +255,26 @@ func TestValidateConnectionConfig(t *testing.T) {
 	}
 }
 
+func TestConnectionConfigClone(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-Test", "val")
+	orig := ConnectionConfig{
+		RequestHeader: header,
+		WriteTimeout:  5 * time.Second,
+		Retry:         RetryConfig{Disabled: true},
+	}
+
+	cloned := orig.Clone()
+
+	// values match
+	assert.Equal(t, orig.WriteTimeout, cloned.WriteTimeout)
+	assert.Equal(t, "val", cloned.RequestHeader.Get("X-Test"))
+
+	// header is a distinct copy
+	cloned.RequestHeader.Set("X-Test", "mutated")
+	assert.Equal(t, "val", orig.RequestHeader.Get("X-Test"))
+}
+
 func TestWithConnectionDialer(t *testing.T) {
 	mock := &honeybeetest.MockDialer{}
 	conf, err := NewConnectionConfig(WithConnectionDialer(mock))

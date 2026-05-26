@@ -28,16 +28,15 @@ func TestConnectLogging(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		conn, err := NewConnection(context.Background(), "ws://test", nil, mockHandler)
-		assert.NoError(t, err)
-
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
 			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
-		conn.dialer = mockDialer
+		conn, err := NewConnection(context.Background(), "ws://test",
+			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, mockHandler)
+		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
@@ -58,6 +57,12 @@ func TestConnectLogging(t *testing.T) {
 	t.Run("max retries failure", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
+		dialErr := fmt.Errorf("dial error")
+		mockDialer := &honeybeetest.MockDialer{
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+				return nil, nil, dialErr
+			},
+		}
 		config := &ConnectionConfig{
 			Retry: RetryConfig{
 				MaxRetries:   2,
@@ -65,18 +70,11 @@ func TestConnectLogging(t *testing.T) {
 				MaxDelay:     5 * time.Millisecond,
 				JitterFactor: 0.0,
 			},
+			Dialer: mockDialer,
 		}
 
 		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
-
-		dialErr := fmt.Errorf("dial error")
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, dialErr
-			},
-		}
-		conn.dialer = mockDialer
 
 		err = conn.Connect(context.Background())
 		assert.Error(t, err)
@@ -100,18 +98,6 @@ func TestConnectLogging(t *testing.T) {
 	t.Run("success after retry", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   3,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-				JitterFactor: 0.0,
-			},
-		}
-
-		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
-		assert.NoError(t, err)
-
 		attemptCount := 0
 		dialErr := fmt.Errorf("dial error")
 		mockDialer := &honeybeetest.MockDialer{
@@ -123,7 +109,18 @@ func TestConnectLogging(t *testing.T) {
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
-		conn.dialer = mockDialer
+		config := &ConnectionConfig{
+			Retry: RetryConfig{
+				MaxRetries:   3,
+				InitialDelay: 1 * time.Millisecond,
+				MaxDelay:     5 * time.Millisecond,
+				JitterFactor: 0.0,
+			},
+			Dialer: mockDialer,
+		}
+
+		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
+		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background())
 		assert.NoError(t, err)
@@ -341,16 +338,15 @@ func TestLoggingDisabled(t *testing.T) {
 	t.Run("nil logger produces no logs", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
-		assert.NoError(t, err)
-
 		mockSocket := honeybeetest.NewMockSocket()
 		mockDialer := &honeybeetest.MockDialer{
 			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return mockSocket, nil, nil
 			},
 		}
-		conn.dialer = mockDialer
+		conn, err := NewConnection(context.Background(), "ws://test",
+			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, nil)
+		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background())
 		assert.NoError(t, err)

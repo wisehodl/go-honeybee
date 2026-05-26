@@ -56,7 +56,6 @@ type PoolPlugin struct {
 	Inbox            chan<- types.InboxMessage
 	Events           chan<- PoolEvent
 	InboxCounter     *atomic.Uint64
-	Dialer           types.Dialer
 	ConnectionConfig transport.ConnectionConfig
 }
 
@@ -118,12 +117,19 @@ func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
+	var dialer types.Dialer
+	if config.ConnectionConfig.Dialer != nil {
+		dialer = config.ConnectionConfig.Dialer
+	} else {
+		dialer = transport.NewDialer()
+	}
+
 	return &Pool{
 		peers:  make(map[string]*Peer),
 		inbox:  make(chan types.InboxMessage, config.InboxBufferSize),
 		events: make(chan PoolEvent, config.EventsBufferSize),
 
-		dialer:  transport.NewDialer(),
+		dialer:  dialer,
 		config:  config,
 		handler: handler,
 		logger:  logger,
@@ -195,13 +201,6 @@ func (p *Pool) PeerStats(id string) (PeerStats, error) {
 	}, nil
 }
 
-func (p *Pool) SetDialer(d types.Dialer) {
-	if d == nil {
-		panic("dialer cannot be nil")
-	}
-	p.dialer = d
-}
-
 func (p *Pool) Close() {
 	if p.logger != nil {
 		p.logger.Info("closing")
@@ -259,13 +258,14 @@ func (p *Pool) Connect(id string) error {
 		return err
 	}
 
+	cc := p.config.ConnectionConfig.Clone()
+	cc.Dialer = p.dialer
+
 	pool := PoolPlugin{
 		Inbox:            p.inbox,
 		Events:           p.events,
 		InboxCounter:     p.inboxCounter,
-		Dialer:           p.dialer,
-		ConnectionConfig: p.config.ConnectionConfig,
-		// ConnectionConfig is assigned by value — each worker gets its own copy
+		ConnectionConfig: cc,
 	}
 
 	p.wg.Go(func() {

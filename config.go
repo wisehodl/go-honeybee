@@ -2,7 +2,6 @@ package honeybee
 
 import (
 	"git.wisehodl.dev/jay/go-honeybee/transport"
-	"git.wisehodl.dev/jay/go-honeybee/types"
 	"time"
 )
 
@@ -18,7 +17,6 @@ type PoolConfig struct {
 	ConnectionConfig transport.ConnectionConfig
 	WorkerFactory    WorkerFactory
 	WorkerConfig     WorkerConfig
-	Dialer           types.Dialer
 }
 
 type PoolOption func(*PoolConfig) error
@@ -120,13 +118,6 @@ func WithWorkerConfig(wc WorkerConfig) PoolOption {
 			return err
 		}
 		c.WorkerConfig = wc
-		return nil
-	}
-}
-
-func WithPoolDialer(d types.Dialer) PoolOption {
-	return func(c *PoolConfig) error {
-		c.Dialer = d
 		return nil
 	}
 }

@@ -66,7 +66,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -90,13 +90,13 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 
-		pool.Dialer = &honeybeetest.MockDialer{
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
 			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
 				return nil, nil, errors.New("connection refused")
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -144,15 +144,15 @@ func TestWorkerSession(t *testing.T) {
 		_, _, pool := makeWorkerContext(t)
 
 		var dialCount atomic.Uint64
-		pool.Dialer = &honeybeetest.MockDialer{
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
 			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
 				dialCount.Add(1)
 				<-dialCtx.Done()
 				return nil, nil, dialCtx.Err()
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -170,14 +170,14 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 
-		pool.Dialer = &honeybeetest.MockDialer{
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
 			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
 				<-dialCtx.Done()
 				return nil, nil, dialCtx.Err()
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -205,7 +205,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, _, outgoingData := setupTestConnection(t)
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -256,7 +256,7 @@ func TestWorkerSession(t *testing.T) {
 			}
 		}
 
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -312,7 +312,7 @@ func TestWorkerSession(t *testing.T) {
 		}
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -378,7 +378,7 @@ func TestWorkerSession(t *testing.T) {
 		var pongHandler func(string) error
 		mockSocket, incomingData, _ := honeybeetest.SetupTestSocket(t)
 		mockSocket.SetPongHandlerFunc = func(h func(string) error) { pongHandler = h }
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -440,7 +440,7 @@ func TestWorkerSession(t *testing.T) {
 		}
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, _, _ := setupTestConnection(t)
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -482,7 +482,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -526,7 +526,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -562,7 +562,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -608,7 +608,7 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, workerCtx, workerCancel)
 		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.Dialer = mockDialer(mockSocket)
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {

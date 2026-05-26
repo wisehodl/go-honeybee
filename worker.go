@@ -339,8 +339,6 @@ func connect(
 	if err != nil {
 		return nil, err
 	}
-
-	conn.SetDialer(pool.Dialer)
 	return conn, conn.Connect(ctx)
 }
 

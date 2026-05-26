@@ -1,7 +1,6 @@
 package honeybee
 
 import (
-	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -138,11 +137,4 @@ func TestValidatePoolConfig(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-func TestWithPoolDialer(t *testing.T) {
-	mock := &honeybeetest.MockDialer{}
-	conf, err := NewPoolConfig(WithPoolDialer(mock))
-	assert.NoError(t, err)
-	assert.Equal(t, mock, conf.Dialer)
 }

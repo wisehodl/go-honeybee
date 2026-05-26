@@ -67,6 +67,13 @@ func GetDefaultConnectionConfig() *ConnectionConfig {
 	}
 }
 
+func (c ConnectionConfig) Clone() ConnectionConfig {
+	if c.RequestHeader != nil {
+		c.RequestHeader = c.RequestHeader.Clone()
+	}
+	return c
+}
+
 func applyConnectionOptions(config *ConnectionConfig, options ...ConnectionOption) error {
 	for _, option := range options {
 		if err := option(config); err != nil {

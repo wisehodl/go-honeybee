@@ -65,7 +65,7 @@ type Connection struct {
 	url    *url.URL
 	dialer types.Dialer
 	socket types.Socket
-	config *ConnectionConfig
+	config ConnectionConfig
 	logger *slog.Logger
 
 	incoming  chan []byte
@@ -107,14 +107,20 @@ func NewConnection(ctx context.Context, urlStr string, config *ConnectionConfig,
 		ctx = component.MustExtend(ctx, "connection")
 	}
 
+	// Clone config to ensure full ownership of all fields.
+	cc := config.Clone()
+	if cc.Dialer == nil {
+		cc.Dialer = NewDialer()
+	}
+
 	conn := &Connection{
 		url:            url,
-		dialer:         NewDialer(),
+		dialer:         cc.Dialer,
 		socket:         nil,
-		config:         config,
-		incoming:       make(chan []byte, config.IncomingBufferSize),
+		config:         cc,
+		incoming:       make(chan []byte, cc.IncomingBufferSize),
 		heartbeat:      make(chan struct{}, 1),
-		errors:         make(chan error, config.ErrorsBufferSize),
+		errors:         make(chan error, cc.ErrorsBufferSize),
 		incomingCount:  &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		heartbeatCount: &atomic.Uint64{},
@@ -151,14 +157,17 @@ func NewConnectionFromSocket(
 		ctx = component.MustExtend(ctx, "connection")
 	}
 
+	// Clone config to ensure full ownership of all fields.
+	cc := config.Clone()
+
 	conn := &Connection{
 		url:            nil,
 		dialer:         nil,
 		socket:         socket,
-		config:         config,
-		incoming:       make(chan []byte, config.IncomingBufferSize),
+		config:         cc,
+		incoming:       make(chan []byte, cc.IncomingBufferSize),
 		heartbeat:      make(chan struct{}, 1),
-		errors:         make(chan error, config.ErrorsBufferSize),
+		errors:         make(chan error, cc.ErrorsBufferSize),
 		incomingCount:  &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		heartbeatCount: &atomic.Uint64{},
@@ -309,10 +318,6 @@ func (c *Connection) Stats() ConnectionStats {
 		TotalSent:       c.outgoingCount.Load(),
 		TotalHeartbeats: c.heartbeatCount.Load(),
 	}
-}
-
-func (c *Connection) SetDialer(d types.Dialer) {
-	c.dialer = d
 }
 
 // ---------------------------/
