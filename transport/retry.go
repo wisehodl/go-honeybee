@@ -7,16 +7,16 @@ import (
 )
 
 type RetryManager struct {
-	config     *RetryConfig
+	config     RetryConfig
 	retryCount int
 	saturation int
 }
 
-func NewRetryManager(config *RetryConfig) *RetryManager {
+func NewRetryManager(config RetryConfig) *RetryManager {
 	// saturationCount: retry count at which base delay meets or exceeds MaxDelay.
 	// Conservative by two to preserve jitter variance near the boundary.
 	saturation := 0
-	if config != nil &&
+	if !config.Disabled &&
 		config.InitialDelay > 0 &&
 		config.InitialDelay <= config.MaxDelay {
 		ratio := float64(config.MaxDelay) / float64(config.InitialDelay)
@@ -31,7 +31,7 @@ func NewRetryManager(config *RetryConfig) *RetryManager {
 }
 
 func (r *RetryManager) ShouldRetry() bool {
-	if r.config == nil {
+	if r.config.Disabled {
 		return false
 	}
 
@@ -43,7 +43,7 @@ func (r *RetryManager) ShouldRetry() bool {
 }
 
 func (r *RetryManager) CalculateDelay() time.Duration {
-	if r.config == nil {
+	if r.config.Disabled {
 		return time.Second
 	}
 
@@ -54,7 +54,7 @@ func (r *RetryManager) CalculateDelay() time.Duration {
 
 	// if saturation is reached, calculated backoff will always be higher than
 	// the maximum delay
-	if r.config != nil && r.retryCount >= r.saturation {
+	if r.retryCount >= r.saturation {
 		return r.config.MaxDelay
 	}
 

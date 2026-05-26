@@ -59,7 +59,7 @@ func TestConnectLogging(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
 		config := &ConnectionConfig{
-			Retry: &RetryConfig{
+			Retry: RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
 				MaxDelay:     5 * time.Millisecond,
@@ -101,7 +101,7 @@ func TestConnectLogging(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
 		config := &ConnectionConfig{
-			Retry: &RetryConfig{
+			Retry: RetryConfig{
 				MaxRetries:   3,
 				InitialDelay: 1 * time.Millisecond,
 				MaxDelay:     5 * time.Millisecond,
@@ -279,7 +279,7 @@ func TestWriterLogging(t *testing.T) {
 	t.Run("write deadline error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond, Retry: RetryConfig{Disabled: true}}
 
 		deadlineErr := fmt.Errorf("deadline error")
 		mockSocket := honeybeetest.NewMockSocket()

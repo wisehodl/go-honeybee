@@ -36,7 +36,9 @@ func TestApplyPoolOptions(t *testing.T) {
 	conf := &PoolConfig{}
 	err := applyPoolOptions(
 		conf,
-		WithConnectionConfig(&transport.ConnectionConfig{}),
+		WithConnectionConfig(&transport.ConnectionConfig{
+			Retry: transport.RetryConfig{Disabled: true},
+		}),
 	)
 
 	assert.NoError(t, err)
@@ -57,7 +59,10 @@ func TestWithBufferSizes(t *testing.T) {
 
 func TestWithConnectionConfig(t *testing.T) {
 	conf := &PoolConfig{}
-	opt := WithConnectionConfig(&transport.ConnectionConfig{WriteTimeout: 1 * time.Second})
+	opt := WithConnectionConfig(&transport.ConnectionConfig{
+		WriteTimeout: 1 * time.Second,
+		Retry:        transport.RetryConfig{Disabled: true},
+	})
 	err := applyPoolOptions(conf, opt)
 	assert.NoError(t, err)
 	assert.NotNil(t, conf.ConnectionConfig)
@@ -65,7 +70,11 @@ func TestWithConnectionConfig(t *testing.T) {
 
 	// invalid config is rejected
 	conf = &PoolConfig{}
-	opt = WithConnectionConfig(&transport.ConnectionConfig{WriteTimeout: -1 * time.Second})
+	opt = WithConnectionConfig(
+		&transport.ConnectionConfig{
+			WriteTimeout: -1 * time.Second,
+			Retry:        transport.RetryConfig{Disabled: true},
+		})
 	err = applyPoolOptions(conf, opt)
 	assert.Error(t, err)
 }
@@ -88,14 +97,16 @@ func TestValidatePoolConfig(t *testing.T) {
 		{
 			name: "valid complete",
 			conf: PoolConfig{
-				ConnectionConfig: &transport.ConnectionConfig{},
+				ConnectionConfig: &transport.ConnectionConfig{
+					Retry: transport.RetryConfig{Disabled: true},
+				},
 			},
 		},
 		{
 			name: "invalid connection config",
 			conf: PoolConfig{
 				ConnectionConfig: &transport.ConnectionConfig{
-					Retry: &transport.RetryConfig{
+					Retry: transport.RetryConfig{
 						InitialDelay: 10 * time.Second,
 						MaxDelay:     1 * time.Second,
 					},

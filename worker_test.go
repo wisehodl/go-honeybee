@@ -94,7 +94,7 @@ func TestWorkerSession(t *testing.T) {
 				return nil, nil, errors.New("connection refused")
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithoutRetry())
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
 		pool.ConnectionConfig = cc
 
 		var wg sync.WaitGroup
@@ -150,7 +150,7 @@ func TestWorkerSession(t *testing.T) {
 				return nil, nil, dialCtx.Err()
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithoutRetry())
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
 		pool.ConnectionConfig = cc
 
 		var wg sync.WaitGroup
@@ -175,7 +175,7 @@ func TestWorkerSession(t *testing.T) {
 				return nil, nil, dialCtx.Err()
 			},
 		}
-		cc, _ := transport.NewConnectionConfig(transport.WithoutRetry())
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
 		pool.ConnectionConfig = cc
 
 		var wg sync.WaitGroup

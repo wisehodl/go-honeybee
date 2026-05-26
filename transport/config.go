@@ -20,10 +20,11 @@ type ConnectionConfig struct {
 	PingInterval       time.Duration
 	IncomingBufferSize int
 	ErrorsBufferSize   int
-	Retry              *RetryConfig
+	Retry              RetryConfig
 }
 
 type RetryConfig struct {
+	Disabled     bool
 	MaxRetries   int
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
@@ -55,16 +56,12 @@ func GetDefaultConnectionConfig() *ConnectionConfig {
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
-		Retry:              GetDefaultRetryConfig(),
-	}
-}
-
-func GetDefaultRetryConfig() *RetryConfig {
-	return &RetryConfig{
-		MaxRetries:   0, // Infinite retries
-		InitialDelay: 1 * time.Second,
-		MaxDelay:     60 * time.Second,
-		JitterFactor: 0.2,
+		Retry: RetryConfig{
+			MaxRetries:   0, // Infinite retries
+			InitialDelay: 1 * time.Second,
+			MaxDelay:     60 * time.Second,
+			JitterFactor: 0.2,
+		},
 	}
 }
 
@@ -85,7 +82,7 @@ func ValidateConnectionConfig(config *ConnectionConfig) error {
 		return err
 	}
 
-	if config.Retry != nil {
+	if !config.Retry.Disabled {
 		err = validateMaxRetries(config.Retry.MaxRetries)
 		if err != nil {
 			return err
@@ -223,19 +220,15 @@ func WithErrorsBufferSize(value int) ConnectionOption {
 	}
 }
 
-func WithoutRetry() ConnectionOption {
+func WithRetryDisabled() ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		c.Retry = nil
+		c.Retry.Disabled = true
 		return nil
 	}
 }
 
 func WithRetryMaxRetries(value int) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		if c.Retry == nil {
-			c.Retry = GetDefaultRetryConfig()
-		}
-
 		err := validateMaxRetries(value)
 		if err != nil {
 			return err
@@ -248,10 +241,6 @@ func WithRetryMaxRetries(value int) ConnectionOption {
 
 func WithRetryInitialDelay(value time.Duration) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		if c.Retry == nil {
-			c.Retry = GetDefaultRetryConfig()
-		}
-
 		err := validateInitialDelay(value)
 		if err != nil {
 			return err
@@ -264,10 +253,6 @@ func WithRetryInitialDelay(value time.Duration) ConnectionOption {
 
 func WithRetryMaxDelay(value time.Duration) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		if c.Retry == nil {
-			c.Retry = GetDefaultRetryConfig()
-		}
-
 		err := validateMaxDelay(value)
 		if err != nil {
 			return err
@@ -280,10 +265,6 @@ func WithRetryMaxDelay(value time.Duration) ConnectionOption {
 
 func WithRetryJitterFactor(value float64) ConnectionOption {
 	return func(c *ConnectionConfig) error {
-		if c.Retry == nil {
-			c.Retry = GetDefaultRetryConfig()
-		}
-
 		err := validateJitterFactor(value)
 		if err != nil {
 			return err

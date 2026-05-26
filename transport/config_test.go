@@ -35,18 +35,12 @@ func TestDefaultConnectionConfig(t *testing.T) {
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
-		Retry:              GetDefaultRetryConfig(),
-	})
-}
-
-func TestDefaultRetryConnectionConfig(t *testing.T) {
-	conf := GetDefaultRetryConfig()
-
-	assert.Equal(t, conf, &RetryConfig{
-		MaxRetries:   0,
-		InitialDelay: 1 * time.Second,
-		MaxDelay:     60 * time.Second,
-		JitterFactor: 0.2,
+		Retry: RetryConfig{
+			MaxRetries:   0,
+			InitialDelay: 1 * time.Second,
+			MaxDelay:     60 * time.Second,
+			JitterFactor: 0.2,
+		},
 	})
 }
 
@@ -114,10 +108,10 @@ func TestWithWriteTimeout(t *testing.T) {
 func TestWithRetry(t *testing.T) {
 	t.Run("without retry", func(t *testing.T) {
 		conf := GetDefaultConnectionConfig()
-		opt := WithoutRetry()
+		opt := WithRetryDisabled()
 		err := applyConnectionOptions(conf, opt)
 		assert.NoError(t, err)
-		assert.Nil(t, conf.Retry)
+		assert.True(t, conf.Retry.Disabled)
 	})
 
 	t.Run("with attempts", func(t *testing.T) {
@@ -209,7 +203,7 @@ func TestValidateConnectionConfig(t *testing.T) {
 	}{
 		{
 			name: "valid empty",
-			conf: *&ConnectionConfig{},
+			conf: ConnectionConfig{Retry: RetryConfig{Disabled: true}},
 		},
 		{
 			name: "valid defaults",
@@ -220,7 +214,7 @@ func TestValidateConnectionConfig(t *testing.T) {
 			conf: ConnectionConfig{
 				CloseHandler: (func(code int, text string) error { return nil }),
 				WriteTimeout: time.Duration(30),
-				Retry: &RetryConfig{
+				Retry: RetryConfig{
 					MaxRetries:   0,
 					InitialDelay: 2 * time.Second,
 					MaxDelay:     10 * time.Second,
@@ -231,7 +225,7 @@ func TestValidateConnectionConfig(t *testing.T) {
 		{
 			name: "invalid - initial delay > max delay",
 			conf: ConnectionConfig{
-				Retry: &RetryConfig{
+				Retry: RetryConfig{
 					InitialDelay: 10 * time.Second,
 					MaxDelay:     1 * time.Second,
 				},

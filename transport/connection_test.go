@@ -69,7 +69,7 @@ func TestNewConnection(t *testing.T) {
 		{
 			name:   "valid url, valid config",
 			url:    "wss://relay.example.com:8080/path",
-			config: &ConnectionConfig{WriteTimeout: 30 * time.Second},
+			config: &ConnectionConfig{WriteTimeout: 30 * time.Second, Retry: RetryConfig{Disabled: true}},
 		},
 		{
 			name:        "invalid url",
@@ -82,7 +82,7 @@ func TestNewConnection(t *testing.T) {
 			name: "invalid config",
 			url:  "ws://example.com",
 			config: &ConnectionConfig{
-				Retry: &RetryConfig{
+				Retry: RetryConfig{
 					InitialDelay: 10 * time.Second,
 					MaxDelay:     1 * time.Second,
 				},
@@ -152,13 +152,13 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "valid socket with valid config",
 			socket: honeybeetest.NewMockSocket(),
-			config: &ConnectionConfig{WriteTimeout: 30 * time.Second},
+			config: &ConnectionConfig{WriteTimeout: 30 * time.Second, Retry: RetryConfig{Disabled: true}},
 		},
 		{
 			name:   "invalid config",
 			socket: honeybeetest.NewMockSocket(),
 			config: &ConnectionConfig{
-				Retry: &RetryConfig{
+				Retry: RetryConfig{
 					InitialDelay: 10 * time.Second,
 					MaxDelay:     1 * time.Second,
 				},
@@ -173,6 +173,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 				CloseHandler: func(code int, text string) error {
 					return nil
 				},
+				Retry: RetryConfig{Disabled: true},
 			},
 		},
 	}
@@ -299,7 +300,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("connect retries on dial failure", func(t *testing.T) {
 		config := &ConnectionConfig{
-			Retry: &RetryConfig{
+			Retry: RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
 				MaxDelay:     5 * time.Millisecond,
@@ -331,7 +332,7 @@ func TestConnect(t *testing.T) {
 
 	t.Run("connect fails after max retries", func(t *testing.T) {
 		config := &ConnectionConfig{
-			Retry: &RetryConfig{
+			Retry: RetryConfig{
 				MaxRetries:   2,
 				InitialDelay: 1 * time.Millisecond,
 				MaxDelay:     5 * time.Millisecond,
@@ -382,6 +383,7 @@ func TestConnect(t *testing.T) {
 			CloseHandler: func(code int, text string) error {
 				return nil
 			},
+			Retry: RetryConfig{Disabled: true},
 		}
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
@@ -429,7 +431,7 @@ func TestConnect(t *testing.T) {
 func TestConnectContextCancellation(t *testing.T) {
 	t.Run("context cancelled during connect returns before retries exhaust", func(t *testing.T) {
 		config := &ConnectionConfig{
-			Retry: &RetryConfig{
+			Retry: RetryConfig{
 				MaxRetries:   100,
 				InitialDelay: 500 * time.Millisecond,
 				MaxDelay:     1 * time.Second,

@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewRetryManager(t *testing.T) {
-	config := &RetryConfig{
+	config := RetryConfig{
 		MaxRetries: 0,
 	}
 
@@ -16,14 +16,14 @@ func TestNewRetryManager(t *testing.T) {
 	assert.Equal(t, config, mgr.config)
 	assert.Equal(t, 0, mgr.retryCount)
 
-	// Should accept nil config
-	mgr = NewRetryManager(nil)
-	assert.Nil(t, mgr.config)
+	// Should accept a disabled config
+	mgr = NewRetryManager(RetryConfig{Disabled: true})
+	assert.True(t, mgr.config.Disabled)
 	assert.Equal(t, 0, mgr.retryCount)
 }
 
 func TestRecordRetry(t *testing.T) {
-	mgr := NewRetryManager(nil)
+	mgr := NewRetryManager(RetryConfig{Disabled: true})
 	assert.Equal(t, mgr.retryCount, 0)
 
 	mgr.RecordRetry()
@@ -34,13 +34,13 @@ func TestRecordRetry(t *testing.T) {
 }
 
 func TestShouldRetry(t *testing.T) {
-	// never retry if config is nil
-	mgr := NewRetryManager(nil)
+	// never retry if config is disabled
+	mgr := NewRetryManager(RetryConfig{Disabled: true})
 	assert.False(t, mgr.ShouldRetry())
 
 	// always retry if max attempt count is zero
 	mgr = &RetryManager{
-		config: &RetryConfig{
+		config: RetryConfig{
 			MaxRetries: 0,
 		},
 		retryCount: 1000,
@@ -49,7 +49,7 @@ func TestShouldRetry(t *testing.T) {
 
 	// retry if below max attempt count
 	mgr = &RetryManager{
-		config: &RetryConfig{
+		config: RetryConfig{
 			MaxRetries: 10,
 		},
 		retryCount: 5,
@@ -58,7 +58,7 @@ func TestShouldRetry(t *testing.T) {
 
 	// do not retry if above max attempt count
 	mgr = &RetryManager{
-		config: &RetryConfig{
+		config: RetryConfig{
 			MaxRetries: 10,
 		},
 		retryCount: 11,
@@ -68,12 +68,12 @@ func TestShouldRetry(t *testing.T) {
 
 func TestCalculateDelayDisabled(t *testing.T) {
 	// default delay if retry is disabled
-	mgr := NewRetryManager(nil)
+	mgr := NewRetryManager(RetryConfig{Disabled: true})
 	assert.Equal(t, time.Second, mgr.CalculateDelay())
 }
 
 func TestCalculateDelayWithoutJitter(t *testing.T) {
-	mgr := NewRetryManager(&RetryConfig{
+	mgr := NewRetryManager(RetryConfig{
 		MaxRetries:   0,
 		InitialDelay: 1 * time.Second,
 		MaxDelay:     5 * time.Second,
@@ -105,7 +105,7 @@ func TestCalculateDelayWithoutJitter(t *testing.T) {
 }
 
 func TestCalculateDelayWithJitter(t *testing.T) {
-	mgr := NewRetryManager(&RetryConfig{
+	mgr := NewRetryManager(RetryConfig{
 		MaxRetries:   0,
 		InitialDelay: 1 * time.Second,
 		MaxDelay:     5 * time.Second,

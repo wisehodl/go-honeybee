@@ -77,7 +77,7 @@ func TestAcquireSocket(t *testing.T) {
 				},
 			}
 
-			retryMgr := NewRetryManager(&RetryConfig{
+			retryMgr := NewRetryManager(RetryConfig{
 				MaxRetries:   tc.maxRetries,
 				InitialDelay: 1 * time.Millisecond,
 				MaxDelay:     5 * time.Millisecond,
@@ -106,7 +106,8 @@ func TestAcquireSocketGuards(t *testing.T) {
 			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
-	validRetryMgr := NewRetryManager(GetDefaultRetryConfig())
+	validRetryConfig := GetDefaultConnectionConfig().Retry
+	validRetryMgr := NewRetryManager(validRetryConfig)
 
 	cases := []struct {
 		name     string
@@ -167,7 +168,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 			// cancel before acquiring socket
 			cancel()
 
-			retryMgr := NewRetryManager(GetDefaultRetryConfig())
+			retryMgr := NewRetryManager(GetDefaultConnectionConfig().Retry)
 			_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil, nil)
 
 			assert.ErrorIs(t, err, context.Canceled)
@@ -186,7 +187,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			retryMgr := NewRetryManager(&RetryConfig{
+			retryMgr := NewRetryManager(RetryConfig{
 				MaxRetries:   10,
 				InitialDelay: 1 * time.Second,
 				MaxDelay:     1 * time.Second,
@@ -230,7 +231,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 
-			retryMgr := NewRetryManager(GetDefaultRetryConfig())
+			retryMgr := NewRetryManager(GetDefaultConnectionConfig().Retry)
 			done := make(chan error, 1)
 			go func() {
 				_, _, err := AcquireSocket(ctx, retryMgr, mockDialer, "ws://test", nil, nil)
@@ -263,7 +264,7 @@ func TestAcquireSocketPassesHeaders(t *testing.T) {
 		},
 	}
 
-	retryMgr := NewRetryManager(&RetryConfig{MaxRetries: 0})
+	retryMgr := NewRetryManager(RetryConfig{MaxRetries: 0, InitialDelay: 1 * time.Millisecond, MaxDelay: 5 * time.Millisecond})
 	_, _, err := AcquireSocket(context.Background(), retryMgr, mockDialer, "ws://test", header, nil)
 
 	assert.NoError(t, err)

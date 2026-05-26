@@ -102,7 +102,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("write timeout disabled when zero", func(t *testing.T) {
-		config := &ConnectionConfig{WriteTimeout: 0}
+		config := &ConnectionConfig{WriteTimeout: 0, Retry: RetryConfig{Disabled: true}}
 
 		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
 		mockSocket := honeybeetest.NewMockSocket()
@@ -148,7 +148,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
-		config := &ConnectionConfig{WriteTimeout: 30 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 30 * time.Millisecond, Retry: RetryConfig{Disabled: true}}
 
 		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
 		mockSocket := honeybeetest.NewMockSocket()
@@ -194,7 +194,7 @@ func TestConnectionSend(t *testing.T) {
 	})
 
 	t.Run("send fails on deadline error", func(t *testing.T) {
-		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond}
+		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond, Retry: RetryConfig{Disabled: true}}
 
 		mockSocket := honeybeetest.NewMockSocket()
 
