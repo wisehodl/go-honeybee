@@ -35,8 +35,7 @@ type PoolPlugin struct {
     Inbox            chan<- honeybee.InboxMessage
     Events           chan<- honeybee.PoolEvent
     InboxCounter     *atomic.Uint64
-    Dialer           honeybee.Dialer
-    ConnectionConfig *transport.ConnectionConfig
+    ConnectionConfig transport.ConnectionConfig
     Handler          slog.Handler
 }
 ```

@@ -240,7 +240,7 @@ Connections send periodic WebSocket ping frames and listen for the corresponding
 
 Pong-derived heartbeats reset the keepalive timer alongside data messages and sends. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool via `honeybee.WithConnectionConfig`, or supply it directly to `NewConnection` and `NewConnectionFromSocket`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
+The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool by value via `honeybee.WithConnectionConfig`, or supply it directly to `NewConnection` and `NewConnectionFromSocket`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
 ## Statistics
 

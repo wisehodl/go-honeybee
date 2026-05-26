@@ -17,7 +17,7 @@ Logging can be controlled independently at the pool, worker, and connection leve
 | Connection | `ErrorsBufferSize` | 10 | — | Must be positive |
 | Connection | `LoggingEnabled` | true | `false` | |
 | Connection | `LogLevel` | nil | — | nil defers to handler's own filter |
-| Retry | enabled | yes | `WithoutRetry()` | Governs `Connect()` only |
+| Retry | enabled | yes | `WithRetryDisabled()` | Governs `Connect()` only |
 | Retry | `MaxRetries` | 0 | — | 0 means infinite |
 | Retry | `InitialDelay` | 1s | — | Must be positive |
 | Retry | `MaxDelay` | 60s | — | Must be ≥ InitialDelay |
@@ -61,11 +61,16 @@ Sets the capacity of the channel that buffers inbound messages between the reade
 **`WithErrorsBufferSize(int)`**
 Sets the capacity of the channel that carries connection-level errors to the consumer. Must be at least 1.
 
+### Dialer
+
+**`WithConnectionDialer(types.Dialer)`**
+Overrides the dialer used to establish the WebSocket connection. When not set, the connection uses the default dialer. Useful in tests or when routing connections through a custom transport.
+
 ### Retry
 
 The retry policy governs the `Connect()` call only. It does not affect worker reconnection, which is controlled by `ReconnectDelay` on the worker config.
 
-**`WithoutRetry()`**
+**`WithRetryDisabled()`**
 Disables retry entirely. `Connect()` returns on the first dial failure.
 
 **`WithRetryMaxRetries(int)`**
@@ -124,13 +129,18 @@ Enables or disables worker-level logging.
 **`honeybee.WithWorkerLogLevel(slog.Level)`**
 Overrides the minimum log level for worker-scoped records only.
 
+### Per-connection
+
+**`honeybee.WithDialer(types.Dialer)`**
+Overrides the dialer for a single `Connect` call. Passed as a variadic option: `pool.Connect(id, honeybee.WithDialer(d))`. When provided, it takes precedence over the dialer resolved from `ConnectionConfig`. Existing callers that pass no options are unaffected.
+
 ### Wiring
 
-**`honeybee.WithConnectionConfig(*transport.ConnectionConfig)`**
-Supplies a connection config used when dialing each peer.
+**`honeybee.WithConnectionConfig(transport.ConnectionConfig)`**
+Supplies a connection config used when dialing each peer. Accepted by value; the pool stores its own copy.
 
-**`honeybee.WithWorkerConfig(*honeybee.WorkerConfig)`**
-Supplies a worker config applied to every worker the pool creates.
+**`honeybee.WithWorkerConfig(honeybee.WorkerConfig)`**
+Supplies a worker config applied to every worker the pool creates. Accepted by value; the pool stores its own copy.
 
 **`honeybee.WithWorkerFactory(honeybee.WorkerFactory)`**
 Replaces the default worker constructor. See [EXTEND.md](EXTEND.md) for the factory contract.
