@@ -28,12 +28,14 @@ type PoolEventKind string
 const (
 	EventConnected    PoolEventKind = "connected"
 	EventDisconnected PoolEventKind = "disconnected"
+	EventDialFailed   PoolEventKind = "dial_failed"
 )
 
 type PoolEvent struct {
 	ID   string
 	Kind PoolEventKind
 	At   time.Time
+	Err  error
 }
 
 type PoolStats struct {

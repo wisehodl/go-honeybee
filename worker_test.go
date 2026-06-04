@@ -103,12 +103,12 @@ func TestWorkerSession(t *testing.T) {
 
 		honeybeetest.Never(t, func() bool {
 			select {
-			case <-events:
-				return true
+			case e := <-events:
+				return e.Kind == EventConnected || e.Kind == EventDisconnected
 			default:
 				return false
 			}
-		}, "expected no events when dial fails")
+		}, "expected no connected/disconnected events when dial fails")
 
 		// worker goroutine is still running
 		assert.False(t, func() bool {
@@ -638,6 +638,161 @@ func TestWorkerSession(t *testing.T) {
 				return false
 			}
 		}, "expected wg to drain after parent cancel")
+	})
+
+	t.Run("EventDialFailed emitted with correct ID, non-nil Err, and non-zero At when dialer fails", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := makeWorker(t, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
+
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		dialErr := errors.New("connection refused")
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+				return nil, nil, dialErr
+			},
+		}
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDialFailed &&
+					e.ID == w.id &&
+					e.Err != nil &&
+					!e.At.IsZero()
+			default:
+				return false
+			}
+		}, "expected EventDialFailed")
+	})
+
+	t.Run("no EventDialFailed when first dial succeeds", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := makeWorker(t, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
+		mockSocket := honeybeetest.NewMockSocket()
+		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventConnected
+			default:
+				return false
+			}
+		}, "expected EventConnected")
+
+		// drain any remaining events and assert none are EventDialFailed
+		honeybeetest.Never(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDialFailed
+			default:
+				return false
+			}
+		}, "expected no EventDialFailed when first dial succeeds")
+	})
+
+	t.Run("no EventDialFailed when worker is stopped mid-dial", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := makeWorker(t, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
+
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+				<-dialCtx.Done()
+				return nil, nil, dialCtx.Err()
+			},
+		}
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		w.Stop()
+
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, "expected worker to exit after Stop")
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDialFailed
+			default:
+				return false
+			}
+		}, "expected no EventDialFailed when stopped mid-dial")
+	})
+
+	t.Run("no EventDialFailed when keepalive replaces an in-progress dial", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		config, _ := NewWorkerConfig(
+			WithReconnectDelay(0),
+			WithKeepaliveTimeout(20*time.Millisecond),
+		)
+		w := &DefaultWorker{
+			ctx:            ctx,
+			cancel:         cancel,
+			id:             "wss://test",
+			config:         config,
+			sendHeartbeat:  make(chan struct{}),
+			processedCount: &atomic.Uint64{},
+			outgoingCount:  &atomic.Uint64{},
+			restartCount:   &atomic.Uint64{},
+		}
+		_, events, pool := makeWorkerContext(t)
+
+		var dialCount atomic.Uint64
+		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
+		pool.ConnectionConfig = *cc
+		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
+				dialCount.Add(1)
+				<-dialCtx.Done()
+				return nil, nil, dialCtx.Err()
+			},
+		}
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		// keepalive fires after 20ms, cancelling the first dial and spawning a second
+		honeybeetest.Eventually(t, func() bool {
+			return dialCount.Load() >= 2
+		}, "expected at least two dial attempts after keepalive fired")
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDialFailed
+			default:
+				return false
+			}
+		}, "expected no EventDialFailed when keepalive replaces dial")
 	})
 }
 

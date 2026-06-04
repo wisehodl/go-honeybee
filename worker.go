@@ -311,8 +311,15 @@ func (w *DefaultWorker) spawnDialer(
 		w.logger.Debug("session: dialing")
 	}
 
+	onDialError := func(err error) {
+		if dialCtx.Err() != nil {
+			return
+		}
+		pool.Events <- PoolEvent{ID: w.id, Kind: EventDialFailed, Err: err, At: time.Now()}
+	}
+
 	go func() {
-		conn, err := connect(w.id, dialCtx, pool, w.handler)
+		conn, err := connect(w.id, dialCtx, pool, w.handler, onDialError)
 
 		if err != nil {
 			return
@@ -333,13 +340,14 @@ func connect(
 	ctx context.Context,
 	pool PoolPlugin,
 	handler slog.Handler,
+	onDialError func(error),
 ) (*transport.Connection, error) {
 	cc := pool.ConnectionConfig
 	conn, err := transport.NewConnection(ctx, id, &cc, handler)
 	if err != nil {
 		return nil, err
 	}
-	return conn, conn.Connect(ctx, nil)
+	return conn, conn.Connect(ctx, onDialError)
 }
 
 // ---------------------------/
