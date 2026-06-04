@@ -47,6 +47,7 @@ func AcquireSocket(
 	url string,
 	header http.Header,
 	logger *slog.Logger,
+	onDialError func(error),
 ) (types.Socket, *http.Response, error) {
 	select {
 	case <-ctx.Done():
@@ -79,6 +80,9 @@ func AcquireSocket(
 		}
 
 		// dial failed, retry
+		if onDialError != nil {
+			onDialError(err)
+		}
 		if !retryMgr.ShouldRetry() {
 			// retry policy expired
 			if logger != nil {

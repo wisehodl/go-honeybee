@@ -222,7 +222,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	// obtain socket
 	retryMgr := NewRetryManager(c.config.Retry)
 	socket, _, err := AcquireSocket(
-		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger)
+		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger, nil)
 
 	if err != nil {
 		// socket acquisition failed
