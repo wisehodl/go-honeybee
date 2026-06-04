@@ -664,7 +664,7 @@ func TestWorkerSession(t *testing.T) {
 			case e := <-events:
 				return e.Kind == EventDialFailed &&
 					e.ID == w.id &&
-					e.Err != nil &&
+					e.Err == dialErr &&
 					!e.At.IsZero()
 			default:
 				return false
