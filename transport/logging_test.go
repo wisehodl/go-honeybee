@@ -38,7 +38,7 @@ func TestConnectLogging(t *testing.T) {
 			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, mockHandler)
 		assert.NoError(t, err)
 
-		err = conn.Connect(context.Background())
+		err = conn.Connect(context.Background(), nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -76,7 +76,7 @@ func TestConnectLogging(t *testing.T) {
 		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
 
-		err = conn.Connect(context.Background())
+		err = conn.Connect(context.Background(), nil)
 		assert.Error(t, err)
 
 		records := mockHandler.GetRecords()
@@ -122,7 +122,7 @@ func TestConnectLogging(t *testing.T) {
 		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
 
-		err = conn.Connect(context.Background())
+		err = conn.Connect(context.Background(), nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -348,7 +348,7 @@ func TestLoggingDisabled(t *testing.T) {
 			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, nil)
 		assert.NoError(t, err)
 
-		err = conn.Connect(context.Background())
+		err = conn.Connect(context.Background(), nil)
 		assert.NoError(t, err)
 
 		conn.Close()

@@ -339,7 +339,7 @@ func connect(
 	if err != nil {
 		return nil, err
 	}
-	return conn, conn.Connect(ctx)
+	return conn, conn.Connect(ctx, nil)
 }
 
 // ---------------------------/

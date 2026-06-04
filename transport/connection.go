@@ -200,7 +200,7 @@ func NewConnectionFromSocket(
 // Methods
 // -------------------------/
 
-func (c *Connection) Connect(ctx context.Context) error {
+func (c *Connection) Connect(ctx context.Context, onDialError func(error)) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -222,7 +222,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	// obtain socket
 	retryMgr := NewRetryManager(c.config.Retry)
 	socket, _, err := AcquireSocket(
-		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger, nil)
+		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger, onDialError)
 
 	if err != nil {
 		// socket acquisition failed
