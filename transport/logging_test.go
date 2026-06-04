@@ -34,8 +34,8 @@ func TestConnectLogging(t *testing.T) {
 				return mockSocket, nil, nil
 			},
 		}
-		conn, err := NewConnection(context.Background(), "ws://test",
-			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, mockHandler)
+		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
+		conn, err := NewConnection(context.Background(), "ws://test", conf, mockHandler)
 		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background(), nil)
@@ -63,15 +63,13 @@ func TestConnectLogging(t *testing.T) {
 				return nil, nil, dialErr
 			},
 		}
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   2,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-				JitterFactor: 0.0,
-			},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(2),
+			WithRetryInitialDelay(1*time.Millisecond),
+			WithRetryMaxDelay(5*time.Millisecond),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 
 		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
@@ -109,15 +107,13 @@ func TestConnectLogging(t *testing.T) {
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   3,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-				JitterFactor: 0.0,
-			},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(3),
+			WithRetryInitialDelay(1*time.Millisecond),
+			WithRetryMaxDelay(5*time.Millisecond),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 
 		conn, err := NewConnection(context.Background(), "ws://test", config, mockHandler)
 		assert.NoError(t, err)
@@ -276,7 +272,7 @@ func TestWriterLogging(t *testing.T) {
 	t.Run("write deadline error", func(t *testing.T) {
 		mockHandler := honeybeetest.NewMockSlogHandler()
 
-		config := &ConnectionConfig{WriteTimeout: 1 * time.Millisecond, Retry: RetryConfig{Disabled: true}}
+		config, _ := NewConnectionConfig(WithWriteTimeout(1*time.Millisecond), WithRetryDisabled())
 
 		deadlineErr := fmt.Errorf("deadline error")
 		mockSocket := honeybeetest.NewMockSocket()
@@ -344,8 +340,8 @@ func TestLoggingDisabled(t *testing.T) {
 				return mockSocket, nil, nil
 			},
 		}
-		conn, err := NewConnection(context.Background(), "ws://test",
-			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, nil)
+		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
+		conn, err := NewConnection(context.Background(), "ws://test", conf, nil)
 		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background(), nil)

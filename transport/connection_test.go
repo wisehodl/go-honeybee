@@ -68,9 +68,12 @@ func TestNewConnection(t *testing.T) {
 			config: nil,
 		},
 		{
-			name:   "valid url, valid config",
-			url:    "wss://relay.example.com:8080/path",
-			config: &ConnectionConfig{WriteTimeout: 30 * time.Second, Retry: RetryConfig{Disabled: true}},
+			name: "valid url, valid config",
+			url:  "wss://relay.example.com:8080/path",
+			config: func() *ConnectionConfig {
+				c, _ := NewConnectionConfig(WithWriteTimeout(30*time.Second), WithRetryDisabled())
+				return c
+			}(),
 		},
 		{
 			name:        "invalid url",
@@ -157,7 +160,10 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "valid socket with valid config",
 			socket: honeybeetest.NewMockSocket(),
-			config: &ConnectionConfig{WriteTimeout: 30 * time.Second, Retry: RetryConfig{Disabled: true}},
+			config: func() *ConnectionConfig {
+				c, _ := NewConnectionConfig(WithWriteTimeout(30*time.Second), WithRetryDisabled())
+				return c
+			}(),
 		},
 		{
 			name:   "invalid config",
@@ -174,12 +180,13 @@ func TestNewConnectionFromSocket(t *testing.T) {
 		{
 			name:   "close handler set when provided",
 			socket: honeybeetest.NewMockSocket(),
-			config: &ConnectionConfig{
-				CloseHandler: func(code int, text string) error {
-					return nil
-				},
-				Retry: RetryConfig{Disabled: true},
-			},
+			config: func() *ConnectionConfig {
+				c, _ := NewConnectionConfig(
+					WithCloseHandler(func(code int, text string) error { return nil }),
+					WithRetryDisabled(),
+				)
+				return c
+			}(),
 		},
 	}
 
@@ -287,8 +294,8 @@ func TestConnect(t *testing.T) {
 				return mockSocket, nil, nil
 			},
 		}
-		conn, err := NewConnection(context.Background(), "ws://test",
-			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, nil)
+		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
+		conn, err := NewConnection(context.Background(), "ws://test", conf, nil)
 		assert.NoError(t, err)
 
 		err = conn.Connect(context.Background(), nil)
@@ -321,15 +328,13 @@ func TestConnect(t *testing.T) {
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   2,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-				JitterFactor: 0.0,
-			},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(2),
+			WithRetryInitialDelay(1*time.Millisecond),
+			WithRetryMaxDelay(5*time.Millisecond),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -347,15 +352,13 @@ func TestConnect(t *testing.T) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   2,
-				InitialDelay: 1 * time.Millisecond,
-				MaxDelay:     5 * time.Millisecond,
-				JitterFactor: 0.0,
-			},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(2),
+			WithRetryInitialDelay(1*time.Millisecond),
+			WithRetryMaxDelay(5*time.Millisecond),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -376,8 +379,8 @@ func TestConnect(t *testing.T) {
 			},
 		}
 		var err error
-		conn, err = NewConnection(context.Background(), "ws://test",
-			&ConnectionConfig{Retry: RetryConfig{Disabled: true}, Dialer: mockDialer}, nil)
+		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
+		conn, err = NewConnection(context.Background(), "ws://test", conf, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, StateDisconnected, conn.State())
 
@@ -400,13 +403,11 @@ func TestConnect(t *testing.T) {
 				return mockSocket, nil, nil
 			},
 		}
-		config := &ConnectionConfig{
-			CloseHandler: func(code int, text string) error {
-				return nil
-			},
-			Retry:  RetryConfig{Disabled: true},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithCloseHandler(func(code int, text string) error { return nil }),
+			WithRetryDisabled(),
+			WithConnectionDialer(mockDialer),
+		)
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -451,10 +452,13 @@ func TestConnect(t *testing.T) {
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
-		config := &ConnectionConfig{
-			Retry:  RetryConfig{MaxRetries: 3, InitialDelay: 1 * time.Millisecond, MaxDelay: 5 * time.Millisecond},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(3),
+			WithRetryInitialDelay(1*time.Millisecond),
+			WithRetryMaxDelay(5*time.Millisecond),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -480,10 +484,7 @@ func TestConnect(t *testing.T) {
 				return honeybeetest.NewMockSocket(), nil, nil
 			},
 		}
-		config := &ConnectionConfig{
-			Retry:  RetryConfig{Disabled: true},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -500,10 +501,7 @@ func TestConnect(t *testing.T) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
-		config := &ConnectionConfig{
-			Retry:  RetryConfig{Disabled: true},
-			Dialer: mockDialer,
-		}
+		config, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 
@@ -515,14 +513,6 @@ func TestConnect(t *testing.T) {
 
 func TestConnectContextCancellation(t *testing.T) {
 	t.Run("context cancelled during connect returns before retries exhaust", func(t *testing.T) {
-		config := &ConnectionConfig{
-			Retry: RetryConfig{
-				MaxRetries:   100,
-				InitialDelay: 500 * time.Millisecond,
-				MaxDelay:     1 * time.Second,
-				JitterFactor: 0.0,
-			},
-		}
 		dialCount := atomic.Int32{}
 		mockDialer := &honeybeetest.MockDialer{
 			DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
@@ -530,7 +520,13 @@ func TestConnectContextCancellation(t *testing.T) {
 				return nil, nil, fmt.Errorf("dial failed")
 			},
 		}
-		config.Dialer = mockDialer
+		config, _ := NewConnectionConfig(
+			WithRetryMaxRetries(100),
+			WithRetryInitialDelay(500*time.Millisecond),
+			WithRetryMaxDelay(1*time.Second),
+			WithRetryJitterFactor(0.0),
+			WithConnectionDialer(mockDialer),
+		)
 		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
 		assert.NoError(t, err)
 

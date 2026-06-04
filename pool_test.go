@@ -21,14 +21,9 @@ func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
-	cc := *transport.GetDefaultConnectionConfig()
-	cc.Dialer = dialer
-	pool, err := NewPool(context.Background(), &PoolConfig{
-		InboxBufferSize:  256,
-		EventsBufferSize: 10,
-		ConnectionConfig: cc,
-		WorkerConfig:     *GetDefaultWorkerConfig(),
-	}, nil)
+	cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(dialer))
+	config, _ := NewPoolConfig(WithConnectionConfig(*cc))
+	pool, err := NewPool(context.Background(), config, nil)
 	assert.NoError(t, err)
 	return pool, dialer
 }
@@ -108,14 +103,9 @@ func TestPoolConnectWithDialer(t *testing.T) {
 			},
 		}
 
-		cc := *transport.GetDefaultConnectionConfig()
-		cc.Dialer = poolDialer
-		pool, err := NewPool(context.Background(), &PoolConfig{
-			InboxBufferSize:  256,
-			EventsBufferSize: 10,
-			ConnectionConfig: cc,
-			WorkerConfig:     *GetDefaultWorkerConfig(),
-		}, nil)
+		cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(poolDialer))
+		config, _ := NewPoolConfig(WithConnectionConfig(*cc))
+		pool, err := NewPool(context.Background(), config, nil)
 		assert.NoError(t, err)
 
 		err = pool.Connect("wss://test", WithDialer(perCallDialer))
@@ -204,14 +194,9 @@ func TestPoolSend(t *testing.T) {
 		},
 	}
 
-	cc := *transport.GetDefaultConnectionConfig()
-	cc.Dialer = mockDialer
-	pool, err := NewPool(context.Background(), &PoolConfig{
-		InboxBufferSize:  256,
-		EventsBufferSize: 10,
-		ConnectionConfig: cc,
-		WorkerConfig:     *GetDefaultWorkerConfig(),
-	}, nil)
+	cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(mockDialer))
+	config, _ := NewPoolConfig(WithConnectionConfig(*cc))
+	pool, err := NewPool(context.Background(), config, nil)
 	assert.NoError(t, err)
 
 	err = pool.Connect("wss://test")
