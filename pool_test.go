@@ -181,6 +181,63 @@ func TestPoolRemove(t *testing.T) {
 
 }
 
+func TestPoolDialFailed(t *testing.T) {
+	t.Run("EventDialFailed surfaces with correct peer ID, non-nil Err, and non-zero At", func(t *testing.T) {
+		dialErr := fmt.Errorf("connection refused")
+		failingDialer := &honeybeetest.MockDialer{
+			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+				return nil, nil, dialErr
+			},
+		}
+		cc, _ := transport.NewConnectionConfig(
+			transport.WithConnectionDialer(failingDialer),
+			transport.WithRetryDisabled(),
+		)
+		poolCfg, _ := NewPoolConfig(
+			WithInboxBufferSize(256),
+			WithEventsBufferSize(10),
+			WithConnectionConfig(*cc),
+		)
+		pool, err := NewPool(context.Background(), poolCfg, nil)
+		assert.NoError(t, err)
+
+		err = pool.Connect("wss://test")
+		assert.NoError(t, err)
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-pool.Events():
+				return e.Kind == EventDialFailed &&
+					e.ID == "wss://test" &&
+					e.Err == dialErr &&
+					!e.At.IsZero()
+			default:
+				return false
+			}
+		}, "expected EventDialFailed on pool.Events()")
+	})
+
+	t.Run("no EventDialFailed when dialer succeeds", func(t *testing.T) {
+		pool, _ := setupPool(t)
+
+		err := pool.Connect("wss://test")
+		assert.NoError(t, err)
+
+		expectEvent(t, pool.events, "wss://test", EventConnected)
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case e := <-pool.Events():
+				return e.Kind == EventDialFailed
+			default:
+				return false
+			}
+		}, "expected no EventDialFailed when dialer succeeds")
+
+		pool.Close()
+	})
+}
+
 func TestPoolSend(t *testing.T) {
 	mockSocket := honeybeetest.NewMockSocket()
 	outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
