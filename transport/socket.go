@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -18,12 +19,13 @@ type GorillaDialer struct {
 	*websocket.Dialer
 }
 
+const dialTimeout = 10 * time.Second
+
 func NewGorillaDialer() *GorillaDialer {
+	netDialer := &net.Dialer{Timeout: dialTimeout}
 	return &GorillaDialer{
 		Dialer: &websocket.Dialer{
-			HandshakeTimeout: 45 * time.Second,
-			ReadBufferSize:   1024,
-			WriteBufferSize:  1024,
+			NetDialContext: netDialer.DialContext,
 		},
 	}
 }

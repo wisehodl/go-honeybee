@@ -27,9 +27,7 @@ func TestNewGorillaDialer(t *testing.T) {
 
 	assert.NotNil(t, dialer)
 	assert.NotNil(t, dialer.Dialer)
-	assert.Equal(t, 45*time.Second, dialer.Dialer.HandshakeTimeout)
-	assert.Equal(t, 1024, dialer.Dialer.ReadBufferSize)
-	assert.Equal(t, 1024, dialer.Dialer.WriteBufferSize)
+	assert.NotNil(t, dialer.Dialer.NetDialContext)
 }
 
 func TestAcquireSocket(t *testing.T) {
