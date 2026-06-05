@@ -82,9 +82,11 @@ go func() {
 go func() {
     for ev := range pool.Events() {
         // ev.At             is the event timestamp
+        // ev.Err            is non-nil for EventDialFailed
         switch ev.Kind {
         case honeybee.EventConnected:
         case honeybee.EventDisconnected:
+        case honeybee.EventDialFailed:
         }
     }
 }()
@@ -104,7 +106,7 @@ After a disconnect, the worker waits for `ReconnectDelay` before attempting the 
 
 `Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `EventConnected` before retrying and maintain their own write buffers if needed.
 
-Dial failures are handled internally by the worker's retry logic and documented in structured logs. These do not stop the pool; it continues retrying according to the connection's retry config.
+Each failed dial attempt emits `EventDialFailed` on `pool.Events()` with the dialer error in `ev.Err`. These do not stop the pool; it continues retrying according to the connection's retry config. `EventDialFailed` is only sent when the peer fails to connect, not when dialing is stopped internally.
 
 ## Server-Side Usage
 

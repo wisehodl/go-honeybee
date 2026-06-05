@@ -42,7 +42,7 @@ type PoolPlugin struct {
 
 **`Inbox`** The shared channel that delivers received messages to the pool's consumer. All peers in the pool deliver to the same inbox channel. Workers must include their peer ID in each `InboxMessage`.
 
-**`Events`** The shared channel for lifecycle events. Workers emit `honeybee.EventConnected` and `honeybee.EventDisconnected` directly. All events include a timestamp in the `At` field.
+**`Events`** The shared channel for lifecycle events. Workers emit `honeybee.EventConnected`, `honeybee.EventDisconnected`, and `honeybee.EventDialFailed` directly. All events include a timestamp in the `At` field. `EventDialFailed` events also carry a non-nil `Err` field containing the dialer error.
 
 **`InboxCounter`** An atomic counter owned by the pool. Workers must increment this once for each message forwarded to `Inbox`. The pool reads it in `Stats()`.
 
@@ -66,7 +66,7 @@ The factory is set via `honeybee.WithWorkerFactory` on the pool config.
 
 ### Replacing the Worker
 
-Satisfy the `Worker` interface and register your implementation via `honeybee.WithWorkerFactory`. Your worker is responsible for the full connection lifecycle: dialing and redialing, managing connection state, forwarding received messages to `pool.Inbox`, emitting `EventConnected` and `EventDisconnected` to `pool.Events`, and incrementing `pool.InboxCounter` for each message forwarded.
+Satisfy the `Worker` interface and register your implementation via `honeybee.WithWorkerFactory`. Your worker is responsible for the full connection lifecycle: dialing and redialing, managing connection state, forwarding received messages to `pool.Inbox`, emitting `EventConnected`, `EventDisconnected`, and `EventDialFailed` to `pool.Events`, and incrementing `pool.InboxCounter` for each message forwarded.
 
 `DefaultWorker`'s source is the authoritative reference for how those responsibilities are met.
 
