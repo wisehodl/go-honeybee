@@ -19,7 +19,7 @@ func setupTestConnection(t *testing.T) (
 	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
 
 	var err error
-	conn, err = transport.NewConnectionFromSocket(context.Background(), socket, nil, nil)
+	conn, err = transport.NewConnection(context.Background(), socket, nil, nil)
 	assert.NoError(t, err)
 	return
 }

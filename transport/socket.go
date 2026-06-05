@@ -8,8 +8,13 @@ import (
 	"time"
 
 	"git.wisehodl.dev/jay/go-honeybee/types"
+	"git.wisehodl.dev/jay/go-mana-component"
 	"github.com/gorilla/websocket"
 )
+
+// ----------------------------------------------------------------------------
+// Types
+// ----------------------------------------------------------------------------
 
 func NewDialer() types.Dialer {
 	return NewGorillaDialer()
@@ -42,65 +47,79 @@ func (d *GorillaDialer) DialContext(
 	return conn, resp, err
 }
 
+// ----------------------------------------------------------------------------
+// Retry Dialer
+// ----------------------------------------------------------------------------
+
 func AcquireSocket(
 	ctx context.Context,
-	retryMgr *RetryManager,
-	dialer types.Dialer,
-	url string,
-	header http.Header,
-	logger *slog.Logger,
-	onDialError func(error),
-) (types.Socket, *http.Response, error) {
-	select {
-	case <-ctx.Done():
-		return nil, nil, ctx.Err()
-	default:
+	mgr *RetryManager,
+	dialFn func(ctx context.Context) (types.Socket, error),
+	errCh chan<- error,
+	handler slog.Handler,
+) (types.Socket, error) {
+	if component.FromContext(ctx) == nil {
+		ctx = component.MustNew(ctx, "honeybee", "dialer")
+	} else {
+		ctx = component.MustExtend(ctx, "dialer")
 	}
 
-	if retryMgr == nil {
-		return nil, nil, NewConnectionError(ErrNilRetryManager)
+	var logger *slog.Logger
+	if handler != nil {
+		comp := component.FromContext(ctx)
+		logger = slog.New(handler).With("component", comp)
 	}
-	if dialer == nil {
-		return nil, nil, NewConnectionError(ErrNilDialer)
-	}
-	if url == "" {
-		return nil, nil, NewConnectionError(ErrEmptyURL)
+
+	if dialFn == nil {
+		return nil, ErrNilDialFunc
 	}
 
 	for {
 		if logger != nil {
-			logger.Debug("dialing", "attempt", retryMgr.RetryCount()+1)
+			logger.Debug("dialing", "attempt", mgr.RetryCount()+1)
 		}
 
 		// dial
-		socket, resp, err := dialer.DialContext(ctx, url, header)
+		socket, err := dialFn(ctx)
 		if err == nil {
 			if logger != nil {
-				logger.Debug("dial successful", "attempt", retryMgr.RetryCount()+1)
+				logger.Debug("dial successful", "attempt", mgr.RetryCount()+1)
 			}
-			return socket, resp, nil
+			return socket, nil
+		}
+
+		if errCh != nil {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case errCh <- err:
+			}
+		}
+
+		if mgr == nil {
+			if logger != nil {
+				logger.Debug("dial failed, retry disabled", "error", err)
+			}
+			return nil, err
 		}
 
 		// dial failed, retry
-		if onDialError != nil {
-			onDialError(err)
-		}
-		if !retryMgr.ShouldRetry() {
+		if !mgr.ShouldRetry() {
 			// retry policy expired
 			if logger != nil {
 				logger.Debug("dial failed, max retries reached",
 					"error", err,
-					"attempt", retryMgr.RetryCount()+1)
+					"attempt", mgr.RetryCount()+1)
 			}
-			return nil, nil, err
+			return nil, err
 		}
 
-		delay := retryMgr.CalculateDelay()
+		delay := mgr.CalculateDelay()
 
 		if logger != nil {
 			logger.Warn("dial failed, retrying",
 				"error", err,
-				"attempt", retryMgr.RetryCount()+1,
+				"attempt", mgr.RetryCount()+1,
 				"next_delay", delay)
 		}
 
@@ -108,8 +127,8 @@ func AcquireSocket(
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return nil, ctx.Err()
 		}
-		retryMgr.RecordRetry()
+		mgr.RecordRetry()
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,30 +19,6 @@ import (
 // Types
 // ----------------------------------------------------------------------------
 
-type ConnectionState int
-
-const (
-	StateDisconnected ConnectionState = iota
-	StateConnecting
-	StateConnected
-	StateClosed
-)
-
-func (s ConnectionState) String() string {
-	switch s {
-	case StateDisconnected:
-		return "disconnected"
-	case StateConnecting:
-		return "connecting"
-	case StateConnected:
-		return "connected"
-	case StateClosed:
-		return "closed"
-	default:
-		return "unknown"
-	}
-}
-
 type ConnectionStats struct {
 	ChanIncoming int
 	ChanErrors   int
@@ -51,6 +26,86 @@ type ConnectionStats struct {
 	TotalReceived   uint64
 	TotalSent       uint64
 	TotalHeartbeats uint64
+}
+
+// ----------------------------------------------------------------------------
+// Config
+// ----------------------------------------------------------------------------
+
+type ConnectionConfig struct {
+	WriteTimeout       time.Duration
+	PingInterval       time.Duration
+	IncomingBufferSize int
+	ErrorsBufferSize   int
+}
+
+func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
+	conf := &ConnectionConfig{
+		WriteTimeout:       30 * time.Second,
+		PingInterval:       20 * time.Second,
+		IncomingBufferSize: 100,
+		ErrorsBufferSize:   10,
+	}
+	for _, o := range opts {
+		o(conf)
+	}
+
+	err := ValidateConnectionConfig(*conf)
+	if err != nil {
+		return nil, err
+	}
+
+	return conf, nil
+}
+
+type ConnectionOption func(*ConnectionConfig)
+
+// When WriteTimeout is set to zero, read timeouts are disabled.
+func WithWriteTimeout(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) {
+		c.WriteTimeout = value
+	}
+}
+
+// When PingInterval is set to zero, ping frames are disabled.
+func WithPingInterval(value time.Duration) ConnectionOption {
+	return func(c *ConnectionConfig) {
+		c.PingInterval = value
+	}
+}
+
+func WithIncomingBufferSize(value int) ConnectionOption {
+	return func(c *ConnectionConfig) {
+		c.IncomingBufferSize = value
+	}
+}
+
+func WithErrorsBufferSize(value int) ConnectionOption {
+	return func(c *ConnectionConfig) {
+		c.ErrorsBufferSize = value
+	}
+}
+
+func ValidateConnectionConfig(c ConnectionConfig) error {
+	if c.WriteTimeout < 0 {
+		return fmt.Errorf("invalid write timeout: %v", c.WriteTimeout)
+	}
+
+	if c.PingInterval < 0 {
+		return fmt.Errorf("invalid ping interval: %v", c.PingInterval)
+	}
+
+	if c.IncomingBufferSize < 1 {
+		return fmt.Errorf("invalid incoming buffer size: %d",
+			c.IncomingBufferSize)
+	}
+
+	if c.ErrorsBufferSize < 1 {
+		return fmt.Errorf("invalid errors buffer size: %d",
+			c.ErrorsBufferSize)
+	}
+
+	return nil
 }
 
 // ----------------------------------------------------------------------------
@@ -62,8 +117,6 @@ type ConnectionStats struct {
 // -------------------------/
 
 type Connection struct {
-	url    *url.URL
-	dialer types.Dialer
 	socket types.Socket
 	config ConnectionConfig
 	logger *slog.Logger
@@ -77,8 +130,6 @@ type Connection struct {
 	outgoingCount  *atomic.Uint64
 	heartbeatCount *atomic.Uint64
 
-	state ConnectionState
-
 	wg          sync.WaitGroup
 	closed      bool
 	mu          sync.RWMutex
@@ -87,16 +138,18 @@ type Connection struct {
 	cleanupOnce sync.Once
 }
 
-func NewConnection(ctx context.Context, urlStr string, config *ConnectionConfig, handler slog.Handler) (*Connection, error) {
+func NewConnection(
+	ctx context.Context, socket types.Socket, config *ConnectionConfig, handler slog.Handler,
+) (*Connection, error) {
+	if socket == nil {
+		return nil, NewConnectionError(ErrNilSocket)
+	}
+
 	if config == nil {
-		config = GetDefaultConnectionConfig()
+		config, _ = NewConnectionConfig()
 	}
 
-	if err := ValidateConnectionConfig(config); err != nil {
-		return nil, err
-	}
-
-	url, err := ParseURL(urlStr)
+	err := ValidateConnectionConfig(*config)
 	if err != nil {
 		return nil, err
 	}
@@ -107,82 +160,21 @@ func NewConnection(ctx context.Context, urlStr string, config *ConnectionConfig,
 		ctx = component.MustExtend(ctx, "connection")
 	}
 
-	// Clone config to ensure full ownership of all fields.
-	cc := config.Clone()
-	if cc.Dialer == nil {
-		cc.Dialer = NewDialer()
-	}
-
 	conn := &Connection{
-		url:            url,
-		dialer:         cc.Dialer,
-		socket:         nil,
-		config:         cc,
-		incoming:       make(chan []byte, cc.IncomingBufferSize),
-		heartbeat:      make(chan struct{}, 1),
-		errors:         make(chan error, cc.ErrorsBufferSize),
-		incomingCount:  &atomic.Uint64{},
-		outgoingCount:  &atomic.Uint64{},
-		heartbeatCount: &atomic.Uint64{},
-		state:          StateDisconnected,
-		done:           make(chan struct{}),
-	}
-
-	if handler != nil {
-		comp := component.FromContext(ctx)
-		conn.logger = slog.New(handler).With(slog.Any("component", comp))
-	}
-
-	return conn, nil
-}
-
-func NewConnectionFromSocket(
-	ctx context.Context, socket types.Socket, config *ConnectionConfig, handler slog.Handler,
-) (*Connection, error) {
-	if socket == nil {
-		return nil, NewConnectionError(ErrNilSocket)
-	}
-
-	if config == nil {
-		config = GetDefaultConnectionConfig()
-	}
-
-	if err := ValidateConnectionConfig(config); err != nil {
-		return nil, err
-	}
-
-	if component.FromContext(ctx) == nil {
-		ctx = component.MustNew(ctx, "honeybee", "connection")
-	} else {
-		ctx = component.MustExtend(ctx, "connection")
-	}
-
-	// Clone config to ensure full ownership of all fields.
-	cc := config.Clone()
-
-	conn := &Connection{
-		url:            nil,
-		dialer:         nil,
 		socket:         socket,
-		config:         cc,
-		incoming:       make(chan []byte, cc.IncomingBufferSize),
+		config:         *config,
+		incoming:       make(chan []byte, config.IncomingBufferSize),
 		heartbeat:      make(chan struct{}, 1),
-		errors:         make(chan error, cc.ErrorsBufferSize),
+		errors:         make(chan error, config.ErrorsBufferSize),
 		incomingCount:  &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		heartbeatCount: &atomic.Uint64{},
-		state:          StateConnected,
 		done:           make(chan struct{}),
 	}
 
 	if handler != nil {
 		comp := component.FromContext(ctx)
 		conn.logger = slog.New(handler).With(slog.Any("component", comp))
-	}
-
-	// initialize
-	if config.CloseHandler != nil {
-		socket.SetCloseHandler(config.CloseHandler)
 	}
 
 	conn.setupPongHandler()
@@ -199,65 +191,6 @@ func NewConnectionFromSocket(
 // ---------------------------/
 // Methods
 // -------------------------/
-
-func (c *Connection) Connect(ctx context.Context, onDialError func(error)) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.socket != nil {
-		return NewConnectionError(ErrSocketExists)
-	}
-
-	if c.closed {
-		return NewConnectionError(ErrConnectionClosed)
-	}
-
-	// begin connecting
-	if c.logger != nil {
-		c.logger.Debug("connecting")
-	}
-
-	c.state = StateConnecting
-
-	// obtain socket
-	retryMgr := NewRetryManager(c.config.Retry)
-	socket, _, err := AcquireSocket(
-		ctx, retryMgr, c.dialer, c.url.String(), c.config.RequestHeader, c.logger, onDialError)
-
-	if err != nil {
-		// socket acquisition failed
-		c.state = StateDisconnected
-		if c.logger != nil {
-			c.logger.Warn("connection failed", "error", err)
-		}
-		return NewConnectionError(err)
-	}
-
-	// got socket
-	c.socket = socket
-
-	// initialize
-	if c.config.CloseHandler != nil {
-		c.socket.SetCloseHandler(c.config.CloseHandler)
-	}
-
-	c.setupPongHandler()
-
-	if c.config.PingInterval > 0 {
-		c.wg.Go(c.startPinger)
-	}
-
-	c.wg.Go(c.startReader)
-
-	// connected
-	c.state = StateConnected
-
-	if c.logger != nil {
-		c.logger.Debug("connected")
-	}
-
-	return nil
-}
 
 func (c *Connection) Send(data []byte) error {
 	c.writeMu.Lock()
@@ -302,12 +235,6 @@ func (c *Connection) Heartbeat() <-chan struct{} {
 
 func (c *Connection) Errors() <-chan error {
 	return c.errors
-}
-
-func (c *Connection) State() ConnectionState {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.state
 }
 
 func (c *Connection) Stats() ConnectionStats {
@@ -459,7 +386,6 @@ func (c *Connection) shutdownExternal() {
 		return
 	}
 	c.closed = true
-	c.state = StateClosed
 	c.mu.Unlock()
 
 	// perform shutdown
@@ -479,7 +405,6 @@ func (c *Connection) shutdownInternal() {
 		return
 	}
 	c.closed = true
-	c.state = StateClosed
 	c.mu.Unlock()
 
 	// perform shutdown

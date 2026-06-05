@@ -7,23 +7,17 @@ import (
 )
 
 func TestNewRetryManager(t *testing.T) {
-	config := RetryConfig{
-		MaxRetries: 0,
-	}
+	config, _ := NewRetryConfig(WithMaxRetries(0))
 
 	mgr := NewRetryManager(config)
 
 	assert.Equal(t, config, mgr.config)
 	assert.Equal(t, 0, mgr.retryCount)
-
-	// Should accept a disabled config
-	mgr = NewRetryManager(RetryConfig{Disabled: true})
-	assert.True(t, mgr.config.Disabled)
-	assert.Equal(t, 0, mgr.retryCount)
 }
 
 func TestRecordRetry(t *testing.T) {
-	mgr := NewRetryManager(RetryConfig{Disabled: true})
+	config, _ := NewRetryConfig(WithMaxRetries(0))
+	mgr := NewRetryManager(config)
 	assert.Equal(t, mgr.retryCount, 0)
 
 	mgr.RecordRetry()
@@ -34,42 +28,29 @@ func TestRecordRetry(t *testing.T) {
 }
 
 func TestShouldRetry(t *testing.T) {
-	// never retry if config is disabled
-	mgr := NewRetryManager(RetryConfig{Disabled: true})
-	assert.False(t, mgr.ShouldRetry())
-
 	// always retry if max attempt count is zero
-	mgr = &RetryManager{
-		config: RetryConfig{
-			MaxRetries: 0,
-		},
+	config, _ := NewRetryConfig(WithMaxRetries(0))
+	mgr := &RetryManager{
+		config:     config,
 		retryCount: 1000,
 	}
 	assert.True(t, mgr.ShouldRetry())
 
 	// retry if below max attempt count
+	config, _ = NewRetryConfig(WithMaxRetries(10))
 	mgr = &RetryManager{
-		config: RetryConfig{
-			MaxRetries: 10,
-		},
+		config:     config,
 		retryCount: 5,
 	}
 	assert.True(t, mgr.ShouldRetry())
 
 	// do not retry if above max attempt count
+	config, _ = NewRetryConfig(WithMaxRetries(10))
 	mgr = &RetryManager{
-		config: RetryConfig{
-			MaxRetries: 10,
-		},
+		config:     config,
 		retryCount: 11,
 	}
 	assert.False(t, mgr.ShouldRetry())
-}
-
-func TestCalculateDelayDisabled(t *testing.T) {
-	// default delay if retry is disabled
-	mgr := NewRetryManager(RetryConfig{Disabled: true})
-	assert.Equal(t, time.Second, mgr.CalculateDelay())
 }
 
 func TestCalculateDelayWithoutJitter(t *testing.T) {

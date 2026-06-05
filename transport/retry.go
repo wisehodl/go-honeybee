@@ -1,10 +1,96 @@
 package transport
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
 )
+
+// ----------------------------------------------------------------------------
+// Config
+// ----------------------------------------------------------------------------
+
+type RetryConfig struct {
+	MaxRetries   int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	JitterFactor float64
+}
+
+func NewRetryConfig(opts ...RetryOption) (RetryConfig, error) {
+	conf := RetryConfig{
+		MaxRetries:   0, // Infinite retries
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     60 * time.Second,
+		JitterFactor: 0.2,
+	}
+	for _, o := range opts {
+		o(&conf)
+	}
+
+	err := ValidateRetryConfig(conf)
+	if err != nil {
+		return RetryConfig{}, err
+	}
+
+	return conf, nil
+}
+
+type RetryOption func(*RetryConfig)
+
+func WithMaxRetries(value int) RetryOption {
+	return func(c *RetryConfig) {
+		c.MaxRetries = value
+	}
+}
+
+func WithInitialDelay(value time.Duration) RetryOption {
+	return func(c *RetryConfig) {
+		c.InitialDelay = value
+	}
+}
+
+func WithMaxDelay(value time.Duration) RetryOption {
+	return func(c *RetryConfig) {
+		c.MaxDelay = value
+	}
+}
+
+func WithJitterFactor(value float64) RetryOption {
+	return func(c *RetryConfig) {
+		c.JitterFactor = value
+	}
+}
+
+func ValidateRetryConfig(c RetryConfig) error {
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("invalid max retry count: %d", c.MaxRetries)
+	}
+
+	if c.InitialDelay <= 0 {
+		return fmt.Errorf("invalid initial delay: %v", c.InitialDelay)
+	}
+
+	if c.MaxDelay <= 0 {
+		return fmt.Errorf("invalid max delay: %v", c.MaxDelay)
+	}
+
+	if c.JitterFactor < 0.0 || c.JitterFactor > 1.0 {
+		return fmt.Errorf("invalid jitter factor: %f", c.JitterFactor)
+	}
+
+	if c.InitialDelay > c.MaxDelay {
+		return fmt.Errorf("Initial delay %v cannot exceed max delay %v",
+			c.InitialDelay, c.MaxDelay)
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------------------
+// Retry manager
+// ----------------------------------------------------------------------------
 
 type RetryManager struct {
 	config     RetryConfig
@@ -16,8 +102,7 @@ func NewRetryManager(config RetryConfig) *RetryManager {
 	// saturationCount: retry count at which base delay meets or exceeds MaxDelay.
 	// Conservative by two to preserve jitter variance near the boundary.
 	saturation := 0
-	if !config.Disabled &&
-		config.InitialDelay > 0 &&
+	if config.InitialDelay > 0 &&
 		config.InitialDelay <= config.MaxDelay {
 		ratio := float64(config.MaxDelay) / float64(config.InitialDelay)
 		saturation = int(math.Ceil(math.Log2(ratio))) + 2
@@ -31,10 +116,6 @@ func NewRetryManager(config RetryConfig) *RetryManager {
 }
 
 func (r *RetryManager) ShouldRetry() bool {
-	if r.config.Disabled {
-		return false
-	}
-
 	if r.config.MaxRetries > 0 && r.retryCount >= r.config.MaxRetries {
 		return false
 	}
@@ -43,10 +124,6 @@ func (r *RetryManager) ShouldRetry() bool {
 }
 
 func (r *RetryManager) CalculateDelay() time.Duration {
-	if r.config.Disabled {
-		return time.Second
-	}
-
 	// First attempt: immediate retry
 	if r.retryCount == 0 {
 		return 0

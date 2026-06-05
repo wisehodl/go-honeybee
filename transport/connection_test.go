@@ -10,134 +10,37 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"io"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// Connection state tests
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
 
-func TestConnectionStateString(t *testing.T) {
-	cases := []struct {
-		state ConnectionState
-		want  string
-	}{
-		{StateDisconnected, "disconnected"},
-		{StateConnecting, "connecting"},
-		{StateConnected, "connected"},
-		{StateClosed, "closed"},
-		{ConnectionState(99), "unknown"},
-	}
+func setupTestConnection(t *testing.T) (
+	conn *Connection,
+	socket *honeybeetest.MockSocket,
+	incoming chan honeybeetest.MockIncomingData,
+	outgoing chan honeybeetest.MockOutgoingData,
+) {
+	t.Helper()
 
-	for _, tc := range cases {
-		t.Run(tc.want, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.state.String())
-		})
-	}
+	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
+
+	var err error
+	conn, err = NewConnection(context.Background(), socket, nil, nil)
+	assert.NoError(t, err)
+	return
 }
 
-func TestConnectionState(t *testing.T) {
-	// Test initial state
-	conn, _ := NewConnection(context.Background(), "ws://test", nil, nil)
-	assert.Equal(t, StateDisconnected, conn.State())
-
-	// Test state after FromSocket (should be Connected)
-	conn2, _ := NewConnectionFromSocket(context.Background(), honeybeetest.NewMockSocket(), nil, nil)
-	assert.Equal(t, StateConnected, conn2.State())
-
-	// Test state after close
-	conn.Close()
-	assert.Equal(t, StateClosed, conn.State())
-}
-
-// Connection constructor tests
+// ----------------------------------------------------------------------------
+// Constructor
+// ----------------------------------------------------------------------------
 
 func TestNewConnection(t *testing.T) {
-	cases := []struct {
-		name        string
-		url         string
-		config      *ConnectionConfig
-		wantErr     bool
-		wantErrText string
-	}{
-		{
-			name:   "valid url, nil config",
-			url:    "ws://example.com",
-			config: nil,
-		},
-		{
-			name: "valid url, valid config",
-			url:  "wss://relay.example.com:8080/path",
-			config: func() *ConnectionConfig {
-				c, _ := NewConnectionConfig(WithWriteTimeout(30*time.Second), WithRetryDisabled())
-				return c
-			}(),
-		},
-		{
-			name:        "invalid url",
-			url:         "http://example.com",
-			config:      nil,
-			wantErr:     true,
-			wantErrText: "URL must use ws:// or wss:// scheme",
-		},
-		{
-			name: "invalid config",
-			url:  "ws://example.com",
-			config: &ConnectionConfig{
-				Retry: RetryConfig{
-					InitialDelay: 10 * time.Second,
-					MaxDelay:     1 * time.Second,
-				},
-			},
-			wantErr:     true,
-			wantErrText: "initial delay may not exceed maximum delay",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			conn, err := NewConnection(context.Background(), tc.url, tc.config, nil)
-
-			if tc.wantErr {
-				assert.Error(t, err)
-				if tc.wantErrText != "" {
-					assert.ErrorContains(t, err, tc.wantErrText)
-				}
-				assert.Nil(t, conn)
-				return
-			}
-
-			assert.NoError(t, err)
-			assert.NotNil(t, conn)
-
-			// Verify struct fields
-			assert.NotNil(t, conn.url)
-			assert.NotNil(t, conn.dialer)
-			assert.Nil(t, conn.socket)
-			assert.NotNil(t, conn.config)
-			assert.NotNil(t, conn.incoming)
-			assert.NotNil(t, conn.errors)
-			assert.NotNil(t, conn.done)
-			assert.Equal(t, StateDisconnected, conn.state)
-			assert.False(t, conn.closed)
-
-			// Verify default config is used if nil is passed
-			if tc.config == nil {
-				expected := *GetDefaultConnectionConfig()
-				expected.Dialer = conn.config.Dialer // dialer resolved at construction
-				assert.Equal(t, expected, conn.config)
-			} else {
-				expected := *tc.config
-				expected.Dialer = conn.config.Dialer
-				assert.Equal(t, expected, conn.config)
-			}
-		})
-	}
-}
-
-func TestNewConnectionFromSocket(t *testing.T) {
 	cases := []struct {
 		name        string
 		socket      types.Socket
@@ -161,30 +64,7 @@ func TestNewConnectionFromSocket(t *testing.T) {
 			name:   "valid socket with valid config",
 			socket: honeybeetest.NewMockSocket(),
 			config: func() *ConnectionConfig {
-				c, _ := NewConnectionConfig(WithWriteTimeout(30*time.Second), WithRetryDisabled())
-				return c
-			}(),
-		},
-		{
-			name:   "invalid config",
-			socket: honeybeetest.NewMockSocket(),
-			config: &ConnectionConfig{
-				Retry: RetryConfig{
-					InitialDelay: 10 * time.Second,
-					MaxDelay:     1 * time.Second,
-				},
-			},
-			wantErr:     true,
-			wantErrText: "initial delay may not exceed maximum delay",
-		},
-		{
-			name:   "close handler set when provided",
-			socket: honeybeetest.NewMockSocket(),
-			config: func() *ConnectionConfig {
-				c, _ := NewConnectionConfig(
-					WithCloseHandler(func(code int, text string) error { return nil }),
-					WithRetryDisabled(),
-				)
+				c, _ := NewConnectionConfig(WithWriteTimeout(30 * time.Second))
 				return c
 			}(),
 		},
@@ -192,22 +72,8 @@ func TestNewConnectionFromSocket(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// track if SetCloseHandler was called
-			closeHandlerSet := false
-			if tc.socket != nil {
-				mockSocket := tc.socket.(*honeybeetest.MockSocket)
-				originalSetCloseHandler := mockSocket.SetCloseHandlerFunc
-
-				// wrapper around the original handler function
-				mockSocket.SetCloseHandlerFunc = func(h func(int, string) error) {
-					closeHandlerSet = true
-					if originalSetCloseHandler != nil {
-						originalSetCloseHandler(h)
-					}
-				}
-			}
-
-			conn, err := NewConnectionFromSocket(context.Background(), tc.socket, tc.config, nil)
+			conn, err := NewConnection(
+				context.Background(), tc.socket, tc.config, nil)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -222,344 +88,32 @@ func TestNewConnectionFromSocket(t *testing.T) {
 			assert.NotNil(t, conn)
 
 			// Verify fields initialized correctly
-			assert.Nil(t, conn.url)
-			assert.Nil(t, conn.dialer)
 			assert.Equal(t, tc.socket, conn.socket)
 			assert.NotNil(t, conn.config)
 			assert.NotNil(t, conn.incoming)
 			assert.NotNil(t, conn.errors)
 			assert.NotNil(t, conn.done)
-			assert.Equal(t, StateConnected, conn.state)
 			assert.False(t, conn.closed)
 
 			// Verify default config is used if nil is passed.
-			// CloseHandler is a func; exclude it from the struct comparison
-			// (identity is verified separately via closeHandlerSet).
 			gotCfg := conn.config
-			gotCfg.CloseHandler = nil
 			if tc.config == nil {
-				expected := *GetDefaultConnectionConfig()
-				expected.CloseHandler = nil
-				assert.Equal(t, expected, gotCfg)
+				expected, _ := NewConnectionConfig()
+				assert.Equal(t, *expected, gotCfg)
 			} else {
 				expected := *tc.config
-				expected.CloseHandler = nil
 				assert.Equal(t, expected, gotCfg)
-			}
-
-			// Verify close handler was set if provided
-			if tc.config != nil && tc.config.CloseHandler != nil {
-				assert.True(t, closeHandlerSet, "CloseHandler should be set on socket")
 			}
 		})
 	}
 }
 
-func TestConnect(t *testing.T) {
-	t.Run("connect fails when socket already present", func(t *testing.T) {
-		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
-		assert.NoError(t, err)
-
-		conn.socket = honeybeetest.NewMockSocket()
-
-		err = conn.Connect(context.Background(), nil)
-		assert.Error(t, err)
-		assert.ErrorIs(t, err, ErrSocketExists)
-		assert.Equal(t, StateDisconnected, conn.State())
-	})
-
-	t.Run("connect fails when connection closed", func(t *testing.T) {
-		conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
-		assert.NoError(t, err)
-
-		conn.Close()
-
-		err = conn.Connect(context.Background(), nil)
-		assert.Error(t, err)
-		assert.ErrorIs(t, err, ErrConnectionClosed)
-		assert.Equal(t, StateClosed, conn.State())
-	})
-
-	t.Run("connect succeeds and starts goroutines", func(t *testing.T) {
-		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
-
-		mockSocket := honeybeetest.NewMockSocket()
-		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
-			outgoingData <- honeybeetest.MockOutgoingData{MsgType: msgType, Data: data}
-			return nil
-		}
-
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return mockSocket, nil, nil
-			},
-		}
-		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
-		conn, err := NewConnection(context.Background(), "ws://test", conf, nil)
-		assert.NoError(t, err)
-
-		err = conn.Connect(context.Background(), nil)
-		assert.NoError(t, err)
-		assert.Equal(t, StateConnected, conn.State())
-
-		testData := []byte("test")
-		conn.Send(testData)
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case msg := <-outgoingData:
-				return bytes.Equal(msg.Data, testData)
-			default:
-				return false
-			}
-		}, "expected message")
-
-		conn.Close()
-	})
-
-	t.Run("connect retries on dial failure", func(t *testing.T) {
-		attemptCount := 0
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				attemptCount++
-				if attemptCount < 3 {
-					return nil, nil, fmt.Errorf("dial failed")
-				}
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
-		}
-		config, _ := NewConnectionConfig(
-			WithRetryMaxRetries(2),
-			WithRetryInitialDelay(1*time.Millisecond),
-			WithRetryMaxDelay(5*time.Millisecond),
-			WithRetryJitterFactor(0.0),
-			WithConnectionDialer(mockDialer),
-		)
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		err = conn.Connect(context.Background(), nil)
-		assert.NoError(t, err)
-		assert.Equal(t, 3, attemptCount)
-		assert.Equal(t, StateConnected, conn.State())
-
-		conn.Close()
-	})
-
-	t.Run("connect fails after max retries", func(t *testing.T) {
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, fmt.Errorf("dial failed")
-			},
-		}
-		config, _ := NewConnectionConfig(
-			WithRetryMaxRetries(2),
-			WithRetryInitialDelay(1*time.Millisecond),
-			WithRetryMaxDelay(5*time.Millisecond),
-			WithRetryJitterFactor(0.0),
-			WithConnectionDialer(mockDialer),
-		)
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		err = conn.Connect(context.Background(), nil)
-		assert.Error(t, err)
-		assert.ErrorContains(t, err, "dial failed")
-		assert.Equal(t, StateDisconnected, conn.State())
-	})
-
-	t.Run("state transitions during connect", func(t *testing.T) {
-		stateDuringDial := StateDisconnected
-		// conn captured after construction; closure safe because dialer runs during Connect
-		var conn *Connection
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				stateDuringDial = conn.state
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
-		}
-		var err error
-		conf, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
-		conn, err = NewConnection(context.Background(), "ws://test", conf, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, StateDisconnected, conn.State())
-
-		conn.Connect(context.Background(), nil)
-
-		assert.Equal(t, StateConnecting, stateDuringDial)
-		assert.Equal(t, StateConnected, conn.State())
-
-		conn.Close()
-	})
-
-	t.Run("close handler configured when provided", func(t *testing.T) {
-		handlerSet := false
-		mockSocket := honeybeetest.NewMockSocket()
-		mockSocket.SetCloseHandlerFunc = func(h func(int, string) error) {
-			handlerSet = true
-		}
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return mockSocket, nil, nil
-			},
-		}
-		config, _ := NewConnectionConfig(
-			WithCloseHandler(func(code int, text string) error { return nil }),
-			WithRetryDisabled(),
-			WithConnectionDialer(mockDialer),
-		)
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		conn.Connect(context.Background(), nil)
-
-		assert.True(t, handlerSet, "close handler should be set on socket")
-
-		conn.Close()
-	})
-
-	t.Run("passes headers when configured", func(t *testing.T) {
-		header := http.Header{"X-Custom": []string{"val"}}
-		dialCalled := false
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(ctx context.Context, url string, h http.Header) (types.Socket, *http.Response, error) {
-				assert.Equal(t, "val", h.Get("X-Custom"))
-				dialCalled = true
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
-		}
-		conf, _ := NewConnectionConfig(WithRequestHeader(header), WithConnectionDialer(mockDialer))
-		conn, _ := NewConnection(context.Background(), "ws://test", conf, nil)
-
-		err := conn.Connect(context.Background(), nil)
-
-		assert.NoError(t, err)
-		assert.True(t, dialCalled)
-	})
-
-	t.Run("onDialError callback fires on each failed attempt", func(t *testing.T) {
-		var mu sync.Mutex
-		var capturedErrors []error
-
-		attemptCount := 0
-		dialErr := fmt.Errorf("dial failed")
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				attemptCount++
-				if attemptCount < 3 {
-					return nil, nil, dialErr
-				}
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
-		}
-		config, _ := NewConnectionConfig(
-			WithRetryMaxRetries(3),
-			WithRetryInitialDelay(1*time.Millisecond),
-			WithRetryMaxDelay(5*time.Millisecond),
-			WithRetryJitterFactor(0.0),
-			WithConnectionDialer(mockDialer),
-		)
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		onDialError := func(e error) {
-			mu.Lock()
-			defer mu.Unlock()
-			capturedErrors = append(capturedErrors, e)
-		}
-
-		err = conn.Connect(context.Background(), onDialError)
-		assert.NoError(t, err)
-		defer conn.Close()
-
-		mu.Lock()
-		defer mu.Unlock()
-		assert.Equal(t, []error{dialErr, dialErr}, capturedErrors)
-	})
-
-	t.Run("onDialError not called when first dial succeeds", func(t *testing.T) {
-		callbackCalled := false
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
-		}
-		config, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		err = conn.Connect(context.Background(), func(error) { callbackCalled = true })
-		assert.NoError(t, err)
-		defer conn.Close()
-
-		assert.False(t, callbackCalled)
-	})
-
-	t.Run("nil onDialError does not panic on failed dial", func(t *testing.T) {
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, fmt.Errorf("dial failed")
-			},
-		}
-		config, _ := NewConnectionConfig(WithRetryDisabled(), WithConnectionDialer(mockDialer))
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		assert.NotPanics(t, func() {
-			conn.Connect(context.Background(), nil)
-		})
-	})
-}
-
-func TestConnectContextCancellation(t *testing.T) {
-	t.Run("context cancelled during connect returns before retries exhaust", func(t *testing.T) {
-		dialCount := atomic.Int32{}
-		mockDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(ctx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
-				dialCount.Add(1)
-				return nil, nil, fmt.Errorf("dial failed")
-			},
-		}
-		config, _ := NewConnectionConfig(
-			WithRetryMaxRetries(100),
-			WithRetryInitialDelay(500*time.Millisecond),
-			WithRetryMaxDelay(1*time.Second),
-			WithRetryJitterFactor(0.0),
-			WithConnectionDialer(mockDialer),
-		)
-		conn, err := NewConnection(context.Background(), "ws://test", config, nil)
-		assert.NoError(t, err)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		done := make(chan error, 1)
-		go func() {
-			done <- conn.Connect(ctx, nil)
-		}()
-
-		// wait for first dial
-		honeybeetest.Eventually(t, func() bool {
-			return dialCount.Load() >= 1
-		}, "expected dial")
-		cancel()
-
-		select {
-		case err := <-done:
-			assert.ErrorIs(t, err, context.Canceled)
-
-			// number of dials is fewer than max retry count
-			assert.Less(t, dialCount.Load(), int32(100))
-		case <-time.After(honeybeetest.TestTimeout):
-			t.Fatal("Connect did not return after context cancellation")
-		}
-	})
-}
-
-// Connection method tests
+// ----------------------------------------------------------------------------
+// Accessors
+// ----------------------------------------------------------------------------
 
 func TestConnectionIncoming(t *testing.T) {
-	conn, err := NewConnection(context.Background(), "ws://test", nil, nil)
-	assert.NoError(t, err)
+	conn, _, _, _ := setupTestConnection(t)
 
 	incoming := conn.Incoming()
 	assert.NotNil(t, incoming)
@@ -581,7 +135,7 @@ func TestConnectionErrors(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -604,7 +158,7 @@ func TestConnectionErrors(t *testing.T) {
 			}
 		}
 
-		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -624,7 +178,7 @@ func TestConnectionErrors(t *testing.T) {
 			return 0, nil, io.EOF
 		}
 
-		conn, err := NewConnectionFromSocket(context.Background(), mockSocket, nil, nil)
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
 		assert.NoError(t, err)
 		defer conn.Close()
 
@@ -656,7 +210,7 @@ func TestConnectionHeartbeat(t *testing.T) {
 		)
 		assert.NoError(t, err)
 
-		conn, _ := NewConnectionFromSocket(context.Background(), socket, conf, nil)
+		conn, _ := NewConnection(context.Background(), socket, conf, nil)
 		defer conn.Close()
 
 		honeybeetest.Eventually(t,
@@ -669,7 +223,7 @@ func TestConnectionHeartbeat(t *testing.T) {
 		socket, _, _ := honeybeetest.SetupTestSocket(t)
 		socket.SetPongHandlerFunc = func(h func(string) error) { handler = h }
 
-		conn, _ := NewConnectionFromSocket(context.Background(), socket, nil, nil)
+		conn, _ := NewConnection(context.Background(), socket, nil, nil)
 		defer conn.Close()
 
 		honeybeetest.Eventually(t, func() bool {
@@ -690,20 +244,366 @@ func TestConnectionHeartbeat(t *testing.T) {
 	})
 }
 
-// Test helpers
+// ----------------------------------------------------------------------------
+// Send
+// ----------------------------------------------------------------------------
 
-func setupTestConnection(t *testing.T) (
-	conn *Connection,
-	socket *honeybeetest.MockSocket,
-	incoming chan honeybeetest.MockIncomingData,
-	outgoing chan honeybeetest.MockOutgoingData,
-) {
-	t.Helper()
+func TestConnectionSend(t *testing.T) {
+	t.Run("writes message to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t)
+		defer conn.Close()
 
-	socket, incoming, outgoing = honeybeetest.SetupTestSocket(t)
+		testData := []byte("test message")
+		err := conn.Send(testData)
+		assert.NoError(t, err)
 
-	var err error
-	conn, err = NewConnectionFromSocket(context.Background(), socket, nil, nil)
-	assert.NoError(t, err)
-	return
+		honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, testData)
+	})
+
+	t.Run("writes multiple message to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t)
+		defer conn.Close()
+
+		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}
+		for _, msg := range messages {
+			err := conn.Send(msg)
+			assert.NoError(t, err)
+		}
+
+		for _, expected := range messages {
+			honeybeetest.ExpectWrite(t, outgoingData, websocket.TextMessage, expected)
+		}
+	})
+
+	t.Run("concurrent sends write messages to socket", func(t *testing.T) {
+		conn, _, _, outgoingData := setupTestConnection(t)
+		defer conn.Close()
+
+		mu := sync.Mutex{}
+		messages := []string{}
+		done := make(chan struct{})
+
+		go func() {
+			for {
+				select {
+				case msg := <-outgoingData:
+					mu.Lock()
+					messages = append(messages, string(msg.Data))
+					mu.Unlock()
+				case <-done:
+					return
+				}
+			}
+		}()
+
+		defer close(done)
+
+		var wg sync.WaitGroup
+		for i := range 5 {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				for j := range 10 {
+					data := fmt.Appendf(nil, "msg-%d-%d", id, j)
+					for {
+						// send and retry until success
+						err := conn.Send(data)
+						if err != nil {
+							continue
+						} else {
+							break
+						}
+					}
+				}
+			}(i)
+		}
+
+		wg.Wait()
+
+		honeybeetest.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(messages) == 50
+		}, "should have received 50 messages")
+
+	})
+
+	t.Run("send fails when connection is closed", func(t *testing.T) {
+		conn, _, _, _ := setupTestConnection(t)
+		conn.Close()
+
+		testData := []byte("test message")
+		err := conn.Send(testData)
+		assert.ErrorIs(t, err, ErrConnectionClosed)
+	})
+
+	t.Run("write timeout disabled when zero", func(t *testing.T) {
+		config, _ := NewConnectionConfig(
+			WithWriteTimeout(0),
+		)
+
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		deadlineCalled := make(chan struct{}, 1)
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			deadlineCalled <- struct{}{}
+			return nil
+		}
+
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			select {
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
+				return io.EOF
+			}
+			return nil
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.NoError(t, err)
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, "SetWriteDeadline should not be called when timeout is zero")
+	})
+
+	t.Run("write timeout sets deadline when positive", func(t *testing.T) {
+		config, _ := NewConnectionConfig()
+
+		outgoingData := make(chan honeybeetest.MockOutgoingData, 10)
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		deadlineCalled := make(chan struct{}, 1)
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			deadlineCalled <- struct{}{}
+			return nil
+		}
+
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			select {
+			case outgoingData <- honeybeetest.MockOutgoingData{
+				MsgType: msgType, Data: data}:
+			case <-mockSocket.Closed:
+				return io.EOF
+			}
+			return nil
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.NoError(t, err)
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-deadlineCalled:
+				return true
+			default:
+				return false
+			}
+		}, "SetWriteDeadline should be called when timeout is positive")
+	})
+
+	t.Run("send fails on deadline error", func(t *testing.T) {
+		config, _ := NewConnectionConfig(WithWriteTimeout(1 * time.Millisecond))
+
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		mockSocket.SetWriteDeadlineFunc = func(t time.Time) error {
+			return fmt.Errorf("test error")
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, config, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.ErrorIs(t, err, ErrFailedWriteDeadline)
+
+		honeybeetest.Never(t, func() bool {
+			_, ok := <-conn.errors
+			return !ok
+		}, "write error does not close connection")
+	})
+
+	t.Run("send fails on socket write error", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+
+		writeErr := fmt.Errorf("test error")
+		mockSocket.WriteMessageFunc = func(msgType int, data []byte) error {
+			return writeErr
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		err = conn.Send([]byte("test"))
+		assert.ErrorIs(t, err, ErrWriteFailed)
+		assert.ErrorContains(t, err, "test error")
+	})
+}
+
+// ----------------------------------------------------------------------------
+// Reader
+// ----------------------------------------------------------------------------
+
+func TestStartReader(t *testing.T) {
+	t.Run("text messages route to incoming channel", func(t *testing.T) {
+		conn, _, incomingData, _ := setupTestConnection(t)
+		defer conn.Close()
+
+		testData := []byte("hello")
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.TextMessage,
+			Data:    testData,
+			Err:     nil,
+		}
+
+		honeybeetest.ExpectIncoming(t, conn.Incoming(), testData)
+	})
+
+	t.Run("binary messages route to incoming channel", func(t *testing.T) {
+		conn, _, incomingData, _ := setupTestConnection(t)
+		defer conn.Close()
+
+		testData := []byte{0x00, 0x01, 0x02}
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.BinaryMessage,
+			Data:    testData,
+			Err:     nil,
+		}
+
+		honeybeetest.ExpectIncoming(t, conn.Incoming(), testData)
+	})
+
+	t.Run("multiple messages processed sequentially", func(t *testing.T) {
+		conn, _, incomingData, _ := setupTestConnection(t)
+		defer conn.Close()
+
+		messages := [][]byte{[]byte("first"), []byte("second"), []byte("third")}
+		for _, msg := range messages {
+			incomingData <- honeybeetest.MockIncomingData{
+				MsgType: websocket.TextMessage, Data: msg, Err: nil}
+		}
+
+		for _, expected := range messages {
+			honeybeetest.ExpectIncoming(t, conn.Incoming(), expected)
+		}
+	})
+
+	t.Run("reader exits on socket read error", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+
+		mockSocket.CloseFunc = func() error {
+			mockSocket.Once.Do(func() {
+				close(mockSocket.Closed)
+			})
+			return nil
+		}
+
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, io.EOF
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
+		assert.NoError(t, err)
+
+		honeybeetest.Eventually(t, func() bool {
+			_, ok := <-conn.errors
+			return !ok
+		}, "expected channel closure")
+	})
+}
+
+// ----------------------------------------------------------------------------
+// Close
+// ----------------------------------------------------------------------------
+
+func TestDisconnectedConnectionClose(t *testing.T) {
+	t.Run("close is idempotent", func(t *testing.T) {
+		conn, _, _, _ := setupTestConnection(t)
+
+		conn.Close()
+		conn.Close()
+	})
+
+	t.Run("channels close after close", func(t *testing.T) {
+		conn, _, _, _ := setupTestConnection(t)
+
+		conn.Close()
+
+		assert.True(t, conn.closed)
+		_, ok := <-conn.incoming
+		assert.False(t, ok)
+		_, ok = <-conn.errors
+		assert.False(t, ok)
+	})
+
+	t.Run("send fails after close", func(t *testing.T) {
+		conn, _, _, _ := setupTestConnection(t)
+
+		conn.Close()
+
+		err := conn.Send([]byte("test"))
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrConnectionClosed)
+	})
+
+}
+
+func TestConnectedConnectionClose(t *testing.T) {
+	t.Run("blocked on ReadMessage, unblocks on closed", func(t *testing.T) {
+		conn, _, incomingData, _ := setupTestConnection(t)
+
+		// Send a message to ensure reader loop is blocking
+		canary := []byte("canary")
+		incomingData <- honeybeetest.MockIncomingData{
+			MsgType: websocket.TextMessage, Data: canary}
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case msg := <-conn.Incoming():
+				return bytes.Equal(msg, canary)
+			default:
+				return false
+			}
+		}, "expected canary message")
+
+		conn.Close()
+	})
 }

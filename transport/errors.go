@@ -8,9 +8,10 @@ var (
 	InvalidProtocol = errors.New("URL must use ws:// or wss:// scheme")
 
 	// Configuration Errors
-	InvalidWriteTimeout      = errors.New("write timeout cannot be negative")
-	InvalidPingInterval      = errors.New("ping interval cannot be negative")
-	InvalidBufferSize        = errors.New("buffer size must be greater than zero")
+	InvalidWriteTimeout = errors.New("write timeout cannot be negative")
+	InvalidPingInterval = errors.New("ping interval cannot be negative")
+	InvalidBufferSize   = errors.New("buffer size must be greater than zero")
+
 	InvalidRetryMaxRetries   = errors.New("max retry count cannot be negative")
 	InvalidRetryInitialDelay = errors.New("initial delay must be positive")
 	InvalidRetryMaxDelay     = errors.New("max delay must be positive")
@@ -18,9 +19,7 @@ var (
 	InvalidDelays            = errors.New("initial delay may not exceed maximum delay")
 
 	// Socket Errors
-	ErrNilRetryManager = errors.New("retry manager cannot be nil")
-	ErrNilDialer       = errors.New("dialer cannot be nil")
-	ErrEmptyURL        = errors.New("URL cannot be empty")
+	ErrNilDialFunc = errors.New("dial func cannot be nil")
 
 	// Connection Errors
 	ErrConnectionClosed     = errors.New("connection closed")
