@@ -85,14 +85,22 @@ func DialWithRetry(
 
 	for {
 		if logger != nil {
-			logger.Debug("dialing", "attempt", mgr.RetryCount()+1)
+			if mgr == nil {
+				logger.Debug("dialing")
+			} else {
+				logger.Debug("dialing", "attempt", mgr.RetryCount()+1)
+			}
 		}
 
 		// dial
 		socket, err := dialFn(ctx)
 		if err == nil {
 			if logger != nil {
-				logger.Debug("dial successful", "attempt", mgr.RetryCount()+1)
+				if mgr == nil {
+					logger.Debug("dial successful")
+				} else {
+					logger.Debug("dial successful", "attempt", mgr.RetryCount()+1)
+				}
 			}
 			return socket, nil
 		}

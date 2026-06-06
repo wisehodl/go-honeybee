@@ -64,9 +64,9 @@ func WithRetryConfig(value transport.RetryConfig) WorkerOption {
 	}
 }
 
-func WithRetryDisabled(value bool) WorkerOption {
+func WithRetryDisabled() WorkerOption {
 	return func(c *WorkerConfig) {
-		c.RetryDisabled = value
+		c.RetryDisabled = true
 	}
 }
 
@@ -224,13 +224,8 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 		}
 
 		// setup new connection
-		conn, err := transport.NewConnection(
+		conn, _ := transport.NewConnection(
 			ctx, socket, &w.config.ConnectionConfig, w.handler)
-		if err != nil {
-			// TODO: cleanup worker? surface error?
-			return
-		}
-
 		w.conn.Store(conn)
 		pool.Events <- PoolEvent{ID: w.url, Kind: EventConnected, At: time.Now()}
 

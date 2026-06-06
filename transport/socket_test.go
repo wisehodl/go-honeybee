@@ -7,6 +7,7 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -252,8 +253,13 @@ func TestDialWithRetry_DialErrors(t *testing.T) {
 			}
 		}
 
+		var mu sync.Mutex
 		var gotErrors []error
-		onError := func(err error) { gotErrors = append(gotErrors, err) }
+		onError := func(err error) {
+			mu.Lock()
+			defer mu.Unlock()
+			gotErrors = append(gotErrors, err)
+		}
 
 		retryCfg, _ := NewRetryConfig(
 			WithMaxRetries(3),
@@ -269,9 +275,13 @@ func TestDialWithRetry_DialErrors(t *testing.T) {
 		}()
 
 		honeybeetest.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
 			return len(gotErrors) == 2
 		}, "expected errors")
 
+		mu.Lock()
+		defer mu.Unlock()
 		assert.Equal(t, dialErr1, gotErrors[0])
 		assert.Equal(t, dialErr2, gotErrors[1])
 	})

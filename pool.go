@@ -178,19 +178,12 @@ func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 		logger = slog.New(handler).With(slog.Any("component", c))
 	}
 
-	var dialer types.Dialer
-	// if config.ConnectionConfig.Dialer != nil {
-	// 	dialer = config.ConnectionConfig.Dialer
-	// } else {
-	// 	dialer = transport.NewDialer()
-	// }
-
 	return &Pool{
 		peers:  make(map[string]*Peer),
 		inbox:  make(chan types.InboxMessage, config.InboxBufferSize),
 		events: make(chan PoolEvent, config.EventsBufferSize),
 
-		dialer:  dialer,
+		dialer:  transport.NewDialer(),
 		config:  config,
 		handler: handler,
 		logger:  logger,
@@ -296,14 +289,14 @@ func (p *Pool) Close() {
 type ConnectOption func(*connectOptions)
 
 type connectOptions struct {
-	dialer types.Dialer
+	dialFn func(context.Context) (types.Socket, error)
 }
 
-// WithDialer returns a ConnectOption that overrides the pool dialer for this
-// connection only.
-func WithDialer(d types.Dialer) ConnectOption {
+// WithDialFunc returns a ConnectOption that overrides the dial function for
+// this connection.
+func WithDialFunc(f func(context.Context) (types.Socket, error)) ConnectOption {
 	return func(o *connectOptions) {
-		o.dialer = d
+		o.dialFn = f
 	}
 }
 
@@ -328,23 +321,26 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		return ErrPeerExists
 	}
 
-	wc := p.config.WorkerConfig
-	worker, err := NewWorker(p.ctx, id, nil, &wc, p.handler)
-	if err != nil {
-		return err
-	}
-
 	o := &connectOptions{}
 	for _, opt := range opts {
 		opt(o)
 	}
-	// effectiveDialer := p.dialer
-	// if o.dialer != nil {
-	// 	effectiveDialer = o.dialer
-	// }
 
-	// cc := p.config.ConnectionConfig.Clone()
-	// cc.Dialer = effectiveDialer
+	// TODO: pass headers
+	dialFn := func(ctx context.Context) (types.Socket, error) {
+		socket, _, err := p.dialer.DialContext(ctx, id, nil)
+		return socket, err
+	}
+
+	if o.dialFn != nil {
+		dialFn = o.dialFn
+	}
+
+	wc := p.config.WorkerConfig
+	worker, err := NewWorker(p.ctx, id, dialFn, &wc, p.handler)
+	if err != nil {
+		return err
+	}
 
 	pool := PoolPlugin{
 		Inbox:        p.inbox,

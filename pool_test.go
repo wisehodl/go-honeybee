@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
-	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -17,14 +16,15 @@ import (
 func setupPool(t *testing.T) (*Pool, *honeybeetest.MockDialer) {
 	t.Helper()
 	dialer := &honeybeetest.MockDialer{
-		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+		DialContextFunc: func(
+			context.Context, string, http.Header,
+		) (types.Socket, *http.Response, error) {
 			return honeybeetest.NewMockSocket(), nil, nil
 		},
 	}
-	cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(dialer))
-	config, _ := NewPoolConfig(WithConnectionConfig(*cc))
-	pool, err := NewPool(context.Background(), config, nil)
-	assert.NoError(t, err)
+	config, _ := NewPoolConfig()
+	pool, _ := NewPool(context.Background(), config, nil)
+	pool.dialer = dialer
 	return pool, dialer
 }
 
@@ -86,29 +86,28 @@ func TestPoolConnect(t *testing.T) {
 }
 
 func TestPoolConnectWithDialer(t *testing.T) {
-	t.Run("per-call dialer is used instead of pool dialer", func(t *testing.T) {
+	t.Run("per-call dial function is used instead of pool dialer", func(t *testing.T) {
+		config, _ := NewPoolConfig()
+		pool, err := NewPool(context.Background(), config, nil)
+		assert.NoError(t, err)
+
 		perCallUsed := false
-		perCallDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(ctx context.Context, url string, h http.Header) (types.Socket, *http.Response, error) {
-				perCallUsed = true
-				return honeybeetest.NewMockSocket(), nil, nil
-			},
+		dialFn := func(_ context.Context) (types.Socket, error) {
+			perCallUsed = true
+			return honeybeetest.NewMockSocket(), nil
 		}
 
 		// pool dialer should NOT be called
-		poolDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				context.Context, string, http.Header,
+			) (types.Socket, *http.Response, error) {
 				t.Error("pool dialer should not be called when per-call dialer is provided")
 				return nil, nil, fmt.Errorf("unexpected call")
 			},
 		}
 
-		cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(poolDialer))
-		config, _ := NewPoolConfig(WithConnectionConfig(*cc))
-		pool, err := NewPool(context.Background(), config, nil)
-		assert.NoError(t, err)
-
-		err = pool.Connect("wss://test", WithDialer(perCallDialer))
+		err = pool.Connect("wss://test", WithDialFunc(dialFn))
 		assert.NoError(t, err)
 
 		honeybeetest.Eventually(t, func() bool {
@@ -182,24 +181,24 @@ func TestPoolRemove(t *testing.T) {
 }
 
 func TestPoolDialFailed(t *testing.T) {
-	t.Run("EventDialFailed surfaces with correct peer ID, non-nil Err, and non-zero At", func(t *testing.T) {
-		dialErr := fmt.Errorf("connection refused")
-		failingDialer := &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, dialErr
-			},
-		}
-		cc, _ := transport.NewConnectionConfig(
-			transport.WithConnectionDialer(failingDialer),
-			transport.WithRetryDisabled(),
-		)
+	t.Run("EventDialFailed received after failed dial", func(t *testing.T) {
+		wc, _ := NewWorkerConfig(WithRetryDisabled())
 		poolCfg, _ := NewPoolConfig(
 			WithInboxBufferSize(256),
 			WithEventsBufferSize(10),
-			WithConnectionConfig(*cc),
+			WithWorkerConfig(*wc),
 		)
 		pool, err := NewPool(context.Background(), poolCfg, nil)
 		assert.NoError(t, err)
+
+		dialErr := fmt.Errorf("connection refused")
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				context.Context, string, http.Header,
+			) (types.Socket, *http.Response, error) {
+				return nil, nil, dialErr
+			},
+		}
 
 		err = pool.Connect("wss://test")
 		assert.NoError(t, err)
@@ -245,16 +244,18 @@ func TestPoolSend(t *testing.T) {
 		outgoingData <- honeybeetest.MockOutgoingData{MsgType: msgType, Data: data}
 		return nil
 	}
-	mockDialer := &honeybeetest.MockDialer{
-		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
+
+	config, _ := NewPoolConfig()
+	pool, err := NewPool(context.Background(), config, nil)
+	assert.NoError(t, err)
+
+	pool.dialer = &honeybeetest.MockDialer{
+		DialContextFunc: func(
+			context.Context, string, http.Header,
+		) (types.Socket, *http.Response, error) {
 			return mockSocket, nil, nil
 		},
 	}
-
-	cc, _ := transport.NewConnectionConfig(transport.WithConnectionDialer(mockDialer))
-	config, _ := NewPoolConfig(WithConnectionConfig(*cc))
-	pool, err := NewPool(context.Background(), config, nil)
-	assert.NoError(t, err)
 
 	err = pool.Connect("wss://test")
 	assert.NoError(t, err)
