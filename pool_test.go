@@ -2,13 +2,16 @@ package honeybee
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"slices"
 	"testing"
+	"time"
 )
 
 // Helpers
@@ -234,6 +237,68 @@ func TestPoolDialFailed(t *testing.T) {
 		}, "expected no EventDialFailed when dialer succeeds")
 
 		pool.Close()
+	})
+}
+
+func TestPoolRetire(t *testing.T) {
+	t.Run("peer absent and EventRetired emitted after self-retire", func(t *testing.T) {
+		wc, _ := NewWorkerConfig(WithRetryDisabled())
+		poolCfg, _ := NewPoolConfig(WithWorkerConfig(*wc))
+		pool, _ := NewPool(context.Background(), poolCfg, nil)
+
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				context.Context, string, http.Header,
+			) (types.Socket, *http.Response, error) {
+				return nil, nil, fmt.Errorf("connection refused")
+			},
+		}
+
+		err := pool.Connect("wss://test")
+		assert.NoError(t, err)
+
+		honeybeetest.Eventually(t, func() bool {
+			return !slices.Contains(pool.Peers(), "wss://test")
+		}, "expected peer to be absent after self-retire")
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-pool.Events():
+				return e.Kind == EventRetired && e.ID == "wss://test"
+			default:
+				return false
+			}
+		}, "expected EventRetired on pool.Events()")
+
+		assert.ErrorIs(t, pool.Remove("wss://test"), ErrPeerNotFound)
+	})
+
+	t.Run("concurrent Remove and self-retire is safe", func(t *testing.T) {
+		wc, _ := NewWorkerConfig(WithRetryDisabled())
+		poolCfg, _ := NewPoolConfig(WithWorkerConfig(*wc))
+		pool, _ := NewPool(context.Background(), poolCfg, nil)
+
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				ctx context.Context, _ string, _ http.Header,
+			) (types.Socket, *http.Response, error) {
+				select {
+				case <-ctx.Done():
+					return nil, nil, ctx.Err()
+				case <-time.After(5 * time.Millisecond):
+					return nil, nil, fmt.Errorf("connection refused")
+				}
+			},
+		}
+
+		err := pool.Connect("wss://test")
+		assert.NoError(t, err)
+
+		removeErr := pool.Remove("wss://test")
+		assert.True(t,
+			removeErr == nil || errors.Is(removeErr, ErrPeerNotFound),
+			"expected nil or ErrPeerNotFound, got: %v", removeErr,
+		)
 	})
 }
 
