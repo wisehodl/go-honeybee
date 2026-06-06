@@ -28,7 +28,7 @@ func TestNewGorillaDialer(t *testing.T) {
 	assert.NotNil(t, dialer.Dialer.NetDialContext)
 }
 
-func TestAcquireSocket(t *testing.T) {
+func TestDialWithRetry(t *testing.T) {
 	cases := []struct {
 		name           string
 		mockRuns       []error
@@ -85,7 +85,7 @@ func TestAcquireSocket(t *testing.T) {
 				JitterFactor: 0.0,
 			})
 
-			socket, err := AcquireSocket(
+			socket, err := DialWithRetry(
 				context.Background(), retryMgr, dial, nil, nil)
 
 			assert.Equal(t, tc.wantRetryCount, retryMgr.RetryCount())
@@ -103,17 +103,17 @@ func TestAcquireSocket(t *testing.T) {
 		dial := func(ctx context.Context) (types.Socket, error) {
 			return nil, errors.New("dial failed")
 		}
-		_, err := AcquireSocket(context.Background(), nil, dial, nil, nil)
+		_, err := DialWithRetry(context.Background(), nil, dial, nil, nil)
 		assert.Error(t, err)
 	})
 }
 
-func TestAcquireSocketNoRetry(t *testing.T) {
+func TestDialWithRetry_NoRetry(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dial := func(ctx context.Context) (types.Socket, error) {
 			return honeybeetest.NewMockSocket(), nil
 		}
-		socket, err := AcquireSocket(context.Background(), nil, dial, nil, nil)
+		socket, err := DialWithRetry(context.Background(), nil, dial, nil, nil)
 		assert.NotNil(t, socket)
 		assert.NoError(t, err)
 	})
@@ -122,12 +122,12 @@ func TestAcquireSocketNoRetry(t *testing.T) {
 		dial := func(ctx context.Context) (types.Socket, error) {
 			return nil, errors.New("dial failed")
 		}
-		_, err := AcquireSocket(context.Background(), nil, dial, nil, nil)
+		_, err := DialWithRetry(context.Background(), nil, dial, nil, nil)
 		assert.Error(t, err)
 	})
 }
 
-func TestAcquireSocketGuards(t *testing.T) {
+func TestDialWithRetry_Guards(t *testing.T) {
 	validRetryConfig, _ := NewRetryConfig()
 	validRetryMgr := NewRetryManager(validRetryConfig)
 
@@ -146,7 +146,7 @@ func TestAcquireSocketGuards(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			socket, err := AcquireSocket(
+			socket, err := DialWithRetry(
 				context.Background(), tc.retryMgr, tc.dialFn, nil, nil)
 
 			assert.Error(t, err)
@@ -156,7 +156,7 @@ func TestAcquireSocketGuards(t *testing.T) {
 	}
 }
 
-func TestAcquireSocketContextCancellation(t *testing.T) {
+func TestDialWithRetry_ContextCancellation(t *testing.T) {
 	t.Run("context cancelled during sleep returns before next attempt", func(t *testing.T) {
 		dialCount := atomic.Int32{}
 		dial := func(ctx context.Context) (types.Socket, error) {
@@ -181,7 +181,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 
 		done := make(chan error, 1)
 		go func() {
-			_, err := AcquireSocket(ctx, retryMgr, dial, nil, nil)
+			_, err := DialWithRetry(ctx, retryMgr, dial, nil, nil)
 			done <- err
 		}()
 
@@ -198,7 +198,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 			// dial count is 2 because the first retry is always immediate
 			assert.Equal(t, int32(2), dialCount.Load())
 		case <-time.After(honeybeetest.TestTimeout):
-			t.Fatal("AcquireSocket did not return after context cancellation")
+			t.Fatal("DialWithRetry did not return after context cancellation")
 		}
 	})
 
@@ -217,7 +217,7 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 		retryMgr := NewRetryManager(retryCfg)
 		done := make(chan error, 1)
 		go func() {
-			_, err := AcquireSocket(ctx, retryMgr, dial, nil, nil)
+			_, err := DialWithRetry(ctx, retryMgr, dial, nil, nil)
 			done <- err
 		}()
 
@@ -229,13 +229,13 @@ func TestAcquireSocketContextCancellation(t *testing.T) {
 		case err := <-done:
 			assert.ErrorIs(t, err, context.Canceled)
 		case <-time.After(honeybeetest.TestTimeout):
-			t.Fatal("AcquireSocket did not return after context cancellation")
+			t.Fatal("DialWithRetry did not return after context cancellation")
 		}
 
 	})
 }
 
-func TestAcquireSocketDialErrors(t *testing.T) {
+func TestDialWithRetry_DialErrors(t *testing.T) {
 	t.Run("receive one error per failed dial", func(t *testing.T) {
 		dialErr1 := errors.New("attempt 1 failed")
 		dialErr2 := errors.New("attempt 2 failed")
@@ -252,7 +252,8 @@ func TestAcquireSocketDialErrors(t *testing.T) {
 			}
 		}
 
-		errCh := make(chan error, 2)
+		var gotErrors []error
+		onError := func(err error) { gotErrors = append(gotErrors, err) }
 
 		retryCfg, _ := NewRetryConfig(
 			WithMaxRetries(3),
@@ -263,17 +264,11 @@ func TestAcquireSocketDialErrors(t *testing.T) {
 		retryMgr := NewRetryManager(retryCfg)
 
 		go func() {
-			_, err := AcquireSocket(context.Background(), retryMgr, dial, errCh, nil)
+			_, err := DialWithRetry(context.Background(), retryMgr, dial, onError, nil)
 			assert.NoError(t, err)
 		}()
 
-		var gotErrors []error
 		honeybeetest.Eventually(t, func() bool {
-			select {
-			case err := <-errCh:
-				gotErrors = append(gotErrors, err)
-			default:
-			}
 			return len(gotErrors) == 2
 		}, "expected errors")
 
@@ -286,7 +281,8 @@ func TestAcquireSocketDialErrors(t *testing.T) {
 			return honeybeetest.NewMockSocket(), nil
 		}
 
-		errCh := make(chan error, 1)
+		called := false
+		onError := func(err error) { called = true }
 
 		retryCfg, _ := NewRetryConfig(
 			WithMaxRetries(3),
@@ -296,9 +292,9 @@ func TestAcquireSocketDialErrors(t *testing.T) {
 		)
 		retryMgr := NewRetryManager(retryCfg)
 
-		_, err := AcquireSocket(context.Background(), retryMgr, dial, errCh, nil)
+		_, err := DialWithRetry(context.Background(), retryMgr, dial, onError, nil)
 		assert.NoError(t, err)
 
-		assert.Len(t, errCh, 0)
+		assert.False(t, called)
 	})
 }

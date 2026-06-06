@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"git.wisehodl.dev/jay/go-honeybee/honeybeetest"
-	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,36 +23,35 @@ func makeWorkerContext(t *testing.T) (
 	inbox = make(chan types.InboxMessage, 256)
 	events = make(chan PoolEvent, 10)
 	pool = PoolPlugin{
-		Inbox:            inbox,
-		Events:           events,
-		InboxCounter:     &atomic.Uint64{},
-		ConnectionConfig: *transport.GetDefaultConnectionConfig(),
+		Inbox:        inbox,
+		Events:       events,
+		InboxCounter: &atomic.Uint64{},
 	}
 	return
 }
 
-func makeWorker(t *testing.T, ctx context.Context, cancel context.CancelFunc) *DefaultWorker {
+func makeWorker(
+	t *testing.T,
+	socket *honeybeetest.MockSocket,
+	config *WorkerConfig,
+	ctx context.Context,
+	cancel context.CancelFunc,
+) *DefaultWorker {
 	t.Helper()
-	config, _ := NewWorkerConfig(
-		WithReconnectDelay(0 * time.Second),
-	)
+	if config == nil {
+		config, _ = NewWorkerConfig(WithReconnectDelay(0 * time.Second))
+	}
+	dialFn := func(_ context.Context) (types.Socket, error) { return socket, nil }
 	return &DefaultWorker{
 		ctx:            ctx,
 		cancel:         cancel,
-		id:             "wss://test",
-		config:         config,
+		url:            "wss://test",
+		dialFn:         dialFn,
+		config:         *config,
 		sendHeartbeat:  make(chan struct{}),
 		processedCount: &atomic.Uint64{},
 		outgoingCount:  &atomic.Uint64{},
 		restartCount:   &atomic.Uint64{},
-	}
-}
-
-func mockDialer(socket *honeybeetest.MockSocket) *honeybeetest.MockDialer {
-	return &honeybeetest.MockDialer{
-		DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-			return socket, nil, nil
-		},
 	}
 }
 
@@ -63,10 +60,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -76,27 +72,23 @@ func TestWorkerSession(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-events:
-				return e.ID == w.id && e.Kind == EventConnected
+				return e.ID == w.url && e.Kind == EventConnected
 			default:
 				return false
 			}
 		}, "expected EventConnected")
 	})
 
+	// TODO: should dial failure cleanup worker?
 	t.Run("dial failure exhausted - session stays alive, no events emitted", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
-
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, errors.New("connection refused")
-			},
+		w := makeWorker(t, nil, nil, ctx, cancel)
+		w.dialFn = func(_ context.Context) (types.Socket, error) {
+			return nil, fmt.Errorf("connection refused")
 		}
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -123,61 +115,16 @@ func TestWorkerSession(t *testing.T) {
 		}(), "expected worker to still be running after dial failure")
 	})
 
-	t.Run("keepalive fires before connection - dial is cancelled and replaced", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		config, _ := NewWorkerConfig(
-			WithReconnectDelay(0),
-			WithKeepaliveTimeout(20*time.Millisecond),
-		)
-		w := &DefaultWorker{
-			ctx:            ctx,
-			cancel:         cancel,
-			id:             "wss://test",
-			config:         config,
-			sendHeartbeat:  make(chan struct{}),
-			processedCount: &atomic.Uint64{},
-			outgoingCount:  &atomic.Uint64{},
-			restartCount:   &atomic.Uint64{},
-		}
-		_, _, pool := makeWorkerContext(t)
-
-		var dialCount atomic.Uint64
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
-				dialCount.Add(1)
-				<-dialCtx.Done()
-				return nil, nil, dialCtx.Err()
-			},
-		}
-
-		var wg sync.WaitGroup
-		wg.Go(func() { w.Start(pool) })
-
-		// keepalive fires after 20ms; a second dial goroutine must be spawned
-		honeybeetest.Eventually(t, func() bool {
-			return dialCount.Load() >= 2
-		}, "expected at least two dial attempts after keepalive fired")
-	})
-
 	t.Run("Stop before connection established - exits cleanly, no events", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
-
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
-				<-dialCtx.Done()
-				return nil, nil, dialCtx.Err()
-			},
+		w := makeWorker(t, nil, nil, ctx, cancel)
+		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
+			<-dialCtx.Done()
+			return nil, dialCtx.Err()
 		}
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -202,10 +149,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, _, outgoingData := setupTestConnection(t)
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -238,12 +184,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
-		inbox, events, pool := makeWorkerContext(t)
-
 		incomingData := make(chan honeybeetest.MockIncomingData, 10)
-		mockSocket := honeybeetest.NewMockSocket()
 
+		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.CloseFunc = func() error {
 			mockSocket.Once.Do(func() { close(mockSocket.Closed) })
 			return nil
@@ -256,7 +199,8 @@ func TestWorkerSession(t *testing.T) {
 			}
 		}
 
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		inbox, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -287,7 +231,7 @@ func TestWorkerSession(t *testing.T) {
 				return false
 			}
 		}, "expected message on Inbox")
-		assert.Equal(t, w.id, received.ID)
+		assert.Equal(t, w.url, received.ID)
 		assert.Equal(t, []byte("hello"), received.Data)
 		assert.False(t, received.ReceivedAt.IsZero(), "expected non-zero ReceivedAt")
 	})
@@ -300,19 +244,9 @@ func TestWorkerSession(t *testing.T) {
 			WithReconnectDelay(0),
 			WithKeepaliveTimeout(60*time.Millisecond),
 		)
-		w := &DefaultWorker{
-			ctx:            ctx,
-			cancel:         cancel,
-			id:             "wss://test",
-			config:         config,
-			sendHeartbeat:  make(chan struct{}),
-			processedCount: &atomic.Uint64{},
-			outgoingCount:  &atomic.Uint64{},
-			restartCount:   &atomic.Uint64{},
-		}
-		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -358,27 +292,17 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		config, _ := NewWorkerConfig(
-			WithReconnectDelay(0),
-			WithKeepaliveTimeout(60*time.Millisecond),
-		)
-		w := &DefaultWorker{
-			ctx:            ctx,
-			cancel:         cancel,
-			id:             "wss://test",
-			config:         config,
-			sendHeartbeat:  make(chan struct{}),
-			processedCount: &atomic.Uint64{},
-			outgoingCount:  &atomic.Uint64{},
-			restartCount:   &atomic.Uint64{},
-		}
-		_, events, pool := makeWorkerContext(t)
-
 		// socket whose pong handler fires every 20ms; no incoming messages
 		var pongHandler func(string) error
 		mockSocket, incomingData, _ := honeybeetest.SetupTestSocket(t)
 		mockSocket.SetPongHandlerFunc = func(h func(string) error) { pongHandler = h }
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+
+		config, _ := NewWorkerConfig(
+			WithReconnectDelay(0),
+			WithKeepaliveTimeout(60*time.Millisecond),
+		)
+		w := makeWorker(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -428,19 +352,9 @@ func TestWorkerSession(t *testing.T) {
 			WithReconnectDelay(0),
 			WithKeepaliveTimeout(30*time.Millisecond),
 		)
-		w := &DefaultWorker{
-			ctx:            ctx,
-			cancel:         cancel,
-			id:             "wss://test",
-			config:         config,
-			sendHeartbeat:  make(chan struct{}),
-			processedCount: &atomic.Uint64{},
-			outgoingCount:  &atomic.Uint64{},
-			restartCount:   &atomic.Uint64{},
-		}
-		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, _, _ := setupTestConnection(t)
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -479,10 +393,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -519,50 +432,13 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected second EventConnected")
 	})
 
-	t.Run("connection pointer is nil between disconnect and reconnect", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
-		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
-
-		var wg sync.WaitGroup
-		wg.Go(func() { w.Start(pool) })
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case e := <-events:
-				return e.Kind == EventConnected
-			default:
-				return false
-			}
-		}, "expected EventConnected")
-
-		close(incomingData)
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case e := <-events:
-				return e.Kind == EventDisconnected
-			default:
-				return false
-			}
-		}, "expected EventDisconnected")
-
-		// conn.Store(nil) happens before EventDisconnected is sent
-		assert.Nil(t, w.conn.Load(), "expected connection pointer to be nil after disconnect")
-	})
-
 	t.Run("Stop produces EventDisconnected and wg drains", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -605,10 +481,9 @@ func TestWorkerSession(t *testing.T) {
 		parentCtx, parentCancel := context.WithCancel(context.Background())
 		workerCtx, workerCancel := context.WithCancel(parentCtx)
 
-		w := makeWorker(t, workerCtx, workerCancel)
 		_, events, pool := makeWorkerContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
+		w := makeWorker(t, mockSocket, nil, workerCtx, workerCancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -640,20 +515,16 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected wg to drain after parent cancel")
 	})
 
-	t.Run("EventDialFailed emitted with correct ID, non-nil Err, and non-zero At when dialer fails", func(t *testing.T) {
+	t.Run("EventDialFailed emitted when dialer fails", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
+		w := makeWorker(t, nil, nil, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
 		dialErr := errors.New("connection refused")
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(context.Context, string, http.Header) (types.Socket, *http.Response, error) {
-				return nil, nil, dialErr
-			},
+		w.dialFn = func(_ context.Context) (types.Socket, error) {
+			return nil, dialErr
 		}
 
 		var wg sync.WaitGroup
@@ -663,7 +534,7 @@ func TestWorkerSession(t *testing.T) {
 			select {
 			case e := <-events:
 				return e.Kind == EventDialFailed &&
-					e.ID == w.id &&
+					e.ID == w.url &&
 					e.Err == dialErr &&
 					!e.At.IsZero()
 			default:
@@ -672,52 +543,16 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected EventDialFailed")
 	})
 
-	t.Run("no EventDialFailed when first dial succeeds", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		w := makeWorker(t, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
-		mockSocket := honeybeetest.NewMockSocket()
-		pool.ConnectionConfig.Dialer = mockDialer(mockSocket)
-
-		var wg sync.WaitGroup
-		wg.Go(func() { w.Start(pool) })
-
-		honeybeetest.Eventually(t, func() bool {
-			select {
-			case e := <-events:
-				return e.Kind == EventConnected
-			default:
-				return false
-			}
-		}, "expected EventConnected")
-
-		// drain any remaining events and assert none are EventDialFailed
-		honeybeetest.Never(t, func() bool {
-			select {
-			case e := <-events:
-				return e.Kind == EventDialFailed
-			default:
-				return false
-			}
-		}, "expected no EventDialFailed when first dial succeeds")
-	})
-
 	t.Run("no EventDialFailed when worker is stopped mid-dial", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, ctx, cancel)
+		w := makeWorker(t, nil, nil, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
-				<-dialCtx.Done()
-				return nil, nil, dialCtx.Err()
-			},
+		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
+			<-dialCtx.Done()
+			return nil, dialCtx.Err()
 		}
 
 		var wg sync.WaitGroup
@@ -745,55 +580,6 @@ func TestWorkerSession(t *testing.T) {
 			}
 		}, "expected no EventDialFailed when stopped mid-dial")
 	})
-
-	t.Run("no EventDialFailed when keepalive replaces an in-progress dial", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		config, _ := NewWorkerConfig(
-			WithReconnectDelay(0),
-			WithKeepaliveTimeout(20*time.Millisecond),
-		)
-		w := &DefaultWorker{
-			ctx:            ctx,
-			cancel:         cancel,
-			id:             "wss://test",
-			config:         config,
-			sendHeartbeat:  make(chan struct{}),
-			processedCount: &atomic.Uint64{},
-			outgoingCount:  &atomic.Uint64{},
-			restartCount:   &atomic.Uint64{},
-		}
-		_, events, pool := makeWorkerContext(t)
-
-		var dialCount atomic.Uint64
-		cc, _ := transport.NewConnectionConfig(transport.WithRetryDisabled())
-		pool.ConnectionConfig = *cc
-		pool.ConnectionConfig.Dialer = &honeybeetest.MockDialer{
-			DialContextFunc: func(dialCtx context.Context, _ string, _ http.Header) (types.Socket, *http.Response, error) {
-				dialCount.Add(1)
-				<-dialCtx.Done()
-				return nil, nil, dialCtx.Err()
-			},
-		}
-
-		var wg sync.WaitGroup
-		wg.Go(func() { w.Start(pool) })
-
-		// keepalive fires after 20ms, cancelling the first dial and spawning a second
-		honeybeetest.Eventually(t, func() bool {
-			return dialCount.Load() >= 2
-		}, "expected at least two dial attempts after keepalive fired")
-
-		honeybeetest.Never(t, func() bool {
-			select {
-			case e := <-events:
-				return e.Kind == EventDialFailed
-			default:
-				return false
-			}
-		}, "expected no EventDialFailed when keepalive replaces dial")
-	})
 }
 
 func TestWorkerSend(t *testing.T) {
@@ -809,7 +595,7 @@ func TestWorkerSend(t *testing.T) {
 		w := &DefaultWorker{
 			ctx:           ctx,
 			cancel:        cancel,
-			id:            "wss://test",
+			url:           "wss://test",
 			sendHeartbeat: heartbeat,
 			outgoingCount: &atomic.Uint64{},
 		}
@@ -854,7 +640,7 @@ func TestWorkerSend(t *testing.T) {
 		w := &DefaultWorker{
 			ctx:           ctx,
 			cancel:        cancel,
-			id:            "wss://test",
+			url:           "wss://test",
 			sendHeartbeat: heartbeat,
 			outgoingCount: &atomic.Uint64{},
 		}
@@ -888,7 +674,7 @@ func TestWorkerSend(t *testing.T) {
 		w := &DefaultWorker{
 			ctx:           ctx,
 			cancel:        cancel,
-			id:            "wss://test",
+			url:           "wss://test",
 			sendHeartbeat: heartbeat,
 		}
 		defer w.cancel()

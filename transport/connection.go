@@ -16,6 +16,21 @@ import (
 )
 
 // ----------------------------------------------------------------------------
+// Errors
+// ----------------------------------------------------------------------------
+
+var (
+	ErrConnectionClosed     = errors.New("connection closed")
+	ErrWriteFailed          = errors.New("write failed")
+	ErrNilSocket            = errors.New("socket cannot be nil")
+	ErrSocketExists         = errors.New("socket already exists")
+	ErrFailedWriteDeadline  = errors.New("failed to set write deadline")
+	ErrPeerClosedClean      = errors.New("peer closed connection cleanly")
+	ErrPeerClosedUnexpected = errors.New("peer closed connection unexpectedly")
+	ErrReadError            = errors.New("read error")
+)
+
+// ----------------------------------------------------------------------------
 // Types
 // ----------------------------------------------------------------------------
 
@@ -40,22 +55,19 @@ type ConnectionConfig struct {
 }
 
 func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
-	conf := &ConnectionConfig{
+	cfg := &ConnectionConfig{
 		WriteTimeout:       30 * time.Second,
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
 	}
 	for _, o := range opts {
-		o(conf)
+		o(cfg)
 	}
-
-	err := ValidateConnectionConfig(*conf)
-	if err != nil {
+	if err := ValidateConnectionConfig(*cfg); err != nil {
 		return nil, err
 	}
-
-	return conf, nil
+	return cfg, nil
 }
 
 type ConnectionOption func(*ConnectionConfig)
@@ -90,21 +102,17 @@ func ValidateConnectionConfig(c ConnectionConfig) error {
 	if c.WriteTimeout < 0 {
 		return fmt.Errorf("invalid write timeout: %v", c.WriteTimeout)
 	}
-
 	if c.PingInterval < 0 {
 		return fmt.Errorf("invalid ping interval: %v", c.PingInterval)
 	}
-
 	if c.IncomingBufferSize < 1 {
 		return fmt.Errorf("invalid incoming buffer size: %d",
 			c.IncomingBufferSize)
 	}
-
 	if c.ErrorsBufferSize < 1 {
 		return fmt.Errorf("invalid errors buffer size: %d",
 			c.ErrorsBufferSize)
 	}
-
 	return nil
 }
 
@@ -142,7 +150,7 @@ func NewConnection(
 	ctx context.Context, socket types.Socket, config *ConnectionConfig, handler slog.Handler,
 ) (*Connection, error) {
 	if socket == nil {
-		return nil, NewConnectionError(ErrNilSocket)
+		return nil, ErrNilSocket
 	}
 
 	if config == nil {
@@ -197,7 +205,7 @@ func (c *Connection) Send(data []byte) error {
 	defer c.writeMu.Unlock()
 
 	if c.closed {
-		return NewConnectionError(ErrConnectionClosed)
+		return ErrConnectionClosed
 	}
 
 	// setup
@@ -206,7 +214,7 @@ func (c *Connection) Send(data []byte) error {
 			if c.logger != nil {
 				c.logger.Error("write deadline error", "error", err)
 			}
-			return NewConnectionError(fmt.Errorf("%w: %w", ErrFailedWriteDeadline, err))
+			return fmt.Errorf("%w: %w", ErrFailedWriteDeadline, err)
 		}
 	}
 
@@ -217,7 +225,7 @@ func (c *Connection) Send(data []byte) error {
 		if c.logger != nil {
 			c.logger.Error("write error", "error", err)
 		}
-		return NewConnectionError(fmt.Errorf("%w: %w", ErrWriteFailed, err))
+		return fmt.Errorf("%w: %w", ErrWriteFailed, err)
 	}
 
 	c.outgoingCount.Add(1)

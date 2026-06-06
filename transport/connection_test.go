@@ -112,7 +112,7 @@ func TestNewConnection(t *testing.T) {
 // Accessors
 // ----------------------------------------------------------------------------
 
-func TestConnectionIncoming(t *testing.T) {
+func TestConnection_Incoming(t *testing.T) {
 	conn, _, _, _ := setupTestConnection(t)
 
 	incoming := conn.Incoming()
@@ -125,7 +125,7 @@ func TestConnectionIncoming(t *testing.T) {
 	assert.Equal(t, testData, received)
 }
 
-func TestConnectionErrors(t *testing.T) {
+func TestConnection_Errors(t *testing.T) {
 	t.Run("clean close by peer", func(t *testing.T) {
 		mockSocket := honeybeetest.NewMockSocket()
 		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
@@ -194,7 +194,7 @@ func TestConnectionErrors(t *testing.T) {
 	})
 }
 
-func TestConnectionHeartbeat(t *testing.T) {
+func TestConnection_Heartbeat(t *testing.T) {
 	t.Run("pinger sends ping frames", func(t *testing.T) {
 		pingCount := atomic.Int32{}
 		socket, _, _ := honeybeetest.SetupTestSocket(t)
@@ -248,7 +248,7 @@ func TestConnectionHeartbeat(t *testing.T) {
 // Send
 // ----------------------------------------------------------------------------
 
-func TestConnectionSend(t *testing.T) {
+func TestConnection_Send(t *testing.T) {
 	t.Run("writes message to socket", func(t *testing.T) {
 		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()

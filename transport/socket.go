@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -10,6 +11,14 @@ import (
 	"git.wisehodl.dev/jay/go-honeybee/types"
 	"git.wisehodl.dev/jay/go-mana-component"
 	"github.com/gorilla/websocket"
+)
+
+// ----------------------------------------------------------------------------
+// Errors
+// ----------------------------------------------------------------------------
+
+var (
+	ErrNilDialFunc = errors.New("dial func cannot be nil")
 )
 
 // ----------------------------------------------------------------------------
@@ -51,11 +60,11 @@ func (d *GorillaDialer) DialContext(
 // Retry Dialer
 // ----------------------------------------------------------------------------
 
-func AcquireSocket(
+func DialWithRetry(
 	ctx context.Context,
 	mgr *RetryManager,
-	dialFn func(ctx context.Context) (types.Socket, error),
-	errCh chan<- error,
+	dialFn func(context.Context) (types.Socket, error),
+	onError func(error),
 	handler slog.Handler,
 ) (types.Socket, error) {
 	if component.FromContext(ctx) == nil {
@@ -88,12 +97,8 @@ func AcquireSocket(
 			return socket, nil
 		}
 
-		if errCh != nil {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case errCh <- err:
-			}
+		if onError != nil {
+			onError(err)
 		}
 
 		if mgr == nil {

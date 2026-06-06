@@ -1,9 +1,12 @@
 package transport
 
 import (
+	"errors"
 	"net/url"
 	"strings"
 )
+
+var InvalidProtocol = errors.New("URL must use ws:// or wss:// scheme")
 
 func ParseURL(urlStr string) (*url.URL, error) {
 	parsedURL, err := url.Parse(urlStr)

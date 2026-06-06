@@ -2,6 +2,8 @@ package honeybee
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"git.wisehodl.dev/jay/go-honeybee/transport"
@@ -18,6 +20,16 @@ type InboxMessage = types.InboxMessage
 type Dialer = types.Dialer
 
 var NormalizeURL = transport.NormalizeURL
+
+// ----------------------------------------------------------------------------
+// Errors
+// ----------------------------------------------------------------------------
+
+var (
+	ErrPoolClosed   = errors.New("pool is closed")
+	ErrPeerNotFound = errors.New("peer not found")
+	ErrPeerExists   = errors.New("peer already exists")
+)
 
 // ----------------------------------------------------------------------------
 // Types
@@ -55,10 +67,68 @@ type PeerStats struct {
 }
 
 type PoolPlugin struct {
-	Inbox            chan<- types.InboxMessage
-	Events           chan<- PoolEvent
-	InboxCounter     *atomic.Uint64
-	ConnectionConfig transport.ConnectionConfig
+	Inbox        chan<- types.InboxMessage
+	Events       chan<- PoolEvent
+	InboxCounter *atomic.Uint64
+}
+
+// ----------------------------------------------------------------------------
+// Config
+// ----------------------------------------------------------------------------
+
+type PoolConfig struct {
+	InboxBufferSize  int
+	EventsBufferSize int
+	WorkerConfig     WorkerConfig
+}
+
+type PoolOption func(*PoolConfig)
+
+func NewPoolConfig(opts ...PoolOption) (*PoolConfig, error) {
+	workerCfg, _ := NewWorkerConfig()
+	cfg := &PoolConfig{
+		InboxBufferSize:  256,
+		EventsBufferSize: 10,
+		WorkerConfig:     *workerCfg,
+	}
+	for _, o := range opts {
+		o(cfg)
+	}
+	if err := ValidatePoolConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func WithInboxBufferSize(value int) PoolOption {
+	return func(c *PoolConfig) {
+		c.InboxBufferSize = value
+	}
+}
+
+func WithEventsBufferSize(value int) PoolOption {
+	return func(c *PoolConfig) {
+		c.EventsBufferSize = value
+	}
+}
+
+func WithWorkerConfig(wc WorkerConfig) PoolOption {
+	return func(c *PoolConfig) {
+		c.WorkerConfig = wc
+	}
+}
+
+func ValidatePoolConfig(c *PoolConfig) error {
+	if c.InboxBufferSize < 1 {
+		return fmt.Errorf("invalid inbox buffer size: %d", c.InboxBufferSize)
+	}
+	if c.EventsBufferSize < 1 {
+		return fmt.Errorf("invalid events buffer size: %d", c.EventsBufferSize)
+	}
+	if err := ValidateWorkerConfig(&c.WorkerConfig); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ----------------------------------------------------------------------------
@@ -93,18 +163,7 @@ type Pool struct {
 func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 ) (*Pool, error) {
 	if config == nil {
-		config = GetDefaultPoolConfig()
-	}
-
-	// If a custom factory is supplied, config.WorkerConfig is not used.
-	// The factory function should be non-blocking or else Connect() may cause
-	// deadlocks.
-	if config.WorkerFactory == nil {
-		config.WorkerFactory = func(
-			ctx context.Context, id string, handler slog.Handler) (Worker, error) {
-			wc := config.WorkerConfig
-			return NewWorker(ctx, id, &wc, handler)
-		}
+		config, _ = NewPoolConfig()
 	}
 
 	if err := ValidatePoolConfig(config); err != nil {
@@ -120,11 +179,11 @@ func NewPool(ctx context.Context, config *PoolConfig, handler slog.Handler,
 	}
 
 	var dialer types.Dialer
-	if config.ConnectionConfig.Dialer != nil {
-		dialer = config.ConnectionConfig.Dialer
-	} else {
-		dialer = transport.NewDialer()
-	}
+	// if config.ConnectionConfig.Dialer != nil {
+	// 	dialer = config.ConnectionConfig.Dialer
+	// } else {
+	// 	dialer = transport.NewDialer()
+	// }
 
 	return &Pool{
 		peers:  make(map[string]*Peer),
@@ -262,15 +321,15 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 	defer p.mu.Unlock()
 
 	if p.closed {
-		return NewPoolError(ErrPoolClosed)
+		return ErrPoolClosed
 	}
 
 	if _, exists := p.peers[id]; exists {
-		return NewPoolError(ErrPeerExists)
+		return ErrPeerExists
 	}
 
-	// The worker factory must be non-blocking to avoid deadlocks
-	worker, err := p.config.WorkerFactory(p.ctx, id, p.handler)
+	wc := p.config.WorkerConfig
+	worker, err := NewWorker(p.ctx, id, nil, &wc, p.handler)
 	if err != nil {
 		return err
 	}
@@ -279,19 +338,18 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 	for _, opt := range opts {
 		opt(o)
 	}
-	effectiveDialer := p.dialer
-	if o.dialer != nil {
-		effectiveDialer = o.dialer
-	}
+	// effectiveDialer := p.dialer
+	// if o.dialer != nil {
+	// 	effectiveDialer = o.dialer
+	// }
 
-	cc := p.config.ConnectionConfig.Clone()
-	cc.Dialer = effectiveDialer
+	// cc := p.config.ConnectionConfig.Clone()
+	// cc.Dialer = effectiveDialer
 
 	pool := PoolPlugin{
-		Inbox:            p.inbox,
-		Events:           p.events,
-		InboxCounter:     p.inboxCounter,
-		ConnectionConfig: cc,
+		Inbox:        p.inbox,
+		Events:       p.events,
+		InboxCounter: p.inboxCounter,
 	}
 
 	p.wg.Go(func() {
@@ -321,12 +379,12 @@ func (p *Pool) Remove(id string) error {
 	defer p.mu.Unlock()
 
 	if p.closed {
-		return NewPoolError(ErrPoolClosed)
+		return ErrPoolClosed
 	}
 
 	peer, exists := p.peers[id]
 	if !exists {
-		return NewPoolError(ErrPeerNotFound)
+		return ErrPeerNotFound
 	}
 	delete(p.peers, id)
 
@@ -349,12 +407,12 @@ func (p *Pool) Send(id string, data []byte) error {
 	defer p.mu.RUnlock()
 
 	if p.closed {
-		return NewPoolError(ErrPoolClosed)
+		return ErrPoolClosed
 	}
 
 	peer, exists := p.peers[id]
 	if !exists {
-		return NewPoolError(ErrPeerNotFound)
+		return ErrPeerNotFound
 	}
 
 	err = peer.worker.Send(data)
