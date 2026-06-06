@@ -219,7 +219,11 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 			ctx, retryMgr, w.dialFn, onError, w.handler,
 		)
 		if err != nil {
-			// TODO: cleanup worker? surface error?
+			if pool.Retire != nil &&
+				!errors.Is(err, context.Canceled) &&
+				!errors.Is(err, context.DeadlineExceeded) {
+				pool.Retire(err)
+			}
 			return
 		}
 

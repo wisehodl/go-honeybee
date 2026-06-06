@@ -41,6 +41,7 @@ const (
 	EventConnected    PoolEventKind = "connected"
 	EventDisconnected PoolEventKind = "disconnected"
 	EventDialFailed   PoolEventKind = "dial_failed"
+	EventRetired      PoolEventKind = "retired"
 )
 
 type PoolEvent struct {
@@ -70,6 +71,7 @@ type PoolPlugin struct {
 	Inbox        chan<- types.InboxMessage
 	Events       chan<- PoolEvent
 	InboxCounter *atomic.Uint64
+	Retire       func(error)
 }
 
 // ----------------------------------------------------------------------------

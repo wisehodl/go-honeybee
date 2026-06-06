@@ -26,6 +26,7 @@ func makeWorkerContext(t *testing.T) (
 		Inbox:        inbox,
 		Events:       events,
 		InboxCounter: &atomic.Uint64{},
+		Retire:       func(_ error) {},
 	}
 	return
 }
@@ -79,12 +80,12 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected EventConnected")
 	})
 
-	// TODO: should dial failure cleanup worker?
-	t.Run("dial failure exhausted - session stays alive, no events emitted", func(t *testing.T) {
+	t.Run("dial failure exhausted - worker exits cleanly, no connected/disconnected events", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, nil, nil, ctx, cancel)
+		config, _ := NewWorkerConfig(WithRetryDisabled())
+		w := makeWorker(t, nil, config, ctx, cancel)
 		w.dialFn = func(_ context.Context) (types.Socket, error) {
 			return nil, fmt.Errorf("connection refused")
 		}
@@ -92,6 +93,17 @@ func TestWorkerSession(t *testing.T) {
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
+
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, "expected worker to exit after terminal dial failure")
 
 		honeybeetest.Never(t, func() bool {
 			select {
@@ -101,18 +113,106 @@ func TestWorkerSession(t *testing.T) {
 				return false
 			}
 		}, "expected no connected/disconnected events when dial fails")
+	})
 
-		// worker goroutine is still running
-		assert.False(t, func() bool {
-			done := make(chan struct{})
-			go func() { wg.Wait(); close(done) }()
+	t.Run("Retire called on terminal dial failure", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		config, _ := NewWorkerConfig(WithRetryDisabled())
+		w := makeWorker(t, nil, config, ctx, cancel)
+		w.dialFn = func(_ context.Context) (types.Socket, error) {
+			return nil, fmt.Errorf("connection refused")
+		}
+		_, events, pool := makeWorkerContext(t)
+
+		retired := atomic.Bool{}
+		var retiredErr atomic.Pointer[error]
+		pool.Retire = func(err error) { retiredErr.Store(&err); retired.Store(true) }
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		honeybeetest.Eventually(t, func() bool {
+			return retired.Load()
+		}, "expected Retire to be called")
+
+		assert.ErrorContains(t, *retiredErr.Load(), "connection refused", "expected dial error forwarded to Retire")
+
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case <-done:
 				return true
-			case <-time.After(50 * time.Millisecond):
+			default:
 				return false
 			}
-		}(), "expected worker to still be running after dial failure")
+		}, "expected worker to exit cleanly")
+
+		honeybeetest.Never(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventConnected || e.Kind == EventDisconnected
+			default:
+				return false
+			}
+		}, "expected no connected/disconnected events")
+	})
+
+	t.Run("Retire not called when context cancelled during dial", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		w := makeWorker(t, nil, nil, ctx, cancel)
+		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
+			<-dialCtx.Done()
+			return nil, dialCtx.Err()
+		}
+		_, _, pool := makeWorkerContext(t)
+
+		retired := atomic.Bool{}
+		pool.Retire = func(_ error) { retired.Store(true) }
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+		w.Stop()
+
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, "expected worker to exit after Stop")
+
+		assert.False(t, retired.Load(), "expected Retire not called when context cancelled")
+	})
+
+	t.Run("Retire not called on successful connection", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		mockSocket := honeybeetest.NewMockSocket()
+		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeWorkerContext(t)
+
+		pool.Retire = func(_ error) { panic("Retire must not be called on successful connection") }
+
+		var wg sync.WaitGroup
+		wg.Go(func() { w.Start(pool) })
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventConnected
+			default:
+				return false
+			}
+		}, "expected EventConnected without Retire being called")
 	})
 
 	t.Run("Stop before connection established - exits cleanly, no events", func(t *testing.T) {
