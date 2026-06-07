@@ -181,7 +181,18 @@ func (w *session) Start(pool PoolPlugin) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Go(func() { w.run(w.ctx, pool) })
+	wg.Go(func() {
+		for {
+			conn, ok := w.dial(w.ctx, pool)
+			if !ok {
+				return
+			}
+			w.serve(w.ctx, conn, pool)
+			if !w.reset(w.ctx) {
+				return
+			}
+		}
+	})
 
 	if w.logger != nil {
 		w.logger.Debug("started")
@@ -194,114 +205,121 @@ func (w *session) Start(pool PoolPlugin) {
 	}
 }
 
-func (w *session) run(ctx context.Context, pool PoolPlugin) {
-	for {
-		var retryMgr *transport.RetryManager
-		if !w.config.RetryDisabled {
-			retryMgr = transport.NewRetryManager(w.config.RetryConfig)
-		}
-		onError := func(err error) {
-			if errors.Is(err, context.Canceled) ||
-				errors.Is(err, context.DeadlineExceeded) {
-				return
-			}
-			pool.Events <- PoolEvent{
-				ID: w.url, Kind: EventDialFailed, Err: err, At: time.Now()}
-		}
-		socket, err := transport.DialWithRetry(
-			ctx, retryMgr, w.dialFn, onError, w.handler,
-		)
-		if err != nil {
-			if pool.Retire != nil &&
-				!errors.Is(err, context.Canceled) &&
-				!errors.Is(err, context.DeadlineExceeded) {
-				pool.Retire(err)
-			}
+func (w *session) dial(
+	ctx context.Context, pool PoolPlugin,
+) (*transport.Connection, bool) {
+	var retryMgr *transport.RetryManager
+	if !w.config.RetryDisabled {
+		retryMgr = transport.NewRetryManager(w.config.RetryConfig)
+	}
+	onError := func(err error) {
+		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-
-		// setup new connection
-		conn, _ := transport.NewConnection(
-			ctx, socket, &w.config.ConnectionConfig, w.handler)
-		w.conn.Store(conn)
-		pool.Events <- PoolEvent{ID: w.url, Kind: EventConnected, At: time.Now()}
-
-		if w.logger != nil {
-			w.logger.Debug("session: started")
+		pool.Events <- PoolEvent{
+			ID: w.url, Kind: EventDialFailed, Err: err, At: time.Now()}
+	}
+	socket, err := transport.DialWithRetry(
+		ctx, retryMgr, w.dialFn, onError, w.handler,
+	)
+	if err != nil {
+		if pool.Retire != nil &&
+			!errors.Is(err, context.Canceled) &&
+			!errors.Is(err, context.DeadlineExceeded) {
+			pool.Retire(err)
 		}
+		return nil, false
+	}
 
-		// start keepalive service
-		stopKeepalive, inactive, heartbeat := w.startKeepalive()
+	conn, _ := transport.NewConnection(
+		ctx, socket, &w.config.ConnectionConfig, w.handler)
+	return conn, true
+}
 
-		// run session loop
-	session:
-		for {
-			select {
-			case <-ctx.Done():
-				break session
+func (w *session) serve(
+	ctx context.Context, conn *transport.Connection, pool PoolPlugin,
+) {
+	if w.logger != nil {
+		w.logger.Debug("session: started")
+	}
 
-			case data, ok := <-conn.Incoming():
-				if !ok {
-					var reason error
-					select {
-					case reason = <-conn.Errors():
-					default:
-						reason = fmt.Errorf("unknown")
-					}
-					if w.logger != nil {
-						w.logger.Info("websocket: closed", "reason", reason)
-					}
-					break session
-				}
+	// setup connection
+	w.conn.Store(conn)
+	pool.Events <- PoolEvent{ID: w.url, Kind: EventConnected, At: time.Now()}
 
-				pool.Inbox <- types.InboxMessage{
-					ID: w.url, Data: data, ReceivedAt: time.Now()}
+	// start keepalive service
+	stopKeepalive, inactive, heartbeat := w.startKeepalive()
 
-				pool.InboxCounter.Add(1)
-				w.processedCount.Add(1)
-
-				heartbeat()
-
-			case <-conn.Heartbeat():
-				heartbeat()
-
-			case <-w.sendHeartbeat:
-				heartbeat()
-
-			case <-inactive():
-				if w.logger != nil {
-					w.logger.Warn("keepalive: no activity observed")
-				}
-				break session
-			}
-		}
-
-		// session ended
-		conn.Close()
-		stopKeepalive()
-
-		if w.logger != nil {
-			w.logger.Info("disconnected")
-		}
-		if w.logger != nil {
-			w.logger.Debug("session: ended")
-		}
-
-		// tear down connection
-		w.conn.Store(nil)
-		pool.Events <- PoolEvent{ID: w.url, Kind: EventDisconnected, At: time.Now()}
-
-		// exit if session is shutting down
+	// run session loop
+session:
+	for {
 		select {
 		case <-ctx.Done():
-			return
-		default:
-		}
+			break session
 
-		// refresh session
-		time.Sleep(w.config.ReconnectDelay)
-		w.restartCount.Add(1)
+		case data, ok := <-conn.Incoming():
+			if !ok {
+				var reason error
+				select {
+				case reason = <-conn.Errors():
+				default:
+					reason = fmt.Errorf("unknown")
+				}
+				if w.logger != nil {
+					w.logger.Info("websocket: closed", "reason", reason)
+				}
+				break session
+			}
+
+			pool.Inbox <- types.InboxMessage{
+				ID: w.url, Data: data, ReceivedAt: time.Now()}
+
+			pool.InboxCounter.Add(1)
+			w.processedCount.Add(1)
+
+			heartbeat()
+
+		case <-conn.Heartbeat():
+			heartbeat()
+
+		case <-w.sendHeartbeat:
+			heartbeat()
+
+		case <-inactive():
+			if w.logger != nil {
+				w.logger.Warn("keepalive: no activity observed")
+			}
+			break session
+		}
 	}
+
+	// session ended
+	conn.Close()
+	stopKeepalive()
+
+	// tear down connection
+	w.conn.Store(nil)
+	pool.Events <- PoolEvent{ID: w.url, Kind: EventDisconnected, At: time.Now()}
+
+	if w.logger != nil {
+		w.logger.Info("disconnected")
+		w.logger.Debug("session: ended")
+	}
+}
+
+func (w *session) reset(ctx context.Context) bool {
+	// exit if session is shutting down
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+	}
+
+	// refresh session
+	time.Sleep(w.config.ReconnectDelay)
+	w.restartCount.Add(1)
+	return true
 }
 
 func (w *session) startKeepalive() (

@@ -119,9 +119,9 @@ func WithEventsBufferSize(value int) PoolOption {
 	}
 }
 
-func WithSessionConfig(wc SessionConfig) PoolOption {
+func WithSessionConfig(cfg SessionConfig) PoolOption {
 	return func(c *PoolConfig) {
-		c.SessionConfig = wc
+		c.SessionConfig = cfg
 	}
 }
 
@@ -356,8 +356,8 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		dialFn = o.dialFn
 	}
 
-	wc := p.config.SessionConfig
-	session, err := newSession(p.ctx, id, dialFn, &wc, p.handler)
+	sc := p.config.SessionConfig
+	session, err := newSession(p.ctx, id, dialFn, &sc, p.handler)
 	if err != nil {
 		return err
 	}
