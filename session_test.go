@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func makeWorkerContext(t *testing.T) (
+func makeSessionContext(t *testing.T) (
 	inbox chan types.InboxMessage,
 	events chan PoolEvent,
 	pool PoolPlugin,
@@ -31,19 +31,19 @@ func makeWorkerContext(t *testing.T) (
 	return
 }
 
-func makeWorker(
+func makeSession(
 	t *testing.T,
 	socket *honeybeetest.MockSocket,
-	config *WorkerConfig,
+	config *SessionConfig,
 	ctx context.Context,
 	cancel context.CancelFunc,
-) *DefaultWorker {
+) *session {
 	t.Helper()
 	if config == nil {
-		config, _ = NewWorkerConfig(WithReconnectDelay(0 * time.Second))
+		config, _ = NewSessionConfig(WithReconnectDelay(0 * time.Second))
 	}
 	dialFn := func(_ context.Context) (types.Socket, error) { return socket, nil }
-	return &DefaultWorker{
+	return &session{
 		ctx:            ctx,
 		cancel:         cancel,
 		url:            "wss://test",
@@ -56,14 +56,14 @@ func makeWorker(
 	}
 }
 
-func TestWorkerSession(t *testing.T) {
+func TestSession(t *testing.T) {
 	t.Run("EventConnected emitted after dial succeeds", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		mockSocket := honeybeetest.NewMockSocket()
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -80,16 +80,16 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected EventConnected")
 	})
 
-	t.Run("dial failure exhausted - worker exits cleanly, no connected/disconnected events", func(t *testing.T) {
+	t.Run("dial failure exhausted - session exits cleanly, no connected/disconnected events", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		config, _ := NewWorkerConfig(WithRetryDisabled())
-		w := makeWorker(t, nil, config, ctx, cancel)
+		config, _ := NewSessionConfig(WithRetryDisabled())
+		w := makeSession(t, nil, config, ctx, cancel)
 		w.dialFn = func(_ context.Context) (types.Socket, error) {
 			return nil, fmt.Errorf("connection refused")
 		}
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -103,7 +103,7 @@ func TestWorkerSession(t *testing.T) {
 			default:
 				return false
 			}
-		}, "expected worker to exit after terminal dial failure")
+		}, "expected session to exit after terminal dial failure")
 
 		honeybeetest.Never(t, func() bool {
 			select {
@@ -119,12 +119,12 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		config, _ := NewWorkerConfig(WithRetryDisabled())
-		w := makeWorker(t, nil, config, ctx, cancel)
+		config, _ := NewSessionConfig(WithRetryDisabled())
+		w := makeSession(t, nil, config, ctx, cancel)
 		w.dialFn = func(_ context.Context) (types.Socket, error) {
 			return nil, fmt.Errorf("connection refused")
 		}
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 
 		retired := atomic.Bool{}
 		var retiredErr atomic.Pointer[error]
@@ -148,7 +148,7 @@ func TestWorkerSession(t *testing.T) {
 			default:
 				return false
 			}
-		}, "expected worker to exit cleanly")
+		}, "expected session to exit cleanly")
 
 		honeybeetest.Never(t, func() bool {
 			select {
@@ -164,12 +164,12 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, nil, nil, ctx, cancel)
+		w := makeSession(t, nil, nil, ctx, cancel)
 		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
 			<-dialCtx.Done()
 			return nil, dialCtx.Err()
 		}
-		_, _, pool := makeWorkerContext(t)
+		_, _, pool := makeSessionContext(t)
 
 		retired := atomic.Bool{}
 		pool.Retire = func(_ error) { retired.Store(true) }
@@ -187,7 +187,7 @@ func TestWorkerSession(t *testing.T) {
 			default:
 				return false
 			}
-		}, "expected worker to exit after Stop")
+		}, "expected session to exit after Stop")
 
 		assert.False(t, retired.Load(), "expected Retire not called")
 	})
@@ -197,8 +197,8 @@ func TestWorkerSession(t *testing.T) {
 		defer cancel()
 
 		mockSocket := honeybeetest.NewMockSocket()
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		retired := atomic.Bool{}
 		pool.Retire = func(_ error) { retired.Store(true) }
@@ -222,12 +222,12 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, nil, nil, ctx, cancel)
+		w := makeSession(t, nil, nil, ctx, cancel)
 		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
 			<-dialCtx.Done()
 			return nil, dialCtx.Err()
 		}
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -253,8 +253,8 @@ func TestWorkerSession(t *testing.T) {
 		defer cancel()
 
 		_, mockSocket, _, outgoingData := setupTestConnection(t)
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -302,8 +302,8 @@ func TestWorkerSession(t *testing.T) {
 			}
 		}
 
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
-		inbox, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
+		inbox, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -343,13 +343,13 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		config, _ := NewWorkerConfig(
+		config, _ := NewSessionConfig(
 			WithReconnectDelay(0),
 			WithKeepaliveTimeout(60*time.Millisecond),
 		)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		w := makeWorker(t, mockSocket, config, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -400,12 +400,12 @@ func TestWorkerSession(t *testing.T) {
 		mockSocket, incomingData, _ := honeybeetest.SetupTestSocket(t)
 		mockSocket.SetPongHandlerFunc = func(h func(string) error) { pongHandler = h }
 
-		config, _ := NewWorkerConfig(
+		config, _ := NewSessionConfig(
 			WithReconnectDelay(0),
 			WithKeepaliveTimeout(60*time.Millisecond),
 		)
-		w := makeWorker(t, mockSocket, config, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -451,13 +451,13 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		config, _ := NewWorkerConfig(
+		config, _ := NewSessionConfig(
 			WithReconnectDelay(0),
 			WithKeepaliveTimeout(30*time.Millisecond),
 		)
 		_, mockSocket, _, _ := setupTestConnection(t)
-		w := makeWorker(t, mockSocket, config, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -496,9 +496,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 		_, mockSocket, incomingData, _ := setupTestConnection(t)
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -539,9 +539,9 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		w := makeWorker(t, mockSocket, nil, ctx, cancel)
+		w := makeSession(t, mockSocket, nil, ctx, cancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -582,11 +582,11 @@ func TestWorkerSession(t *testing.T) {
 
 	t.Run("parent context cancel exits cleanly and wg drains", func(t *testing.T) {
 		parentCtx, parentCancel := context.WithCancel(context.Background())
-		workerCtx, workerCancel := context.WithCancel(parentCtx)
+		sessionCtx, sessionCancel := context.WithCancel(parentCtx)
 
-		_, events, pool := makeWorkerContext(t)
+		_, events, pool := makeSessionContext(t)
 		mockSocket := honeybeetest.NewMockSocket()
-		w := makeWorker(t, mockSocket, nil, workerCtx, workerCancel)
+		w := makeSession(t, mockSocket, nil, sessionCtx, sessionCancel)
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
@@ -603,7 +603,7 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected EventConnected")
 
 		// drain events after parent cancel — we don't assert what they are,
-		// only that the worker exits
+		// only that the session exits
 		parentCancel()
 
 		done := make(chan struct{})
@@ -622,8 +622,8 @@ func TestWorkerSession(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, nil, nil, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, nil, nil, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		dialErr := errors.New("connection refused")
 		w.dialFn = func(_ context.Context) (types.Socket, error) {
@@ -646,12 +646,12 @@ func TestWorkerSession(t *testing.T) {
 		}, "expected EventDialFailed")
 	})
 
-	t.Run("no EventDialFailed when worker is stopped mid-dial", func(t *testing.T) {
+	t.Run("no EventDialFailed when session is stopped mid-dial", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		w := makeWorker(t, nil, nil, ctx, cancel)
-		_, events, pool := makeWorkerContext(t)
+		w := makeSession(t, nil, nil, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
 
 		w.dialFn = func(dialCtx context.Context) (types.Socket, error) {
 			<-dialCtx.Done()
@@ -672,7 +672,7 @@ func TestWorkerSession(t *testing.T) {
 			default:
 				return false
 			}
-		}, "expected worker to exit after Stop")
+		}, "expected session to exit after Stop")
 
 		honeybeetest.Never(t, func() bool {
 			select {
@@ -685,7 +685,7 @@ func TestWorkerSession(t *testing.T) {
 	})
 }
 
-func TestWorkerSend(t *testing.T) {
+func TestSession_Send(t *testing.T) {
 	t.Run("data sent to mock socket", func(t *testing.T) {
 		conn, _, _, outgoingData := setupTestConnection(t)
 		defer conn.Close()
@@ -695,7 +695,7 @@ func TestWorkerSend(t *testing.T) {
 		heartbeat := make(chan struct{})
 		heartbeatCount := atomic.Int32{}
 
-		w := &DefaultWorker{
+		w := &session{
 			ctx:           ctx,
 			cancel:        cancel,
 			url:           "wss://test",
@@ -740,7 +740,7 @@ func TestWorkerSend(t *testing.T) {
 		heartbeat := make(chan struct{})
 		heartbeatCount := atomic.Int32{}
 
-		w := &DefaultWorker{
+		w := &session{
 			ctx:           ctx,
 			cancel:        cancel,
 			url:           "wss://test",
@@ -768,13 +768,13 @@ func TestWorkerSend(t *testing.T) {
 	})
 
 	t.Run("returns error if connection is unavailable", func(t *testing.T) {
-		// no connection available to worker
+		// no connection available to session
 
 		ctx, cancel := context.WithCancel(context.Background())
 
 		heartbeat := make(chan struct{})
 
-		w := &DefaultWorker{
+		w := &session{
 			ctx:           ctx,
 			cancel:        cancel,
 			url:           "wss://test",

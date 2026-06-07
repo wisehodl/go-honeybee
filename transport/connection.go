@@ -23,7 +23,6 @@ var (
 	ErrConnectionClosed     = errors.New("connection closed")
 	ErrWriteFailed          = errors.New("write failed")
 	ErrNilSocket            = errors.New("socket cannot be nil")
-	ErrSocketExists         = errors.New("socket already exists")
 	ErrFailedWriteDeadline  = errors.New("failed to set write deadline")
 	ErrPeerClosedClean      = errors.New("peer closed connection cleanly")
 	ErrPeerClosedUnexpected = errors.New("peer closed connection unexpectedly")
@@ -367,7 +366,12 @@ func (c *Connection) startPinger() {
 			timer.Stop()
 			return
 		case <-timer.C:
-			deadline := time.Now().Add(c.config.WriteTimeout)
+			var deadline time.Time
+			if c.config.WriteTimeout > 0 {
+				deadline = time.Now().Add(c.config.WriteTimeout)
+			} else {
+				deadline = time.Now().Add(15 * time.Second)
+			}
 			err := c.socket.WriteControl(websocket.PingMessage, nil, deadline)
 			if err != nil {
 				return

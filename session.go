@@ -24,7 +24,7 @@ var ErrConnectionUnavailable = errors.New("connection unavailable")
 // Config
 // ----------------------------------------------------------------------------
 
-type WorkerConfig struct {
+type SessionConfig struct {
 	ConnectionConfig transport.ConnectionConfig
 	RetryConfig      transport.RetryConfig
 	RetryDisabled    bool
@@ -32,12 +32,12 @@ type WorkerConfig struct {
 	ReconnectDelay   time.Duration
 }
 
-type WorkerOption func(*WorkerConfig)
+type SessionOption func(*SessionConfig)
 
-func NewWorkerConfig(opts ...WorkerOption) (*WorkerConfig, error) {
+func NewSessionConfig(opts ...SessionOption) (*SessionConfig, error) {
 	connCfg, _ := transport.NewConnectionConfig()
 	retryCfg, _ := transport.NewRetryConfig()
-	cfg := &WorkerConfig{
+	cfg := &SessionConfig{
 		ConnectionConfig: *connCfg,
 		RetryConfig:      retryCfg,
 		KeepaliveTimeout: 60 * time.Second,
@@ -46,44 +46,44 @@ func NewWorkerConfig(opts ...WorkerOption) (*WorkerConfig, error) {
 	for _, o := range opts {
 		o(cfg)
 	}
-	if err := ValidateWorkerConfig(cfg); err != nil {
+	if err := ValidateSessionConfig(cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
 
-func WithConnectionConfig(value transport.ConnectionConfig) WorkerOption {
-	return func(c *WorkerConfig) {
+func WithConnectionConfig(value transport.ConnectionConfig) SessionOption {
+	return func(c *SessionConfig) {
 		c.ConnectionConfig = value
 	}
 }
 
-func WithRetryConfig(value transport.RetryConfig) WorkerOption {
-	return func(c *WorkerConfig) {
+func WithRetryConfig(value transport.RetryConfig) SessionOption {
+	return func(c *SessionConfig) {
 		c.RetryConfig = value
 	}
 }
 
-func WithRetryDisabled() WorkerOption {
-	return func(c *WorkerConfig) {
+func WithRetryDisabled() SessionOption {
+	return func(c *SessionConfig) {
 		c.RetryDisabled = true
 	}
 }
 
 // When KeepaliveTimeout is set to zero, keepalive functionality is disabled.
-func WithKeepaliveTimeout(value time.Duration) WorkerOption {
-	return func(c *WorkerConfig) {
+func WithKeepaliveTimeout(value time.Duration) SessionOption {
+	return func(c *SessionConfig) {
 		c.KeepaliveTimeout = value
 	}
 }
 
-func WithReconnectDelay(value time.Duration) WorkerOption {
-	return func(c *WorkerConfig) {
+func WithReconnectDelay(value time.Duration) SessionOption {
+	return func(c *SessionConfig) {
 		c.ReconnectDelay = value
 	}
 }
 
-func ValidateWorkerConfig(c *WorkerConfig) error {
+func ValidateSessionConfig(c *SessionConfig) error {
 	if !c.RetryDisabled {
 		if err := transport.ValidateRetryConfig(c.RetryConfig); err != nil {
 			return err
@@ -99,17 +99,10 @@ func ValidateWorkerConfig(c *WorkerConfig) error {
 }
 
 // ----------------------------------------------------------------------------
-// Worker
+// Session
 // ----------------------------------------------------------------------------
 
-type Worker interface {
-	Start(pool PoolPlugin)
-	Stop()
-	Send(data []byte) error
-	Stats() WorkerStats
-}
-
-type WorkerStats struct {
+type SessionStats struct {
 	ConnectionAvailable bool
 	Connection          transport.ConnectionStats
 	ChanIncoming        int
@@ -119,7 +112,7 @@ type WorkerStats struct {
 	TotalRestarts  uint64
 }
 
-type DefaultWorker struct {
+type session struct {
 	url    string
 	dialFn func(context.Context) (types.Socket, error)
 	conn   atomic.Pointer[transport.Connection]
@@ -128,7 +121,7 @@ type DefaultWorker struct {
 
 	ctx     context.Context
 	cancel  context.CancelFunc
-	config  WorkerConfig
+	config  SessionConfig
 	handler slog.Handler
 	logger  *slog.Logger
 
@@ -137,28 +130,28 @@ type DefaultWorker struct {
 	restartCount   *atomic.Uint64
 }
 
-func NewWorker(
+func newSession(
 	ctx context.Context,
 	url string,
 	dialFn func(context.Context) (types.Socket, error),
-	config *WorkerConfig,
+	config *SessionConfig,
 	handler slog.Handler,
-) (*DefaultWorker, error) {
+) (*session, error) {
 	if config == nil {
-		config, _ = NewWorkerConfig()
+		config, _ = NewSessionConfig()
 	}
-	if err := ValidateWorkerConfig(config); err != nil {
+	if err := ValidateSessionConfig(config); err != nil {
 		return nil, err
 	}
 
 	if component.FromContext(ctx) == nil {
-		ctx = component.MustNew(ctx, "honeybee", "worker")
+		ctx = component.MustNew(ctx, "honeybee", "session")
 	} else {
-		ctx = component.MustExtend(ctx, "worker")
+		ctx = component.MustExtend(ctx, "session")
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	w := &DefaultWorker{
+	w := &session{
 		url:    url,
 		dialFn: dialFn,
 
@@ -182,13 +175,13 @@ func NewWorker(
 	return w, nil
 }
 
-func (w *DefaultWorker) Start(pool PoolPlugin) {
+func (w *session) Start(pool PoolPlugin) {
 	if w.logger != nil {
 		w.logger.Debug("starting")
 	}
 
 	var wg sync.WaitGroup
-	wg.Go(func() { w.runSession(w.ctx, pool) })
+	wg.Go(func() { w.run(w.ctx, pool) })
 
 	if w.logger != nil {
 		w.logger.Debug("started")
@@ -201,7 +194,7 @@ func (w *DefaultWorker) Start(pool PoolPlugin) {
 	}
 }
 
-func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
+func (w *session) run(ctx context.Context, pool PoolPlugin) {
 	for {
 		var retryMgr *transport.RetryManager
 		if !w.config.RetryDisabled {
@@ -298,7 +291,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 		w.conn.Store(nil)
 		pool.Events <- PoolEvent{ID: w.url, Kind: EventDisconnected, At: time.Now()}
 
-		// exit if worker is shutting down
+		// exit if session is shutting down
 		select {
 		case <-ctx.Done():
 			return
@@ -311,7 +304,7 @@ func (w *DefaultWorker) runSession(ctx context.Context, pool PoolPlugin) {
 	}
 }
 
-func (w *DefaultWorker) startKeepalive() (
+func (w *session) startKeepalive() (
 	stop func(),
 	inactive func() <-chan time.Time,
 	heartbeat func(),
@@ -354,14 +347,14 @@ func (w *DefaultWorker) startKeepalive() (
 	return
 }
 
-func (w *DefaultWorker) Stop() {
+func (w *session) Stop() {
 	if w.logger != nil {
 		w.logger.Info("shutting down")
 	}
 	w.cancel()
 }
 
-func (w *DefaultWorker) Send(data []byte) error {
+func (w *session) Send(data []byte) error {
 	conn := w.conn.Load()
 	if conn == nil {
 		// connection not established by session
@@ -383,7 +376,7 @@ func (w *DefaultWorker) Send(data []byte) error {
 	return nil
 }
 
-func (w *DefaultWorker) Stats() WorkerStats {
+func (w *session) Stats() SessionStats {
 	connectionAvailable := false
 	incomingLen := 0
 	connStats := transport.ConnectionStats{}
@@ -395,7 +388,7 @@ func (w *DefaultWorker) Stats() WorkerStats {
 		connStats = conn.Stats()
 	}
 
-	return WorkerStats{
+	return SessionStats{
 		ConnectionAvailable: connectionAvailable,
 		Connection:          connStats,
 		ChanIncoming:        incomingLen,

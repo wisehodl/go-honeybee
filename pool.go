@@ -64,8 +64,8 @@ type PoolStats struct {
 }
 
 type PeerStats struct {
-	ID     string
-	Worker WorkerStats
+	ID      string
+	Session SessionStats
 }
 
 type PoolPlugin struct {
@@ -82,20 +82,20 @@ type PoolPlugin struct {
 type PoolConfig struct {
 	InboxBufferSize  int
 	EventsBufferSize int
-	WorkerConfig     WorkerConfig
+	SessionConfig    SessionConfig
 	RequestHeader    http.Header
 }
 
 type PoolOption func(*PoolConfig)
 
 func NewPoolConfig(opts ...PoolOption) (*PoolConfig, error) {
-	workerCfg, _ := NewWorkerConfig()
+	sessionCfg, _ := NewSessionConfig()
 	defaultHeader := http.Header{}
 	defaultHeader.Set("User-Agent", "honeybee/0.1.0")
 	cfg := &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
-		WorkerConfig:     *workerCfg,
+		SessionConfig:    *sessionCfg,
 		RequestHeader:    defaultHeader,
 	}
 	for _, o := range opts {
@@ -119,9 +119,9 @@ func WithEventsBufferSize(value int) PoolOption {
 	}
 }
 
-func WithWorkerConfig(wc WorkerConfig) PoolOption {
+func WithSessionConfig(wc SessionConfig) PoolOption {
 	return func(c *PoolConfig) {
-		c.WorkerConfig = wc
+		c.SessionConfig = wc
 	}
 }
 
@@ -142,7 +142,7 @@ func ValidatePoolConfig(c *PoolConfig) error {
 	if c.EventsBufferSize < 1 {
 		return fmt.Errorf("invalid events buffer size: %d", c.EventsBufferSize)
 	}
-	if err := ValidateWorkerConfig(&c.WorkerConfig); err != nil {
+	if err := ValidateSessionConfig(&c.SessionConfig); err != nil {
 		return err
 	}
 	return nil
@@ -153,8 +153,8 @@ func ValidatePoolConfig(c *PoolConfig) error {
 // ----------------------------------------------------------------------------
 
 type Peer struct {
-	id     string
-	worker Worker
+	id      string
+	session *session
 }
 
 type Pool struct {
@@ -240,8 +240,8 @@ func (p *Pool) Stats() PoolStats {
 	peerStats := make([]PeerStats, 0, count)
 	for id, peer := range p.peers {
 		peerStats = append(peerStats, PeerStats{
-			ID:     id,
-			Worker: peer.worker.Stats(),
+			ID:      id,
+			Session: peer.session.Stats(),
 		})
 	}
 
@@ -267,8 +267,8 @@ func (p *Pool) PeerStats(id string) (PeerStats, error) {
 	}
 
 	return PeerStats{
-		ID:     id,
-		Worker: peer.worker.Stats(),
+		ID:      id,
+		Session: peer.session.Stats(),
 	}, nil
 }
 
@@ -284,7 +284,7 @@ func (p *Pool) Close() {
 	}
 
 	p.closed = true
-	p.cancel() // closes all workers
+	p.cancel() // closes all sessions
 
 	// remove all peers
 	p.peers = make(map[string]*Peer)
@@ -356,8 +356,8 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		dialFn = o.dialFn
 	}
 
-	wc := p.config.WorkerConfig
-	worker, err := NewWorker(p.ctx, id, dialFn, &wc, p.handler)
+	wc := p.config.SessionConfig
+	session, err := newSession(p.ctx, id, dialFn, &wc, p.handler)
 	if err != nil {
 		return err
 	}
@@ -369,6 +369,7 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		Retire: func(err error) {
 			p.mu.Lock()
 			if p.closed {
+				p.mu.Unlock()
 				return
 			}
 			delete(p.peers, id)
@@ -378,10 +379,10 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 	}
 
 	p.wg.Go(func() {
-		worker.Start(pool)
+		session.Start(pool)
 	})
 
-	p.peers[id] = &Peer{id: id, worker: worker}
+	p.peers[id] = &Peer{id: id, session: session}
 
 	if p.logger != nil {
 		p.logger.Debug("registered peer", "peer", id)
@@ -413,7 +414,7 @@ func (p *Pool) Remove(id string) error {
 	}
 	delete(p.peers, id)
 
-	peer.worker.Stop()
+	peer.session.Stop()
 
 	if p.logger != nil {
 		p.logger.Debug("disconnected from peer", "peer", id)
@@ -440,7 +441,7 @@ func (p *Pool) Send(id string, data []byte) error {
 		return ErrPeerNotFound
 	}
 
-	err = peer.worker.Send(data)
+	err = peer.session.Send(data)
 	if err != nil {
 		return err
 	}

@@ -185,11 +185,11 @@ func TestPoolRemove(t *testing.T) {
 
 func TestPoolDialFailed(t *testing.T) {
 	t.Run("EventDialFailed received after failed dial", func(t *testing.T) {
-		wc, _ := NewWorkerConfig(WithRetryDisabled())
+		wc, _ := NewSessionConfig(WithRetryDisabled())
 		poolCfg, _ := NewPoolConfig(
 			WithInboxBufferSize(256),
 			WithEventsBufferSize(10),
-			WithWorkerConfig(*wc),
+			WithSessionConfig(*wc),
 		)
 		pool, err := NewPool(context.Background(), poolCfg, nil)
 		assert.NoError(t, err)
@@ -242,8 +242,8 @@ func TestPoolDialFailed(t *testing.T) {
 
 func TestPoolRetire(t *testing.T) {
 	t.Run("peer absent and EventRetired emitted after self-retire", func(t *testing.T) {
-		wc, _ := NewWorkerConfig(WithRetryDisabled())
-		poolCfg, _ := NewPoolConfig(WithWorkerConfig(*wc))
+		wc, _ := NewSessionConfig(WithRetryDisabled())
+		poolCfg, _ := NewPoolConfig(WithSessionConfig(*wc))
 		pool, _ := NewPool(context.Background(), poolCfg, nil)
 
 		pool.dialer = &honeybeetest.MockDialer{
@@ -274,8 +274,8 @@ func TestPoolRetire(t *testing.T) {
 	})
 
 	t.Run("concurrent Remove and self-retire is safe", func(t *testing.T) {
-		wc, _ := NewWorkerConfig(WithRetryDisabled())
-		poolCfg, _ := NewPoolConfig(WithWorkerConfig(*wc))
+		wc, _ := NewSessionConfig(WithRetryDisabled())
+		poolCfg, _ := NewPoolConfig(WithSessionConfig(*wc))
 		pool, _ := NewPool(context.Background(), poolCfg, nil)
 
 		pool.dialer = &honeybeetest.MockDialer{
