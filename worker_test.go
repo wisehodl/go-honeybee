@@ -189,7 +189,7 @@ func TestWorkerSession(t *testing.T) {
 			}
 		}, "expected worker to exit after Stop")
 
-		assert.False(t, retired.Load(), "expected Retire not called when context cancelled")
+		assert.False(t, retired.Load(), "expected Retire not called")
 	})
 
 	t.Run("Retire not called on successful connection", func(t *testing.T) {
@@ -200,7 +200,8 @@ func TestWorkerSession(t *testing.T) {
 		w := makeWorker(t, mockSocket, nil, ctx, cancel)
 		_, events, pool := makeWorkerContext(t)
 
-		pool.Retire = func(_ error) { panic("Retire must not be called on successful connection") }
+		retired := atomic.Bool{}
+		pool.Retire = func(_ error) { retired.Store(true) }
 
 		var wg sync.WaitGroup
 		wg.Go(func() { w.Start(pool) })
@@ -213,6 +214,8 @@ func TestWorkerSession(t *testing.T) {
 				return false
 			}
 		}, "expected EventConnected without Retire being called")
+
+		assert.False(t, retired.Load(), "expected Retire not called")
 	})
 
 	t.Run("Stop before connection established - exits cleanly, no events", func(t *testing.T) {

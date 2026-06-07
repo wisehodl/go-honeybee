@@ -368,11 +368,11 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		InboxCounter: p.inboxCounter,
 		Retire: func(err error) {
 			p.mu.Lock()
-			defer p.mu.Unlock()
 			if p.closed {
 				return
 			}
 			delete(p.peers, id)
+			p.mu.Unlock()
 			p.events <- PoolEvent{ID: id, Kind: EventRetired, Err: err, At: time.Now()}
 		},
 	}
