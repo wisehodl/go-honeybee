@@ -302,6 +302,85 @@ func TestPoolRetire(t *testing.T) {
 	})
 }
 
+func TestPoolRequestHeader(t *testing.T) {
+	t.Run("default pool passes User-Agent header to DialContext", func(t *testing.T) {
+		config, _ := NewPoolConfig()
+		pool, _ := NewPool(context.Background(), config, nil)
+
+		var capturedHeader http.Header
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				_ context.Context, _ string, h http.Header,
+			) (types.Socket, *http.Response, error) {
+				capturedHeader = h
+				return honeybeetest.NewMockSocket(), nil, nil
+			},
+		}
+
+		pool.Connect("wss://test")
+		expectEvent(t, pool.events, "wss://test", EventConnected)
+
+		assert.Equal(t, "honeybee/0.1.0", capturedHeader.Get("User-Agent"))
+		pool.Close()
+	})
+
+	t.Run("WithRequestHeader passes header to DialContext", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("X-Custom", "value")
+		config, _ := NewPoolConfig(WithRequestHeader(h))
+		pool, _ := NewPool(context.Background(), config, nil)
+
+		var capturedHeader http.Header
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				_ context.Context, _ string, h http.Header,
+			) (types.Socket, *http.Response, error) {
+				capturedHeader = h
+				return honeybeetest.NewMockSocket(), nil, nil
+			},
+		}
+
+		pool.Connect("wss://test")
+		expectEvent(t, pool.events, "wss://test", EventConnected)
+
+		assert.Equal(t, "value", capturedHeader.Get("X-Custom"))
+		pool.Close()
+	})
+
+	t.Run("pool stores a clone - external mutation does not affect dial calls", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("X-Custom", "original")
+		config, _ := NewPoolConfig(WithRequestHeader(h))
+
+		// mutate original after config is built
+		h.Set("X-Custom", "mutated")
+
+		pool, _ := NewPool(context.Background(), config, nil)
+
+		var capturedHeader http.Header
+		pool.dialer = &honeybeetest.MockDialer{
+			DialContextFunc: func(
+				_ context.Context, _ string, h http.Header,
+			) (types.Socket, *http.Response, error) {
+				capturedHeader = h
+				return honeybeetest.NewMockSocket(), nil, nil
+			},
+		}
+
+		pool.Connect("wss://test")
+		expectEvent(t, pool.events, "wss://test", EventConnected)
+
+		assert.Equal(t, "original", capturedHeader.Get("X-Custom"))
+		pool.Close()
+	})
+
+	t.Run("WithRequestHeader(nil) stores nil cleanly", func(t *testing.T) {
+		cfg, err := NewPoolConfig(WithRequestHeader(nil))
+		assert.NoError(t, err)
+		assert.Nil(t, cfg.RequestHeader)
+	})
+}
+
 func TestPoolSend(t *testing.T) {
 	mockSocket := honeybeetest.NewMockSocket()
 	outgoingData := make(chan honeybeetest.MockOutgoingData, 10)

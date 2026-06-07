@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"git.wisehodl.dev/jay/go-honeybee/transport"
 	"git.wisehodl.dev/jay/go-honeybee/types"
@@ -82,16 +83,20 @@ type PoolConfig struct {
 	InboxBufferSize  int
 	EventsBufferSize int
 	WorkerConfig     WorkerConfig
+	RequestHeader    http.Header
 }
 
 type PoolOption func(*PoolConfig)
 
 func NewPoolConfig(opts ...PoolOption) (*PoolConfig, error) {
 	workerCfg, _ := NewWorkerConfig()
+	defaultHeader := http.Header{}
+	defaultHeader.Set("User-Agent", "honeybee/0.1.0")
 	cfg := &PoolConfig{
 		InboxBufferSize:  256,
 		EventsBufferSize: 10,
 		WorkerConfig:     *workerCfg,
+		RequestHeader:    defaultHeader,
 	}
 	for _, o := range opts {
 		o(cfg)
@@ -117,6 +122,16 @@ func WithEventsBufferSize(value int) PoolOption {
 func WithWorkerConfig(wc WorkerConfig) PoolOption {
 	return func(c *PoolConfig) {
 		c.WorkerConfig = wc
+	}
+}
+
+func WithRequestHeader(h http.Header) PoolOption {
+	return func(c *PoolConfig) {
+		if h == nil {
+			c.RequestHeader = nil
+		} else {
+			c.RequestHeader = h.Clone()
+		}
 	}
 }
 
@@ -328,9 +343,12 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		opt(o)
 	}
 
-	// TODO: pass headers
+	var hdr http.Header
+	if p.config.RequestHeader != nil {
+		hdr = p.config.RequestHeader.Clone()
+	}
 	dialFn := func(ctx context.Context) (types.Socket, error) {
-		socket, _, err := p.dialer.DialContext(ctx, id, nil)
+		socket, _, err := p.dialer.DialContext(ctx, id, hdr)
 		return socket, err
 	}
 
