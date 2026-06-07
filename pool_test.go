@@ -41,7 +41,7 @@ func expectEvent(
 	honeybeetest.Eventually(t, func() bool {
 		select {
 		case e := <-events:
-			return e.ID == expectedURL && e.Kind == expectedKind && !e.At.IsZero()
+			return e.URL == expectedURL && e.Kind == expectedKind && !e.At.IsZero()
 		default:
 			return false
 		}
@@ -60,7 +60,7 @@ func TestPoolConnect(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case event := <-pool.events:
-				return event.ID == "wss://test" && event.Kind == EventConnected
+				return event.URL == "wss://test" && event.Kind == EventConnected
 			default:
 				return false
 			}
@@ -116,7 +116,7 @@ func TestPoolConnectWithDialer(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-pool.events:
-				return e.ID == "wss://test" && e.Kind == EventConnected
+				return e.URL == "wss://test" && e.Kind == EventConnected
 			default:
 				return false
 			}
@@ -210,7 +210,7 @@ func TestPoolDialFailed(t *testing.T) {
 			select {
 			case e := <-pool.Events():
 				return e.Kind == EventDialFailed &&
-					e.ID == "wss://test" &&
+					e.URL == "wss://test" &&
 					e.Err == dialErr &&
 					!e.At.IsZero()
 			default:
@@ -264,7 +264,7 @@ func TestPoolRetire(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-pool.Events():
-				return e.Kind == EventRetired && e.ID == "wss://test"
+				return e.Kind == EventRetired && e.URL == "wss://test"
 			default:
 				return false
 			}

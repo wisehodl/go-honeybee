@@ -31,7 +31,7 @@ type ReceivedMessage struct {
 }
 
 type InboxMessage struct {
-	ID         string
+	URL        string
 	Data       []byte
 	ReceivedAt time.Time
 }

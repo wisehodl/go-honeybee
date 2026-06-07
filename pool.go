@@ -46,7 +46,7 @@ const (
 )
 
 type PoolEvent struct {
-	ID   string
+	URL  string
 	Kind PoolEventKind
 	At   time.Time
 	Err  error
@@ -64,7 +64,7 @@ type PoolStats struct {
 }
 
 type PeerStats struct {
-	ID      string
+	URL     string
 	Session SessionStats
 }
 
@@ -153,7 +153,7 @@ func ValidatePoolConfig(c *PoolConfig) error {
 // ----------------------------------------------------------------------------
 
 type Peer struct {
-	id      string
+	url     string
 	session *session
 }
 
@@ -238,9 +238,9 @@ func (p *Pool) Stats() PoolStats {
 
 	count := len(p.peers)
 	peerStats := make([]PeerStats, 0, count)
-	for id, peer := range p.peers {
+	for url, peer := range p.peers {
 		peerStats = append(peerStats, PeerStats{
-			ID:      id,
+			URL:     url,
 			Session: peer.session.Stats(),
 		})
 	}
@@ -257,17 +257,17 @@ func (p *Pool) Stats() PoolStats {
 	}
 }
 
-func (p *Pool) PeerStats(id string) (PeerStats, error) {
+func (p *Pool) PeerStats(url string) (PeerStats, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	peer, exists := p.peers[id]
+	peer, exists := p.peers[url]
 	if !exists {
 		return PeerStats{}, ErrPeerNotFound
 	}
 
 	return PeerStats{
-		ID:      id,
+		URL:     url,
 		Session: peer.session.Stats(),
 	}, nil
 }
@@ -317,12 +317,12 @@ func WithDialFunc(f func(context.Context) (types.Socket, error)) ConnectOption {
 	}
 }
 
-func (p *Pool) Connect(id string, opts ...ConnectOption) error {
+func (p *Pool) Connect(url string, opts ...ConnectOption) error {
 	if p.logger != nil {
-		p.logger.Info("connecting", "peer", id)
+		p.logger.Info("connecting", "peer", url)
 	}
 
-	id, err := transport.NormalizeURL(id)
+	url, err := transport.NormalizeURL(url)
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		return ErrPoolClosed
 	}
 
-	if _, exists := p.peers[id]; exists {
+	if _, exists := p.peers[url]; exists {
 		return ErrPeerExists
 	}
 
@@ -348,7 +348,7 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		hdr = p.config.RequestHeader.Clone()
 	}
 	dialFn := func(ctx context.Context) (types.Socket, error) {
-		socket, _, err := p.dialer.DialContext(ctx, id, hdr)
+		socket, _, err := p.dialer.DialContext(ctx, url, hdr)
 		return socket, err
 	}
 
@@ -357,7 +357,7 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 	}
 
 	sc := p.config.SessionConfig
-	session, err := newSession(p.ctx, id, dialFn, &sc, p.handler)
+	session, err := newSession(p.ctx, url, dialFn, &sc, p.handler)
 	if err != nil {
 		return err
 	}
@@ -372,9 +372,9 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 				p.mu.Unlock()
 				return
 			}
-			delete(p.peers, id)
+			delete(p.peers, url)
 			p.mu.Unlock()
-			p.events <- PoolEvent{ID: id, Kind: EventRetired, Err: err, At: time.Now()}
+			p.events <- PoolEvent{URL: url, Kind: EventRetired, Err: err, At: time.Now()}
 		},
 	}
 
@@ -382,21 +382,21 @@ func (p *Pool) Connect(id string, opts ...ConnectOption) error {
 		session.Start(pool)
 	})
 
-	p.peers[id] = &Peer{id: id, session: session}
+	p.peers[url] = &Peer{url: url, session: session}
 
 	if p.logger != nil {
-		p.logger.Debug("registered peer", "peer", id)
+		p.logger.Debug("registered peer", "peer", url)
 	}
 
 	return nil
 }
 
-func (p *Pool) Remove(id string) error {
+func (p *Pool) Remove(url string) error {
 	if p.logger != nil {
-		p.logger.Info("disconnecting", "peer", id)
+		p.logger.Info("disconnecting", "peer", url)
 	}
 
-	id, err := transport.NormalizeURL(id)
+	url, err := transport.NormalizeURL(url)
 	if err != nil {
 		return err
 	}
@@ -408,23 +408,23 @@ func (p *Pool) Remove(id string) error {
 		return ErrPoolClosed
 	}
 
-	peer, exists := p.peers[id]
+	peer, exists := p.peers[url]
 	if !exists {
 		return ErrPeerNotFound
 	}
-	delete(p.peers, id)
+	delete(p.peers, url)
 
 	peer.session.Stop()
 
 	if p.logger != nil {
-		p.logger.Debug("disconnected from peer", "peer", id)
+		p.logger.Debug("disconnected from peer", "peer", url)
 	}
 
 	return nil
 }
 
-func (p *Pool) Send(id string, data []byte) error {
-	id, err := transport.NormalizeURL(id)
+func (p *Pool) Send(url string, data []byte) error {
+	url, err := transport.NormalizeURL(url)
 	if err != nil {
 		return err
 	}
@@ -436,7 +436,7 @@ func (p *Pool) Send(id string, data []byte) error {
 		return ErrPoolClosed
 	}
 
-	peer, exists := p.peers[id]
+	peer, exists := p.peers[url]
 	if !exists {
 		return ErrPeerNotFound
 	}

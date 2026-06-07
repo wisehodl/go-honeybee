@@ -73,7 +73,7 @@ func TestSession(t *testing.T) {
 		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-events:
-				return e.ID == w.url && e.Kind == EventConnected
+				return e.URL == w.url && e.Kind == EventConnected
 			default:
 				return false
 			}
@@ -334,7 +334,7 @@ func TestSession(t *testing.T) {
 				return false
 			}
 		}, "expected message on Inbox")
-		assert.Equal(t, w.url, received.ID)
+		assert.Equal(t, w.url, received.URL)
 		assert.Equal(t, []byte("hello"), received.Data)
 		assert.False(t, received.ReceivedAt.IsZero(), "expected non-zero ReceivedAt")
 	})
@@ -637,7 +637,7 @@ func TestSession(t *testing.T) {
 			select {
 			case e := <-events:
 				return e.Kind == EventDialFailed &&
-					e.ID == w.url &&
+					e.URL == w.url &&
 					e.Err == dialErr &&
 					!e.At.IsZero()
 			default:

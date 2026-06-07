@@ -218,11 +218,11 @@ func (w *session) dial(
 			return
 		}
 		pool.Events <- PoolEvent{
-			ID: w.url, Kind: EventDialFailed, Err: err, At: time.Now()}
+			URL: w.url, Kind: EventDialFailed, Err: err, At: time.Now()}
 	}
+
 	socket, err := transport.DialWithRetry(
-		ctx, retryMgr, w.dialFn, onError, w.handler,
-	)
+		ctx, retryMgr, w.dialFn, onError, w.handler)
 	if err != nil {
 		if pool.Retire != nil &&
 			!errors.Is(err, context.Canceled) &&
@@ -246,7 +246,7 @@ func (w *session) serve(
 
 	// setup connection
 	w.conn.Store(conn)
-	pool.Events <- PoolEvent{ID: w.url, Kind: EventConnected, At: time.Now()}
+	pool.Events <- PoolEvent{URL: w.url, Kind: EventConnected, At: time.Now()}
 
 	// start keepalive service
 	stopKeepalive, inactive, heartbeat := w.startKeepalive()
@@ -273,7 +273,7 @@ session:
 			}
 
 			pool.Inbox <- types.InboxMessage{
-				ID: w.url, Data: data, ReceivedAt: time.Now()}
+				URL: w.url, Data: data, ReceivedAt: time.Now()}
 
 			pool.InboxCounter.Add(1)
 			w.processedCount.Add(1)
@@ -300,7 +300,7 @@ session:
 
 	// tear down connection
 	w.conn.Store(nil)
-	pool.Events <- PoolEvent{ID: w.url, Kind: EventDisconnected, At: time.Now()}
+	pool.Events <- PoolEvent{URL: w.url, Kind: EventDisconnected, At: time.Now()}
 
 	if w.logger != nil {
 		w.logger.Info("disconnected")
