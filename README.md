@@ -6,7 +6,7 @@ WebSocket connection and pool primitives in Go. Built for Nostr.
 
 ```txt
 pool.go                Pool, public types
-worker.go              Worker, WorkerConfig
+session.go             SessionConfig
 
 transport/             single-connection primitives and helpers
   connection.go          Connection, reader goroutine, pinger
@@ -68,9 +68,9 @@ if err := pool.Connect("wss://peer.example.com"); err != nil { /* handle error *
 
 go func() {
     for msg := range pool.Inbox() {
-        // msg.ID            is the normalized URL
-        // msg.Data          is the payload
-        // msg.ReceivedAt    is the timestamp
+        // msg.URL          is the normalized URL
+        // msg.Data         is the payload
+        // msg.ReceivedAt   is the timestamp
     }
 }()
 
@@ -96,15 +96,15 @@ pool.Send("wss://peer.example.com", []byte("hello"))
 
 Every time a connection is established, `honeybee.EventConnected` is emitted. Every time a connection drops for any reason, `honeybee.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
 
-Keepalive is configured via `honeybee.WithKeepaliveTimeout`. The worker records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
+Keepalive is configured via `honeybee.WithKeepaliveTimeout`. The session records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
 
-After a disconnect, the worker waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
+After a disconnect, the session waits for `ReconnectDelay` before attempting the next connection. The default is 2 seconds. Set to zero in tests or when you need immediate reconnection.
 
 `Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `EventConnected` before retrying and maintain their own write buffers if needed.
 
-Each failed dial attempt emits `EventDialFailed` on `pool.Events()` with the dialer error in `ev.Err`. These do not stop the pool; it continues retrying according to the worker's retry config. `EventDialFailed` is only sent when the peer fails to connect, not when dialing is stopped internally.
+Each failed dial attempt emits `EventDialFailed` on `pool.Events()` with the dialer error in `ev.Err`. These do not stop the pool; it continues retrying according to the session's retry config. `EventDialFailed` is only sent when the peer fails to connect, not when dialing is stopped internally.
 
-When a peer's retry policy is exhausted, the worker deregisters itself from the pool and emits `EventRetired` on `pool.Events()`. The default `RetryConfig` sets `MaxRetries` to zero, which means infinite retries — so in default operation `EventRetired` is structurally unreachable. It will only appear if you explicitly configure a positive `MaxRetries` via `WithRetryConfig`.
+When a peer's retry policy is exhausted, the session deregisters itself from the pool and emits `EventRetired` on `pool.Events()`. The default `RetryConfig` sets `MaxRetries` to zero, which means infinite retries — so in default operation `EventRetired` is structurally unreachable. It will only appear if you explicitly configure a positive `MaxRetries` via `WithRetryConfig`.
 
 ## Server-Side Usage
 
@@ -255,15 +255,15 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 
 ## Ping-Pong Heartbeats
 
-Connections send periodic WebSocket ping frames and listen for the corresponding pong replies. A received pong registers as a heartbeat signal within the worker.
+Connections send periodic WebSocket ping frames and listen for the corresponding pong replies. A received pong registers as a heartbeat signal within the session.
 
 Pong-derived heartbeats reset the keepalive timer alongside data messages and sends. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then wrap it in a `WorkerConfig` via `honeybee.WithConnectionConfig`, and pass the `WorkerConfig` to `NewPoolConfig` via `honeybee.WithWorkerConfig`. You can also supply the `ConnectionConfig` directly to `transport.NewConnection`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
+The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then wrap it in a `SessionConfig` via `honeybee.WithConnectionConfig`, and pass the `SessionConfig` to `NewPoolConfig` via `honeybee.WithSessionConfig`. You can also supply the `ConnectionConfig` directly to `transport.NewConnection`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
 ## Statistics
 
-Pools, workers, and connections expose counters and channel depths that can be sampled at any time. All values are snapshots; counters are monotonically increasing and are not reset between reconnects.
+Pools and connections expose counters and channel depths that can be sampled at any time. All values are snapshots; counters are monotonically increasing and are not reset between reconnects.
 
 ```go
 // Pool-level snapshot
@@ -276,7 +276,7 @@ stats := pool.Stats()
 
 // Single peer
 peerStats, err := pool.PeerStats(peerID)
-// peerStats.Worker      — channel depths, processed/sent counts
+// peerStats.Session     — channel depths, processed/sent counts
 
 // Bare connection (transport package)
 connStats := conn.Stats() // conn is a *transport.Connection
@@ -285,7 +285,7 @@ connStats := conn.Stats() // conn is a *transport.Connection
 
 ## Configuration
 
-All configuration is done through option functions applied at construction time. `PoolConfig` is the top-level scope and embeds a `WorkerConfig`. `WorkerConfig` embeds both a `ConnectionConfig` and a `RetryConfig`. Consumers configure connection and retry behavior through this chain. Logging is not config-controlled; pass an `slog.Handler` to pool, worker, and connection constructors directly.
+All configuration is done through option functions applied at construction time. `PoolConfig` is the top-level scope and embeds a `SessionConfig`. `SessionConfig` embeds both a `ConnectionConfig` and a `RetryConfig`. Consumers configure connection and retry behavior through this chain. Logging is not config-controlled; pass an `slog.Handler` to pool, session, and connection constructors directly.
 
 See CONFIG.md for the full option reference and defaults table.
 

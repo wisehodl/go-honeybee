@@ -1,6 +1,6 @@
 # Configuration
 
-All configuration uses option functions applied at construction time. Validation occurs at constructor time; a config value returned by a constructor is guaranteed to be valid. `PoolConfig` is the outermost scope and contains a `WorkerConfig`. `WorkerConfig` contains a `ConnectionConfig` and a `RetryConfig`. `RetryConfig` validation is skipped entirely when `RetryDisabled` is set on `WorkerConfig`, making the zero value of `RetryConfig` safe in that case. Logging is not config-controlled; pass an `slog.Handler` to pool, worker, and connection constructors directly.
+All configuration uses option functions applied at construction time. Validation occurs at constructor time; a config value returned by a constructor is guaranteed to be valid. `PoolConfig` is the outermost scope and contains a `SessionConfig`. `SessionConfig` contains a `ConnectionConfig` and a `RetryConfig`. `RetryConfig` validation is skipped entirely when `RetryDisabled` is set on `SessionConfig`, making the zero value of `RetryConfig` safe in that case. Logging is not config-controlled; pass an `slog.Handler` to pool, session, and connection constructors directly.
 
 ## Defaults
 
@@ -9,9 +9,9 @@ All configuration uses option functions applied at construction time. Validation
 | Pool | `InboxBufferSize` | 256 | — | Must be positive |
 | Pool | `EventsBufferSize` | 10 | — | Must be positive |
 | Pool | `RequestHeader` | `User-Agent: honeybee/0.1.0` | `WithRequestHeader(nil)` | Cloned per dial call |
-| Worker | `KeepaliveTimeout` | 60s | `0` | 0 disables keepalive |
-| Worker | `ReconnectDelay` | 2s | `0` | 0 means reconnect immediately |
-| Worker | Retry | enabled | `WithRetryDisabled()` | Skips RetryConfig validation when disabled |
+| Session | `KeepaliveTimeout` | 60s | `0` | 0 disables keepalive |
+| Session | `ReconnectDelay` | 2s | `0` | 0 means reconnect immediately |
+| Session | Retry | enabled | `WithRetryDisabled()` | Skips RetryConfig validation when disabled |
 | Connection | `WriteTimeout` | 30s | `0` | Per-message write deadline |
 | Connection | `PingInterval` | 20s | `0` | ±10% jitter applied per interval |
 | Connection | `IncomingBufferSize` | 100 | — | Must be positive |
@@ -29,15 +29,15 @@ These are passed to `honeybee.NewPoolConfig`. Import `git.wisehodl.dev/jay/go-ho
 
 **`WithEventsBufferSize(int)`** — sets the capacity of the events channel. Must be at least 1.
 
-**`WithWorkerConfig(WorkerConfig)`** — supplies the worker configuration applied to every peer the pool manages. Accepted by value.
+**`WithSessionConfig(SessionConfig)`** — supplies the session configuration applied to every peer the pool manages. Accepted by value.
 
 **`WithRequestHeader(http.Header)`** — sets HTTP headers sent during the WebSocket handshake for every dial. The pool clones the header at option application time, so subsequent mutations to the original do not affect dial behavior. Pass `nil` to send no custom headers.
 
 **`WithDialFunc(func(context.Context) (types.Socket, error))`** — a per-call option passed to `pool.Connect`, not to `NewPoolConfig`. Overrides the pool's default dialer for a single connection. When provided, the pool's dialer and request header are not used for that connection.
 
-## Worker Options
+## Session Options
 
-These are passed to `honeybee.NewWorkerConfig`. Import `git.wisehodl.dev/jay/go-honeybee`.
+These are passed to `honeybee.NewSessionConfig`. Import `git.wisehodl.dev/jay/go-honeybee`.
 
 **`WithConnectionConfig(transport.ConnectionConfig)`** — supplies the connection-level configuration (timeouts, buffers, ping interval). Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct one.
 
@@ -63,7 +63,7 @@ These are passed to `transport.NewConnectionConfig`. Import `git.wisehodl.dev/ja
 
 ## Retry Options
 
-These are passed to `transport.NewRetryConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport`. The resulting `RetryConfig` is then passed to `NewWorkerConfig` via `WithRetryConfig`.
+These are passed to `transport.NewRetryConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport`. The resulting `RetryConfig` is then passed to `NewSessionConfig` via `WithRetryConfig`.
 
 **`WithMaxRetries(int)`** — caps the number of dial attempts after the first. Zero means retry indefinitely. Must not be negative.
 
