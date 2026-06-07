@@ -5,18 +5,15 @@ WebSocket connection and pool primitives in Go. Built for Nostr.
 ## Library Map
 
 ```txt
-honeybee.go            Pool, Worker, public types
+pool.go                Pool, public types
+worker.go              Worker, WorkerConfig
 
 transport/             single-connection primitives and helpers
-  connection.go          Connection, state machine, reader goroutine, pinger
-  config.go              ConnectionConfig, RetryConfig, options
+  connection.go          Connection, reader goroutine, pinger
   retry.go               exponential backoff with jitter
-  socket.go              Dialer interface, AcquireSocket
+  socket.go              Dialer interface, DialWithRetry
   url.go                 parsing and normalization
   watchdog.go            IdleWatchdog helper
-
-logging/               structured log construction
-  logging.go             logger constructors, ForcedLevelHandler
 
 types/                 shared interfaces (Dialer, Socket, ReceivedMessage)
 honeybeetest/          test helpers and mocks for consumers
@@ -28,14 +25,12 @@ Honeybee is a minimal, general-purpose WebSocket transport library.
 
 - Client-Side: Manage a pool of outbound peer connections that reconnect automatically and surface lifecycle events.
 - Server-Side: Wrap already-upgraded sockets in the connection primitive, which provides a ping-based heartbeat, automated read-loop, concurrent-safe writes, and classified disconnect errors.
-- The same connection primitive may also be used directly on the client side when pool semantics are not needed, providing automated dialing retry with exponential backoff and jitter.
-- Exposes a means to completely replace the internal pool worker to inject custom behavior.
+- The same primitives may also be used directly on the client side when pool semantics are not needed: `transport.DialWithRetry` acquires a socket with configurable exponential backoff and jitter, and the resulting socket can be wrapped in `transport.NewConnection` for the same read-loop, heartbeat, and write primitives without pool semantics.
 
 ## What This Library Does Not Do
 
-Honeybee is a pure transport layer, but it is also a deliberately simple one. Honeybee does not provide advanced features, relying on its extensibility features to allow you to customize it.
+Honeybee is a pure transport layer, but it is also a deliberately simple one. Honeybee does not provide:
 
-Honeybee does not provide:
 
 - interpretation of message content. All messages are treated equally.
 - message queuing, buffering, prioritization, batching, or coalescing.
@@ -87,6 +82,7 @@ go func() {
         case honeybee.EventConnected:
         case honeybee.EventDisconnected:
         case honeybee.EventDialFailed:
+        case honeybee.EventRetired:
         }
     }
 }()
@@ -106,19 +102,21 @@ After a disconnect, the worker waits for `ReconnectDelay` before attempting the 
 
 `Send` returns `ErrConnectionUnavailable` during the gap between a disconnect and the next successful reconnect. Callers should wait for `EventConnected` before retrying and maintain their own write buffers if needed.
 
-Each failed dial attempt emits `EventDialFailed` on `pool.Events()` with the dialer error in `ev.Err`. These do not stop the pool; it continues retrying according to the connection's retry config. `EventDialFailed` is only sent when the peer fails to connect, not when dialing is stopped internally.
+Each failed dial attempt emits `EventDialFailed` on `pool.Events()` with the dialer error in `ev.Err`. These do not stop the pool; it continues retrying according to the worker's retry config. `EventDialFailed` is only sent when the peer fails to connect, not when dialing is stopped internally.
+
+When a peer's retry policy is exhausted, the worker deregisters itself from the pool and emits `EventRetired` on `pool.Events()`. The default `RetryConfig` sets `MaxRetries` to zero, which means infinite retries — so in default operation `EventRetired` is structurally unreachable. It will only appear if you explicitly configure a positive `MaxRetries` via `WithRetryConfig`.
 
 ## Server-Side Usage
 
 ### Connection
 
-Use `transport.NewConnectionFromSocket` when your HTTP upgrade handler gives you an open socket. The connection starts in `StateConnected`; do not call `Connect`.
+Use `transport.NewConnection` when your HTTP upgrade handler gives you an open socket.
 
 ```go
 import "git.wisehodl.dev/jay/go-honeybee/transport"
 
 // wsConn is a *websocket.Conn from your upgrade handler
-conn, err := transport.NewConnectionFromSocket(wsConn, nil, logger)
+conn, err := transport.NewConnection(ctx, wsConn, nil, handler)
 if err != nil { /* handle error */ }
 defer conn.Close()
 
@@ -146,7 +144,7 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 - `ErrPeerClosedUnexpected` for abnormal close codes
 - `ErrReadError` for anything else
 
-Pass an `*slog.Logger` as the third argument to get structured logs. Pass nil to disable logging entirely.
+Pass an `slog.Handler` as the fourth argument to enable structured logging. Pass `nil` to disable it.
 
 ### IdleWatchdog
 
@@ -199,19 +197,36 @@ When no activity signal arrives within the timeout, `onTimeout` is called once a
 
 ## Bare Connection
 
-Use `transport.NewConnection` when you need a single outbound connection without pool semantics — for example, a one-shot query or a custom use-case. It adds several conveniences over a raw socket: a retry loop with exponential backoff, concurrent-safe writes, automatic write deadline enforcement, classified disconnect errors, and observable connection state.
+Use `transport.DialWithRetry` and `transport.NewConnection` together when you need a single outbound connection without pool semantics — for example, a one-shot query or a standalone client.
+
+First, acquire a socket. Then wrap it in a connection:
 
 ```go
 import "git.wisehodl.dev/jay/go-honeybee/transport"
 
-conn, err := transport.NewConnection("wss://example.com", nil, nil)
-if err != nil { /* handle error */ }
+// Step 1: dial with retry
+retryCfg, _ := transport.NewRetryConfig() // or configure via WithMaxRetries, etc.
+mgr := transport.NewRetryManager(retryCfg)
 
-if err := conn.Connect(ctx); err != nil { /* handle error */ }
+onError := func(err error) {
+    // called for each failed attempt; use to log or surface per-attempt errors
+}
+
+dialFn := func(ctx context.Context) (types.Socket, error) {
+    socket, _, err := myDialer.DialContext(ctx, "wss://example.com", nil)
+    return socket, err
+}
+
+socket, err := transport.DialWithRetry(ctx, mgr, dialFn, onError, nil)
+if err != nil { /* context cancelled or retry policy exhausted */ }
+
+// Step 2: wrap the socket
+conn, err := transport.NewConnection(ctx, socket, nil, nil)
+if err != nil { /* handle error */ }
 defer conn.Close()
 
 go func() {
-    for data := range conn.Incoming() { // data: []byte
+    for data := range conn.Incoming() {
         // process incoming messages
     }
 }()
@@ -226,7 +241,9 @@ go func() {
 conn.Send([]byte("hello"))
 ```
 
-The connection goes through four states: `StateDisconnected`, `StateConnecting`, `StateConnected`, `StateClosed`. Transitions are atomic and observable via `conn.State()`. Once closed, the connection should not be reused; construct a new one with the same URL and reconnect.
+Pass `nil` for `mgr` to disable retry — the first dial failure is then terminal. Pass `nil` for `onError` to ignore per-attempt errors. Context cancellation terminates the retry loop at any point.
+
+For `RetryConfig` and `RetryManager` construction options, see CONFIG.md.
 
 `Send` is safe for concurrent callers. `Close` is idempotent and safe to call from any goroutine.
 
@@ -242,7 +259,7 @@ Connections send periodic WebSocket ping frames and listen for the corresponding
 
 Pong-derived heartbeats reset the keepalive timer alongside data messages and sends. A peer that sends no data but responds to pings will not be disconnected and reconnected by the keepalive mechanism.
 
-The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then pass it to the pool by value via `honeybee.WithConnectionConfig`, or supply it directly to `NewConnection` and `NewConnectionFromSocket`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
+The ping interval is configured via `transport.WithPingInterval` on the `transport.ConnectionConfig`. Import `git.wisehodl.dev/jay/go-honeybee/transport` to construct a `ConnectionConfig`, then wrap it in a `WorkerConfig` via `honeybee.WithConnectionConfig`, and pass the `WorkerConfig` to `NewPoolConfig` via `honeybee.WithWorkerConfig`. You can also supply the `ConnectionConfig` directly to `transport.NewConnection`. The default is 20 seconds. Set to zero to disable pings entirely, in which case only data messages and outbound sends generate heartbeats.
 
 ## Statistics
 
@@ -266,15 +283,9 @@ connStats := conn.Stats() // conn is a *transport.Connection
 // connStats.TotalReceived, connStats.TotalSent, connStats.TotalHeartbeats
 ```
 
-## Extending Pools
-
-The pool owns peer registration, event plumbing, and lifecycle. The worker owns what happens on the wire. The default worker can be replaced entirely via `WorkerFactory`.
-
-See EXTEND.md for the worker interface contract, the `PoolPlugin` fields, and extension patterns.
-
 ## Configuration
 
-All configuration is done through option functions applied at construction time. There are three config scopes: `ConnectionConfig`, `WorkerConfig`, and `PoolConfig`. Logging can be enabled and its minimum level overridden independently at the pool, worker, and connection levels.
+All configuration is done through option functions applied at construction time. `PoolConfig` is the top-level scope and embeds a `WorkerConfig`. `WorkerConfig` embeds both a `ConnectionConfig` and a `RetryConfig`. Consumers configure connection and retry behavior through this chain. Logging is not config-controlled; pass an `slog.Handler` to pool, worker, and connection constructors directly.
 
 See CONFIG.md for the full option reference and defaults table.
 
