@@ -218,7 +218,7 @@ func TestSession(t *testing.T) {
 		assert.False(t, retired.Load(), "expected Retire not called")
 	})
 
-	t.Run("Stop before connection established - exits cleanly, no events", func(t *testing.T) {
+	t.Run("Stop before connection established - exits cleanly, dial failed event", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -245,7 +245,14 @@ func TestSession(t *testing.T) {
 			}
 		}, "expected Start to return after Stop")
 
-		assert.Empty(t, events, "expected no events when stopped before connection")
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDialFailed
+			default:
+				return false
+			}
+		}, "expected EventDialFailed when stopped before connection")
 	})
 
 	t.Run("Send delivers data to socket", func(t *testing.T) {
@@ -646,7 +653,7 @@ func TestSession(t *testing.T) {
 		}, "expected EventDialFailed")
 	})
 
-	t.Run("no EventDialFailed when session is stopped mid-dial", func(t *testing.T) {
+	t.Run("EventDialFailed when session is stopped mid-dial", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -674,14 +681,14 @@ func TestSession(t *testing.T) {
 			}
 		}, "expected session to exit after Stop")
 
-		honeybeetest.Never(t, func() bool {
+		honeybeetest.Eventually(t, func() bool {
 			select {
 			case e := <-events:
 				return e.Kind == EventDialFailed
 			default:
 				return false
 			}
-		}, "expected no EventDialFailed when stopped mid-dial")
+		}, "expected EventDialFailed when stopped mid-dial")
 	})
 }
 
