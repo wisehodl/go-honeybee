@@ -76,8 +76,9 @@ go func() {
 
 go func() {
     for ev := range pool.Events() {
-        // ev.At             is the event timestamp
-        // ev.Err            is non-nil for EventDialFailed
+        // ev.At    is the event timestamp
+        // ev.Err   is non-nil for EventDialFailed and for EventDisconnected
+        //          caused by a read failure
         switch ev.Kind {
         case honeybee.EventConnected:
         case honeybee.EventDisconnected:
@@ -94,7 +95,7 @@ pool.Send("wss://peer.example.com", []byte("hello"))
 
  URLs are normalized by the pool. `wss://peer.example.com`, `wss://peer.example.com/`, and `WSS://Peer.Example.Com:443` all identify the same peer. `honeybee.NormalizeURL` is also available directly if you need to use the same URLs as keys elsewhere.
 
-Every time a connection is established, `honeybee.EventConnected` is emitted. Every time a connection drops for any reason, `honeybee.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs.
+Every time a connection is established, `honeybee.EventConnected` is emitted. Every time a connection drops for any reason, `honeybee.EventDisconnected` is emitted. A peer that reconnects three times produces three Connected/Disconnected pairs. When the drop was caused by a read failure, `ev.Err` carries the classified error — match `honeybee.ErrReadLimit` to detect read-limit violations. A local `Stop()` emits `EventDisconnected` with nil `Err`.
 
 Keepalive is configured via `honeybee.WithKeepaliveTimeout`. The session records a heartbeat on every inbound message, every successful send, and every received pong. If no heartbeats arrive before the keepalive timer fires, the connection is proactively disconnected and reconnected. When set to zero, keepalive is disabled.
 
@@ -142,7 +143,8 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 
 - `ErrPeerClosedClean` for normal closure
 - `ErrPeerClosedUnexpected` for abnormal close codes
-- `ErrReadError` for anything else
+- `ErrReadError` for any other read failure
+- `ErrReadLimit` (chained under `ErrReadError`) when the read limit is exceeded
 
 Pass an `slog.Handler` as the fourth argument to enable structured logging. Pass `nil` to disable it.
 
@@ -251,7 +253,8 @@ When the reader exits, exactly one classified error reaches `Errors()` before th
 
 - `ErrPeerClosedClean` for normal closure
 - `ErrPeerClosedUnexpected` for abnormal close codes
-- `ErrReadError` for anything else
+- `ErrReadError` for any other read failure
+- `ErrReadLimit` (chained under `ErrReadError`) when the read limit is exceeded
 
 ## Ping-Pong Heartbeats
 
