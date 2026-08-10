@@ -45,6 +45,7 @@ type MockSocket struct {
 	CloseFunc            func() error
 	SetCloseHandlerFunc  func(func(int, string) error)
 	SetPongHandlerFunc   func(func(string) error)
+	SetReadLimitFunc     func(limit int64)
 	Closed               chan struct{}
 	Once                 sync.Once
 	Mu                   sync.Mutex
@@ -61,6 +62,7 @@ func NewMockSocket() *MockSocket {
 		SetWriteDeadlineFunc: func(time.Time) error { return nil },
 		SetCloseHandlerFunc:  func(func(int, string) error) {},
 		SetPongHandlerFunc:   func(func(string) error) {},
+		SetReadLimitFunc:     func(limit int64) {},
 
 		Closed: make(chan struct{}),
 	}
@@ -97,6 +99,10 @@ func (m *MockSocket) SetCloseHandler(h func(code int, text string) error) {
 
 func (m *MockSocket) SetPongHandler(h func(s string) error) {
 	m.SetPongHandlerFunc(h)
+}
+
+func (m *MockSocket) SetReadLimit(limit int64) {
+	m.SetReadLimitFunc(limit)
 }
 
 // ----------------------------------------------------------------------------

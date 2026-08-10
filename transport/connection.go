@@ -51,6 +51,7 @@ type ConnectionConfig struct {
 	PingInterval       time.Duration
 	IncomingBufferSize int
 	ErrorsBufferSize   int
+	ReadLimit          *int64
 }
 
 func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
@@ -59,6 +60,7 @@ func NewConnectionConfig(opts ...ConnectionOption) (*ConnectionConfig, error) {
 		PingInterval:       20 * time.Second,
 		IncomingBufferSize: 100,
 		ErrorsBufferSize:   10,
+		ReadLimit:          nil,
 	}
 	for _, o := range opts {
 		o(cfg)
@@ -97,6 +99,14 @@ func WithErrorsBufferSize(value int) ConnectionOption {
 	}
 }
 
+// When ReadLimit is set to zero, reads are unlimited.
+func WithReadLimit(value int64) ConnectionOption {
+	return func(c *ConnectionConfig) {
+		ptr := &value
+		c.ReadLimit = ptr
+	}
+}
+
 func ValidateConnectionConfig(c ConnectionConfig) error {
 	if c.WriteTimeout < 0 {
 		return fmt.Errorf("invalid write timeout: %v", c.WriteTimeout)
@@ -111,6 +121,9 @@ func ValidateConnectionConfig(c ConnectionConfig) error {
 	if c.ErrorsBufferSize < 1 {
 		return fmt.Errorf("invalid errors buffer size: %d",
 			c.ErrorsBufferSize)
+	}
+	if c.ReadLimit != nil && *c.ReadLimit < 0 {
+		return fmt.Errorf("invalid read limit: %d", *c.ReadLimit)
 	}
 	return nil
 }
@@ -146,7 +159,10 @@ type Connection struct {
 }
 
 func NewConnection(
-	ctx context.Context, socket types.Socket, config *ConnectionConfig, handler slog.Handler,
+	ctx context.Context,
+	socket types.Socket,
+	config *ConnectionConfig,
+	handler slog.Handler,
 ) (*Connection, error) {
 	if socket == nil {
 		return nil, ErrNilSocket
@@ -177,6 +193,10 @@ func NewConnection(
 		outgoingCount:  &atomic.Uint64{},
 		heartbeatCount: &atomic.Uint64{},
 		done:           make(chan struct{}),
+	}
+
+	if config.ReadLimit != nil {
+		conn.socket.SetReadLimit(*config.ReadLimit)
 	}
 
 	if handler != nil {

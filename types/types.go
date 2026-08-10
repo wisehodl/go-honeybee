@@ -23,6 +23,7 @@ type Socket interface {
 	SetWriteDeadline(t time.Time) error
 	SetCloseHandler(h func(code int, text string) error)
 	SetPongHandler(h func(appData string) error)
+	SetReadLimit(limit int64)
 }
 
 type ReceivedMessage struct {

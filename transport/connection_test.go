@@ -108,6 +108,39 @@ func TestNewConnection(t *testing.T) {
 	}
 }
 
+func TestNewConnection_ReadLimit(t *testing.T) {
+	socket, _, _ := honeybeetest.SetupTestSocket(t)
+
+	var limitWasSet bool
+	var setLimit int64
+	socket.SetReadLimitFunc = func(limit int64) {
+		limitWasSet = true
+		setLimit = limit
+	}
+
+	// when ReadLimit is nil, SetReadLimit should not be called
+	config, _ := NewConnectionConfig()
+	NewConnection(context.Background(), socket, config, nil)
+	assert.False(t, limitWasSet)
+
+	// when ReadLimit is set to zero, SetReadLimit should be called
+	config, _ = NewConnectionConfig(
+		WithReadLimit(0),
+	)
+	NewConnection(context.Background(), socket, config, nil)
+	assert.True(t, limitWasSet)
+	assert.Equal(t, int64(0), setLimit)
+
+	// when ReadLimit is set to a positive value, SetReadLimit should be called
+	limitWasSet = false
+	config, _ = NewConnectionConfig(
+		WithReadLimit(100),
+	)
+	NewConnection(context.Background(), socket, config, nil)
+	assert.True(t, limitWasSet)
+	assert.Equal(t, int64(100), setLimit)
+}
+
 // ----------------------------------------------------------------------------
 // Accessors
 // ----------------------------------------------------------------------------

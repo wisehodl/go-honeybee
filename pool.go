@@ -349,6 +349,13 @@ func (p *Pool) Connect(url string, opts ...ConnectOption) error {
 	}
 	dialFn := func(ctx context.Context) (types.Socket, error) {
 		socket, _, err := p.dialer.DialContext(ctx, url, hdr)
+
+		// Set a sane read limit when using the default dialer
+		// Can be overridden with ConnectionConfig.ReadLimit
+		if socket != nil {
+			socket.SetReadLimit(512 * 1024)
+		}
+
 		return socket, err
 	}
 

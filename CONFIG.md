@@ -16,6 +16,7 @@ All configuration uses option functions applied at construction time. Validation
 | Connection | `PingInterval` | 20s | `0` | ±10% jitter applied per interval |
 | Connection | `IncomingBufferSize` | 100 | — | Must be positive |
 | Connection | `ErrorsBufferSize` | 10 | — | Must be positive |
+| Connection | `ReadLimit` | nil | 0 | Does nothing when unset, 0 = unlimited |
 | Retry | `MaxRetries` | 0 | — | 0 means infinite |
 | Retry | `InitialDelay` | 1s | — | Must be positive |
 | Retry | `MaxDelay` | 60s | — | Must be ≥ `InitialDelay` |
@@ -60,6 +61,8 @@ These are passed to `transport.NewConnectionConfig`. Import `git.wisehodl.dev/ja
 **`WithIncomingBufferSize(int)`** — sets the capacity of the channel buffering inbound messages. Must be at least 1.
 
 **`WithErrorsBufferSize(int)`** — sets the capacity of the channel carrying connection-level errors. Must be at least 1.
+
+**`WithReadLimit(int64)`** — sets the limit on incoming socket messages. Does nothing when unset. Incoming message size is unlimited when set to zero. The default pool dialer sets a read limit of 512KB. Setting this option overrides that default.
 
 ## Retry Options
 
