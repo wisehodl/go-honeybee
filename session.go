@@ -213,10 +213,6 @@ func (w *session) dial(
 		retryMgr = transport.NewRetryManager(w.config.RetryConfig)
 	}
 	onError := func(err error) {
-		if errors.Is(err, context.Canceled) ||
-			errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
 		pool.Events <- PoolEvent{
 			URL: w.url, Kind: EventDialFailed, Err: err, At: time.Now()}
 	}
@@ -241,6 +237,7 @@ func (w *session) serve(
 	ctx context.Context, conn *transport.Connection, pool PoolPlugin,
 ) {
 	if w.logger != nil {
+		w.logger.Info("connected")
 		w.logger.Debug("session: started")
 	}
 
