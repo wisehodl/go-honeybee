@@ -19,6 +19,7 @@ import (
 // ----------------------------------------------------------------------------
 
 var ErrConnectionUnavailable = errors.New("connection unavailable")
+var ErrReadLimit = transport.ErrReadLimit
 
 // ----------------------------------------------------------------------------
 // Config
@@ -249,6 +250,8 @@ func (w *session) serve(
 	stopKeepalive, inactive, heartbeat := w.startKeepalive()
 
 	// run session loop
+	var disconnectErr error
+
 session:
 	for {
 		select {
@@ -257,14 +260,13 @@ session:
 
 		case data, ok := <-conn.Incoming():
 			if !ok {
-				var reason error
 				select {
-				case reason = <-conn.Errors():
+				case disconnectErr = <-conn.Errors():
 				default:
-					reason = fmt.Errorf("unknown")
+					disconnectErr = fmt.Errorf("unknown")
 				}
 				if w.logger != nil {
-					w.logger.Info("websocket: closed", "reason", reason)
+					w.logger.Info("websocket: closed", "reason", disconnectErr)
 				}
 				break session
 			}
@@ -297,7 +299,8 @@ session:
 
 	// tear down connection
 	w.conn.Store(nil)
-	pool.Events <- PoolEvent{URL: w.url, Kind: EventDisconnected, At: time.Now()}
+	pool.Events <- PoolEvent{
+		URL: w.url, Kind: EventDisconnected, Err: disconnectErr, At: time.Now()}
 
 	if w.logger != nil {
 		w.logger.Info("disconnected")

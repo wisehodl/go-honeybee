@@ -225,6 +225,51 @@ func TestConnection_Errors(t *testing.T) {
 		}, "expected read error")
 
 	})
+
+	t.Run("read limit exceeded", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, websocket.ErrReadLimit
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return errors.Is(err, ErrReadLimit) &&
+					errors.Is(err, ErrReadError) &&
+					!errors.Is(err, websocket.ErrReadLimit)
+			default:
+				return false
+			}
+		}, "expected read limit error classified as ErrReadLimit")
+
+	})
+
+	t.Run("generic read error is not a read limit error", func(t *testing.T) {
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, io.EOF
+		}
+
+		conn, err := NewConnection(context.Background(), mockSocket, nil, nil)
+		assert.NoError(t, err)
+		defer conn.Close()
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case err := <-conn.Errors():
+				return errors.Is(err, ErrReadError) &&
+					!errors.Is(err, ErrReadLimit)
+			default:
+				return false
+			}
+		}, "expected generic read error without ErrReadLimit")
+
+	})
 }
 
 func TestConnection_Heartbeat(t *testing.T) {

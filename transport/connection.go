@@ -27,6 +27,7 @@ var (
 	ErrPeerClosedClean      = errors.New("peer closed connection cleanly")
 	ErrPeerClosedUnexpected = errors.New("peer closed connection unexpectedly")
 	ErrReadError            = errors.New("read error")
+	ErrReadLimit            = errors.New("read limit exceeded")
 )
 
 // ----------------------------------------------------------------------------
@@ -350,7 +351,12 @@ func (c *Connection) classifyCloseError(err error) error {
 			}
 		}
 
-		classifiedError = fmt.Errorf("%w: %w", ErrReadError, err)
+		if errors.Is(err, websocket.ErrReadLimit) {
+			classifiedError = fmt.Errorf("%w: %w: %v",
+				ErrReadError, ErrReadLimit, err)
+		} else {
+			classifiedError = fmt.Errorf("%w: %w", ErrReadError, err)
+		}
 	}
 
 	return classifiedError

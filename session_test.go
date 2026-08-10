@@ -80,6 +80,37 @@ func TestSession(t *testing.T) {
 		}, "expected EventConnected")
 	})
 
+	t.Run("EventDisconnected carries ErrReadLimit when read limit exceeded", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		mockSocket := honeybeetest.NewMockSocket()
+		mockSocket.ReadMessageFunc = func() (int, []byte, error) {
+			return 0, nil, websocket.ErrReadLimit
+		}
+
+		config, _ := NewSessionConfig(
+			WithRetryDisabled(), WithReconnectDelay(0))
+		w := makeSession(t, mockSocket, config, ctx, cancel)
+		_, events, pool := makeSessionContext(t)
+
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			w.Start(pool)
+		})
+
+		honeybeetest.Eventually(t, func() bool {
+			select {
+			case e := <-events:
+				return e.Kind == EventDisconnected &&
+					e.Err != nil &&
+					errors.Is(e.Err, ErrReadLimit)
+			default:
+				return false
+			}
+		}, "expected EventDisconnected with Err matching ErrReadLimit")
+	})
+
 	t.Run("dial failure exhausted - session exits cleanly, no connected/disconnected events", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
