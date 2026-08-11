@@ -133,6 +133,21 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "ws://relay.example.com",
 		},
 		{
+			name:     "strip default wss port preserves ipv6 brackets",
+			input:    "wss://[::1]:443",
+			expected: "wss://[::1]",
+		},
+		{
+			name:     "strip default ws port preserves ipv6 brackets",
+			input:    "ws://[::1]:80",
+			expected: "ws://[::1]",
+		},
+		{
+			name:     "strip default port preserves ipv6 zone",
+			input:    "wss://[fe80::1%25eth0]:443/",
+			expected: "wss://[fe80::1%25eth0]",
+		},
+		{
 			name:     "preserve non-default port",
 			input:    "wss://relay.example.com:8080",
 			expected: "wss://relay.example.com:8080",
@@ -171,6 +186,24 @@ func TestNormalizeURL(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, got)
 		})
+	}
+}
+
+func TestNormalizeURLIdempotent(t *testing.T) {
+	inputs := []string{
+		"wss://[::1]:443",
+		"ws://[::1]:80",
+		"wss://[fe80::1%25eth0]:443/",
+		"wss://relay.example.com:443/",
+		"wss://relay.example.com:8080/path",
+	}
+
+	for _, input := range inputs {
+		once, err := NormalizeURL(input)
+		assert.NoError(t, err)
+		twice, err := NormalizeURL(once)
+		assert.NoError(t, err)
+		assert.Equal(t, once, twice, "normalizing %q twice must be stable", input)
 	}
 }
 

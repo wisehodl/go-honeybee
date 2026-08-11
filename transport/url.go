@@ -30,13 +30,12 @@ func NormalizeURL(input string) (string, error) {
 	// lowercase host
 	parsed.Host = strings.ToLower(parsed.Host)
 
-	host := parsed.Hostname()
 	port := parsed.Port()
 
-	// strip default ports
+	// strip default ports by suffix-trim so ipv6 brackets and zone survive
 	if (parsed.Scheme == "wss" && port == "443") ||
 		(parsed.Scheme == "ws" && port == "80") {
-		parsed.Host = host
+		parsed.Host = strings.TrimSuffix(parsed.Host, ":"+port)
 	}
 
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
