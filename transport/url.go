@@ -22,13 +22,18 @@ func ParseURL(urlStr string) (*url.URL, error) {
 }
 
 func NormalizeURL(input string) (string, error) {
-	parsed, err := ParseURL(strings.ToLower(input))
+	parsed, err := ParseURL(input)
 	if err != nil {
 		return "", err
 	}
 
+	// lowercase host
+	parsed.Host = strings.ToLower(parsed.Host)
+
 	host := parsed.Hostname()
 	port := parsed.Port()
+
+	// strip default ports
 	if (parsed.Scheme == "wss" && port == "443") ||
 		(parsed.Scheme == "ws" && port == "80") {
 		parsed.Host = host

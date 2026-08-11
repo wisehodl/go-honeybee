@@ -143,6 +143,22 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "wss://relay.example.com/nostr",
 		},
 		{
+			name:     "lowercase scheme+host, preserve path case",
+			input:    "Wss://Relay.Example.Com/Nostr",
+			expected: "wss://relay.example.com/Nostr",
+		},
+		{
+			name:  "preserve user info",
+			input: "wss://user:P@ssWord@relay.example.com",
+			// String() cannot output a raw `@` so `%40` is expected
+			expected: "wss://user:P%40ssWord@relay.example.com",
+		},
+		{
+			name:     "preserve query",
+			input:    "Wss://relay.example.com?field=Value",
+			expected: "wss://relay.example.com?field=Value",
+		},
+		{
 			name:     "no change needed",
 			input:    "wss://relay.example.com",
 			expected: "wss://relay.example.com",
