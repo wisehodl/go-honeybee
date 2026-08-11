@@ -115,6 +115,10 @@ func ValidateConnectionConfig(c ConnectionConfig) error {
 	if c.PingInterval < 0 {
 		return fmt.Errorf("invalid ping interval: %v", c.PingInterval)
 	}
+	if c.PingInterval > 0 && c.PingInterval < 10*time.Nanosecond {
+		return fmt.Errorf("invalid ping interval: %v "+
+			"(positive minimum is 10ns)", c.PingInterval)
+	}
 	if c.IncomingBufferSize < 1 {
 		return fmt.Errorf("invalid incoming buffer size: %d",
 			c.IncomingBufferSize)
@@ -380,8 +384,12 @@ func (c *Connection) setupPongHandler() {
 func (c *Connection) startPinger() {
 	defer c.shutdownInternal()
 
-	// Calculate 10% jitter window
+	// Calculate 10% jitter window, clamped so Int63n can never panic
+	// even if config validation is bypassed
 	jitter := c.config.PingInterval / 10
+	if jitter < 1 {
+		jitter = 1
+	}
 
 	for {
 		offset := time.Duration(rand.Int63n(int64(jitter*2))) - jitter

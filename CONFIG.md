@@ -13,7 +13,7 @@ All configuration uses option functions applied at construction time. Validation
 | Session | `ReconnectDelay` | 2s | `0` | 0 means reconnect immediately |
 | Session | Retry | enabled | `WithRetryDisabled()` | Skips RetryConfig validation when disabled |
 | Connection | `WriteTimeout` | 30s | `0` | Per-message write deadline |
-| Connection | `PingInterval` | 20s | `0` | ±10% jitter applied per interval |
+| Connection | `PingInterval` | 20s | `0` | ±10% jitter applied per interval; positive minimum 10ns |
 | Connection | `IncomingBufferSize` | 100 | — | Must be positive |
 | Connection | `ErrorsBufferSize` | 10 | — | Must be positive |
 | Connection | `ReadLimit` | nil | 0 | Does nothing when unset, 0 = unlimited |
@@ -56,7 +56,7 @@ These are passed to `transport.NewConnectionConfig`. Import `git.wisehodl.dev/ja
 
 **`WithWriteTimeout(duration)`** — sets a per-message write deadline. Applied before every `WriteMessage` call. Set to zero to disable. Must not be negative.
 
-**`WithPingInterval(duration)`** — sets the interval between WebSocket ping frames. A ±10% jitter is applied to each interval. Set to zero to disable pings entirely. Must not be negative.
+**`WithPingInterval(duration)`** — sets the interval between WebSocket ping frames. A ±10% jitter is applied to each interval. Set to zero to disable pings entirely. A positive interval must be at least 10ns; smaller positive values leave no room for the jitter window and are rejected.
 
 **`WithIncomingBufferSize(int)`** — sets the capacity of the channel buffering inbound messages. Must be at least 1.
 

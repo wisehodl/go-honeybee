@@ -322,6 +322,37 @@ func TestConnection_Heartbeat(t *testing.T) {
 	})
 }
 
+func TestStartPingerSubMinimumInterval(t *testing.T) {
+	// Construct directly to bypass NewConnectionConfig validation; the
+	// jitter clamp alone must prevent the Int63n(0) panic.
+	conn := &Connection{
+		socket:   honeybeetest.NewMockSocket(),
+		config:   ConnectionConfig{PingInterval: 5 * time.Nanosecond},
+		incoming: make(chan []byte, 1),
+		errors:   make(chan error, 1),
+		done:     make(chan struct{}),
+	}
+
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		conn.startPinger()
+	}()
+
+	// let several jittered intervals elapse
+	time.Sleep(50 * time.Millisecond)
+	conn.Close()
+
+	honeybeetest.Eventually(t, func() bool {
+		select {
+		case <-finished:
+			return true
+		default:
+			return false
+		}
+	}, "pinger should exit cleanly after Close")
+}
+
 // ----------------------------------------------------------------------------
 // Send
 // ----------------------------------------------------------------------------
