@@ -316,8 +316,14 @@ func (w *session) reset(ctx context.Context) bool {
 	default:
 	}
 
-	// refresh session
-	time.Sleep(w.config.ReconnectDelay)
+	// refresh session timeout
+	timer := time.NewTimer(w.config.ReconnectDelay)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return false
+	case <-timer.C:
+	}
 	w.restartCount.Add(1)
 	return true
 }

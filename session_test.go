@@ -829,3 +829,28 @@ func TestSession_Send(t *testing.T) {
 		assert.ErrorIs(t, err, ErrConnectionUnavailable)
 	})
 }
+
+func TestSessionResetCancel(t *testing.T) {
+	w := &session{
+		config:       SessionConfig{ReconnectDelay: 30 * time.Second},
+		restartCount: &atomic.Uint64{},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan bool, 1)
+
+	go func() {
+		done <- w.reset(ctx)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	honeybeetest.Eventually(t, func() bool {
+		select {
+		case ok := <-done:
+			return !ok
+		default:
+			return false
+		}
+	}, "expected reset to return false promptly after cancel")
+}
