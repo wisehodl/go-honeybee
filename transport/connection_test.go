@@ -93,7 +93,7 @@ func TestNewConnection(t *testing.T) {
 			assert.NotNil(t, conn.incoming)
 			assert.NotNil(t, conn.errors)
 			assert.NotNil(t, conn.done)
-			assert.False(t, conn.closed)
+			assert.False(t, conn.closed.Load())
 
 			// Verify default config is used if nil is passed.
 			gotCfg := conn.config
@@ -351,6 +351,32 @@ func TestStartPingerSubMinimumInterval(t *testing.T) {
 			return false
 		}
 	}, "pinger should exit cleanly after Close")
+}
+
+func TestConnectionSendCloseRace(t *testing.T) {
+	// Regression for the closed-flag data race; only the race detector
+	// observes the fault, so this is meaningful under `go test -race`.
+	socket := honeybeetest.NewMockSocket()
+	conn, err := NewConnection(context.Background(), socket, nil, nil)
+	assert.NoError(t, err)
+
+	stop := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = conn.Send([]byte("data"))
+			}
+		}
+	}()
+
+	conn.Close()
+	close(stop)
+	<-finished
 }
 
 // ----------------------------------------------------------------------------
@@ -676,7 +702,7 @@ func TestDisconnectedConnectionClose(t *testing.T) {
 
 		conn.Close()
 
-		assert.True(t, conn.closed)
+		assert.True(t, conn.closed.Load())
 		_, ok := <-conn.incoming
 		assert.False(t, ok)
 		_, ok = <-conn.errors

@@ -156,8 +156,7 @@ type Connection struct {
 	heartbeatCount *atomic.Uint64
 
 	wg          sync.WaitGroup
-	closed      bool
-	mu          sync.RWMutex
+	closed      atomic.Bool
 	writeMu     sync.Mutex
 	doneOnce    sync.Once
 	cleanupOnce sync.Once
@@ -228,7 +227,7 @@ func (c *Connection) Send(data []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if c.closed {
+	if c.closed.Load() {
 		return ErrConnectionClosed
 	}
 
@@ -425,14 +424,10 @@ func (c *Connection) Close() {
 
 func (c *Connection) shutdownExternal() {
 	// set closed
-	c.mu.Lock()
-	if c.closed {
+	if !c.closed.CompareAndSwap(false, true) {
 		// idempotent shutdown
-		c.mu.Unlock()
 		return
 	}
-	c.closed = true
-	c.mu.Unlock()
 
 	// perform shutdown
 	c.shutdownInner()
@@ -444,14 +439,10 @@ func (c *Connection) shutdownExternal() {
 // must wait for itself to exit.
 func (c *Connection) shutdownInternal() {
 	// set closed
-	c.mu.Lock()
-	if c.closed {
+	if !c.closed.CompareAndSwap(false, true) {
 		// idempotent shutdown
-		c.mu.Unlock()
 		return
 	}
-	c.closed = true
-	c.mu.Unlock()
 
 	// perform shutdown
 	c.shutdownInner()
